@@ -2,7 +2,7 @@
 Card-related API endpoints.
 """
 import json
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, timezone
 from typing import Optional
 
 import structlog
@@ -365,7 +365,7 @@ async def _maybe_trigger_refresh(
     metrics: MetricsCardsDaily | None,
 ) -> tuple[bool, Optional[str]]:
     """Trigger background refresh if data is stale."""
-    threshold = datetime.utcnow() - timedelta(hours=REFRESH_THRESHOLD_HOURS)
+    threshold = datetime.now(timezone.utc) - timedelta(hours=REFRESH_THRESHOLD_HOURS)
     
     result = await db.execute(
         select(func.max(PriceSnapshot.snapshot_time)).where(PriceSnapshot.card_id == card_id)
@@ -374,8 +374,11 @@ async def _maybe_trigger_refresh(
     
     metrics_stale = True
     if metrics and metrics.date:
-        metrics_dt = datetime.combine(metrics.date, time.min)
+        metrics_dt = datetime.combine(metrics.date, time.min, tzinfo=timezone.utc)
         metrics_stale = metrics_dt < threshold
+    
+    if latest_snapshot and latest_snapshot.tzinfo is None:
+        latest_snapshot = latest_snapshot.replace(tzinfo=timezone.utc)
     
     prices_stale = latest_snapshot is None or latest_snapshot < threshold
     
