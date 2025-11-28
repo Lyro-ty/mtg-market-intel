@@ -1,5 +1,7 @@
 .PHONY: up down build logs restart migrate seed test test-backend test-frontend lint clean help
 
+SCRYFALL_BATCH_SIZE ?= 1000
+
 # Default target
 help:
 	@echo "MTG Market Intel - Available Commands"
@@ -72,11 +74,11 @@ seed:
 
 import-scryfall:
 	@echo "Importing Scryfall card database (default_cards)..."
-	docker compose exec backend python -m app.scripts.import_scryfall --type default_cards
+	docker compose exec backend python -m app.scripts.import_scryfall --type default_cards --batch-size $(SCRYFALL_BATCH_SIZE)
 
 import-scryfall-all:
 	@echo "Importing ALL Scryfall card printings (this will take a while)..."
-	docker compose exec backend python -m app.scripts.import_scryfall --type all_cards
+	docker compose exec backend python -m app.scripts.import_scryfall --type all_cards --batch-size $(SCRYFALL_BATCH_SIZE)
 
 db-shell:
 	docker compose exec db psql -U mtg_user -d mtg_market_intel

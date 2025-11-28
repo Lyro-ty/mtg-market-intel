@@ -89,6 +89,12 @@ This will:
 - **API Docs**: http://localhost:8000/docs
 - **API**: http://localhost:8000
 
+### Windows + WSL Notes
+
+- Open your WSL distro (`wsl -d Ubuntu` for example) and run all `docker`/`make` commands there so the Linux Docker CLI can be found.
+- If you need to launch a compose command from PowerShell, prefix it with `wsl -e`, e.g. `wsl -e docker compose up -d`.
+- The repo is shared between Windows and WSL via `/mnt/c/...`, so you can edit files in Windows but build/run inside WSL without copying anything.
+
 ## Development
 
 ### Using Make Commands
@@ -138,6 +144,27 @@ make test-frontend
 docker compose exec backend pytest -v
 docker compose exec frontend npm test
 ```
+
+## Importing the Scryfall Database
+
+The importer streams the bulk download so you can ingest 90k+ records without exhausting memory and it automatically detects gzipped payloads that Scryfall may return.
+
+```bash
+# Import one card per Oracle ID (~30k cards)
+make import-scryfall
+
+# Import every printing (~90k cards). Expect ~10-15 minutes depending on bandwidth.
+make import-scryfall-all
+
+# Increase the batch size for faster commits on beefier machines
+make import-scryfall-all SCRYFALL_BATCH_SIZE=2000
+
+# Re-use an existing download instead of pulling ~600MB again
+docker compose exec backend python -m app.scripts.import_scryfall \
+  --type all_cards --skip-download --batch-size 2000
+```
+
+While the import is running you will see a `Processed: <n>` counter update in-place so you can monitor long jobs.
 
 ## API Endpoints
 
