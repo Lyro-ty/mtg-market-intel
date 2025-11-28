@@ -1,0 +1,301 @@
+# MTG Market Intel
+
+A production-ready web application for Magic: The Gathering card market intelligence, featuring:
+
+- 📊 **Multi-marketplace price tracking** - Collects data from TCGPlayer, Cardmarket, Card Kingdom, and more
+- 📈 **Price analytics & forecasting** - Moving averages, volatility, momentum indicators
+- 🤖 **AI-powered recommendations** - Buy/Sell/Hold signals with clear rationales
+- 📉 **Cross-market arbitrage detection** - Identify pricing discrepancies
+- 🎯 **Modern web UI** - Dashboard, search, charts, and recommendations
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Frontend (Next.js)                       │
+│   Dashboard │ Card Search │ Recommendations │ Settings           │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Backend API (FastAPI)                       │
+│   REST Endpoints │ Authentication │ Rate Limiting                │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+         ┌──────────────────────┼──────────────────────┐
+         ▼                      ▼                      ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  Ingestion      │  │  Analytics      │  │  Recommendation │
+│  Agent          │  │  Agent          │  │  Agent          │
+│  (Celery)       │  │  (Celery)       │  │  (Celery)       │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+         │                      │                      │
+         └──────────────────────┼──────────────────────┘
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    PostgreSQL Database                           │
+│   Cards │ Listings │ Prices │ Metrics │ Signals │ Recommendations│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Tech Stack
+
+- **Backend**: Python 3.12, FastAPI, SQLAlchemy, Alembic
+- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS, Recharts
+- **Database**: PostgreSQL 16
+- **Task Queue**: Celery + Redis
+- **AI**: OpenAI/Anthropic API (with mock fallback)
+- **Containerization**: Docker, docker-compose
+
+## Quick Start
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Git
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/yourusername/mtg-market-intel.git
+cd mtg-market-intel
+```
+
+### 2. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env with your settings (API keys are optional for demo)
+```
+
+### 3. Start the Application
+
+```bash
+docker compose up --build
+```
+
+This will:
+- Start PostgreSQL database
+- Start Redis
+- Run database migrations
+- Seed initial data (popular MTG cards)
+- Start the FastAPI backend
+- Start the Next.js frontend
+- Start Celery workers and scheduler
+
+### 4. Access the Application
+
+- **Frontend**: http://localhost:3000
+- **API Docs**: http://localhost:8000/docs
+- **API**: http://localhost:8000
+
+## Development
+
+### Using Make Commands
+
+```bash
+# Start all services
+make up
+
+# Start with rebuild
+make up-build
+
+# Stop all services
+make down
+
+# View logs
+make logs
+
+# Run database migrations
+make migrate
+
+# Seed database
+make seed
+
+# Run tests
+make test
+
+# Access backend shell
+make shell
+
+# Trigger manual scrape
+make trigger-scrape
+
+# Trigger analytics
+make trigger-analytics
+```
+
+### Running Tests
+
+```bash
+# Backend tests
+make test-backend
+
+# Frontend tests
+make test-frontend
+
+# Or manually:
+docker compose exec backend pytest -v
+docker compose exec frontend npm test
+```
+
+## API Endpoints
+
+### Health Check
+- `GET /health` - Service health status
+
+### Cards
+- `GET /cards/search?q=...` - Search cards by name
+- `GET /cards/{id}` - Get card details
+- `GET /cards/{id}/prices` - Get current prices across marketplaces
+- `GET /cards/{id}/history` - Get price history
+- `GET /cards/{id}/signals` - Get analytics signals
+
+### Recommendations
+- `GET /recommendations` - Get trading recommendations (filterable)
+- `GET /recommendations/{id}` - Get specific recommendation
+- `GET /recommendations/card/{card_id}` - Get recommendations for a card
+
+### Dashboard
+- `GET /dashboard/summary` - Get dashboard metrics
+
+### Settings
+- `GET /settings` - Get application settings
+- `PUT /settings` - Update settings
+
+### Marketplaces
+- `GET /marketplaces` - List marketplaces
+- `PATCH /marketplaces/{id}/toggle` - Toggle marketplace enabled status
+
+## Adding a New Marketplace Adapter
+
+1. Create a new adapter file in `backend/app/services/ingestion/adapters/`:
+
+```python
+# backend/app/services/ingestion/adapters/newmarket.py
+from app.services.ingestion.base import MarketplaceAdapter, AdapterConfig, CardListing, CardPrice
+
+class NewMarketAdapter(MarketplaceAdapter):
+    @property
+    def marketplace_name(self) -> str:
+        return "New Market"
+    
+    @property
+    def marketplace_slug(self) -> str:
+        return "newmarket"
+    
+    async def fetch_listings(self, card_name, set_code, scryfall_id, limit):
+        # Implementation
+        pass
+    
+    async def fetch_price(self, card_name, set_code, collector_number, scryfall_id):
+        # Implementation
+        pass
+    
+    async def search_cards(self, query, limit):
+        # Implementation
+        pass
+```
+
+2. Register in `backend/app/services/ingestion/registry.py`:
+
+```python
+from app.services.ingestion.adapters.newmarket import NewMarketAdapter
+
+_ADAPTER_REGISTRY["newmarket"] = NewMarketAdapter
+```
+
+3. Add marketplace to database via seed script or API.
+
+## Example User Flows
+
+### Search for a Card and View Prices
+
+1. Go to **Search Cards** in the sidebar
+2. Type a card name (e.g., "Lightning Bolt")
+3. Click on a card to view its detail page
+4. View current prices across all marketplaces
+5. See the 30-day price history chart
+6. Check any active signals and recommendations
+
+### View Trading Recommendations
+
+1. Go to **Recommendations** in the sidebar
+2. Filter by action type (BUY/SELL/HOLD)
+3. Sort by confidence or potential profit
+4. Click on a card to see full details
+5. Review the AI-generated rationale
+
+### Configure Settings
+
+1. Go to **Settings** in the sidebar
+2. Enable/disable specific marketplaces
+3. Adjust ROI and confidence thresholds
+4. Set recommendation time horizons
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `API_DEBUG` | Enable debug mode | `true` |
+| `SECRET_KEY` | Application secret key | Required |
+| `POSTGRES_*` | Database configuration | See .env.example |
+| `REDIS_*` | Redis configuration | See .env.example |
+| `LLM_PROVIDER` | AI provider (openai/anthropic/mock) | `mock` |
+| `OPENAI_API_KEY` | OpenAI API key | Optional |
+| `ANTHROPIC_API_KEY` | Anthropic API key | Optional |
+| `SCRAPE_INTERVAL_MINUTES` | Scraping frequency | `30` |
+| `ANALYTICS_INTERVAL_HOURS` | Analytics frequency | `1` |
+
+## Project Structure
+
+```
+mtg-market-intel/
+├── backend/
+│   ├── alembic/              # Database migrations
+│   ├── app/
+│   │   ├── api/              # FastAPI routes
+│   │   ├── core/             # Configuration, logging
+│   │   ├── db/               # Database setup
+│   │   ├── models/           # SQLAlchemy models
+│   │   ├── schemas/          # Pydantic schemas
+│   │   ├── services/         # Business logic
+│   │   │   ├── agents/       # Analytics, recommendation agents
+│   │   │   ├── ingestion/    # Marketplace adapters
+│   │   │   └── llm/          # LLM client abstraction
+│   │   ├── tasks/            # Celery tasks
+│   │   └── scripts/          # Seed scripts
+│   ├── tests/
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── app/              # Next.js pages
+│   │   ├── components/       # React components
+│   │   ├── lib/              # API client, utilities
+│   │   └── types/            # TypeScript types
+│   ├── __tests__/
+│   ├── Dockerfile
+│   └── package.json
+├── docker-compose.yml
+├── Makefile
+├── .env.example
+└── README.md
+```
+
+## License
+
+MIT License - See LICENSE file for details.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
+
+## Support
+
+For issues and feature requests, please use the GitHub Issues page.
+

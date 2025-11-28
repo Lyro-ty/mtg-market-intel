@@ -1,0 +1,320 @@
+"""
+Card-related API endpoints.
+"""
+import json
+from datetime import datetime, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.db.session import get_db
+from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation
+from app.schemas.card import (
+    CardResponse,
+    CardSearchResponse,
+    CardDetailResponse,
+    CardPriceResponse,
+    CardHistoryResponse,
+    CardMetricsResponse,
+    MarketplacePriceDetail,
+    PricePoint,
+    SignalSummary,
+    RecommendationSummary,
+)
+from app.schemas.signal import SignalResponse, SignalListResponse
+
+router = APIRouter()
+
+
+@router.get("/search", response_model=CardSearchResponse)
+async def search_cards(
+    q: str = Query(..., min_length=1, description="Search query"),
+    set_code: Optional[str] = Query(None, description="Filter by set code"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Search for cards by name.
+    
+    Supports partial matching and optional set filtering.
+    """
+    # Build query
+    query = select(Card).where(Card.name.ilike(f"%{q}%"))
+    
+    if set_code:
+        query = query.where(Card.set_code == set_code.upper())
+    
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+    
+    # Apply pagination
+    query = query.order_by(Card.name).offset((page - 1) * page_size).limit(page_size)
+    
+    result = await db.execute(query)
+    cards = result.scalars().all()
+    
+    return CardSearchResponse(
+        cards=[CardResponse.model_validate(c) for c in cards],
+        total=total or 0,
+        page=page,
+        page_size=page_size,
+        has_more=(page * page_size) < (total or 0),
+    )
+
+
+@router.get("/{card_id}", response_model=CardDetailResponse)
+async def get_card(
+    card_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get detailed information about a card.
+    
+    Includes current prices, metrics, signals, and recommendations.
+    """
+    # Get card
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    # Get latest metrics
+    metrics_query = select(MetricsCardsDaily).where(
+        MetricsCardsDaily.card_id == card_id
+    ).order_by(MetricsCardsDaily.date.desc()).limit(1)
+    result = await db.execute(metrics_query)
+    metrics = result.scalar_one_or_none()
+    
+    # Get current prices
+    current_prices = await _get_current_prices(db, card_id)
+    
+    # Get recent signals
+    signals_query = select(Signal).where(
+        Signal.card_id == card_id
+    ).order_by(Signal.date.desc()).limit(5)
+    result = await db.execute(signals_query)
+    signals = result.scalars().all()
+    
+    # Get active recommendations
+    recs_query = select(Recommendation).where(
+        Recommendation.card_id == card_id,
+        Recommendation.is_active == True,
+    ).order_by(Recommendation.created_at.desc()).limit(5)
+    result = await db.execute(recs_query)
+    recommendations = result.scalars().all()
+    
+    return CardDetailResponse(
+        card=CardResponse.model_validate(card),
+        metrics=CardMetricsResponse(
+            card_id=card_id,
+            date=str(metrics.date) if metrics else None,
+            avg_price=float(metrics.avg_price) if metrics and metrics.avg_price else None,
+            min_price=float(metrics.min_price) if metrics and metrics.min_price else None,
+            max_price=float(metrics.max_price) if metrics and metrics.max_price else None,
+            spread_pct=float(metrics.spread_pct) if metrics and metrics.spread_pct else None,
+            price_change_7d=float(metrics.price_change_pct_7d) if metrics and metrics.price_change_pct_7d else None,
+            price_change_30d=float(metrics.price_change_pct_30d) if metrics and metrics.price_change_pct_30d else None,
+            volatility_7d=float(metrics.volatility_7d) if metrics and metrics.volatility_7d else None,
+            ma_7d=float(metrics.ma_7d) if metrics and metrics.ma_7d else None,
+            ma_30d=float(metrics.ma_30d) if metrics and metrics.ma_30d else None,
+            total_listings=metrics.total_listings if metrics else None,
+        ) if metrics else None,
+        current_prices=current_prices,
+        recent_signals=[
+            SignalSummary(
+                signal_type=s.signal_type,
+                value=float(s.value) if s.value else None,
+                confidence=float(s.confidence) if s.confidence else None,
+                date=str(s.date),
+                llm_insight=s.llm_insight,
+            )
+            for s in signals
+        ],
+        active_recommendations=[
+            RecommendationSummary(
+                action=r.action,
+                confidence=float(r.confidence),
+                rationale=r.rationale,
+                marketplace=None,
+                potential_profit_pct=float(r.potential_profit_pct) if r.potential_profit_pct else None,
+            )
+            for r in recommendations
+        ],
+    )
+
+
+@router.get("/{card_id}/prices", response_model=CardPriceResponse)
+async def get_card_prices(
+    card_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get current prices for a card across all marketplaces.
+    """
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    prices = await _get_current_prices(db, card_id)
+    
+    lowest = min((p.price for p in prices), default=None)
+    highest = max((p.price for p in prices), default=None)
+    spread_pct = ((highest - lowest) / lowest * 100) if lowest and highest and lowest > 0 else None
+    
+    return CardPriceResponse(
+        card_id=card_id,
+        card_name=card.name,
+        prices=prices,
+        lowest_price=lowest,
+        highest_price=highest,
+        spread_pct=spread_pct,
+        updated_at=datetime.utcnow(),
+    )
+
+
+@router.get("/{card_id}/history", response_model=CardHistoryResponse)
+async def get_card_history(
+    card_id: int,
+    days: int = Query(30, ge=1, le=365),
+    marketplace_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get price history for a card.
+    
+    Returns daily price points for the specified time range.
+    """
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    from_date = datetime.utcnow() - timedelta(days=days)
+    
+    # Build query
+    query = select(PriceSnapshot, Marketplace).join(
+        Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
+    ).where(
+        PriceSnapshot.card_id == card_id,
+        PriceSnapshot.snapshot_time >= from_date,
+    )
+    
+    if marketplace_id:
+        query = query.where(PriceSnapshot.marketplace_id == marketplace_id)
+    
+    query = query.order_by(PriceSnapshot.snapshot_time)
+    
+    result = await db.execute(query)
+    rows = result.all()
+    
+    history = [
+        PricePoint(
+            date=snapshot.snapshot_time,
+            price=float(snapshot.price),
+            marketplace=marketplace.name,
+            currency=snapshot.currency,
+            min_price=float(snapshot.min_price) if snapshot.min_price else None,
+            max_price=float(snapshot.max_price) if snapshot.max_price else None,
+            num_listings=snapshot.num_listings,
+        )
+        for snapshot, marketplace in rows
+    ]
+    
+    return CardHistoryResponse(
+        card_id=card_id,
+        card_name=card.name,
+        history=history,
+        from_date=from_date,
+        to_date=datetime.utcnow(),
+        data_points=len(history),
+    )
+
+
+@router.get("/{card_id}/signals", response_model=SignalListResponse)
+async def get_card_signals(
+    card_id: int,
+    days: int = Query(7, ge=1, le=90),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get analytics signals for a card.
+    """
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    from_date = datetime.utcnow().date() - timedelta(days=days)
+    
+    query = select(Signal).where(
+        Signal.card_id == card_id,
+        Signal.date >= from_date,
+    ).order_by(Signal.date.desc())
+    
+    result = await db.execute(query)
+    signals = result.scalars().all()
+    
+    return SignalListResponse(
+        card_id=card_id,
+        signals=[
+            SignalResponse(
+                id=s.id,
+                card_id=s.card_id,
+                date=s.date,
+                signal_type=s.signal_type,
+                value=float(s.value) if s.value else None,
+                confidence=float(s.confidence) if s.confidence else None,
+                details=json.loads(s.details) if s.details else None,
+                llm_insight=s.llm_insight,
+                llm_provider=s.llm_provider,
+                created_at=str(s.created_at) if s.created_at else None,
+            )
+            for s in signals
+        ],
+        total=len(signals),
+    )
+
+
+async def _get_current_prices(
+    db: AsyncSession,
+    card_id: int,
+) -> list[MarketplacePriceDetail]:
+    """Get latest price from each marketplace for a card."""
+    # Subquery to get latest snapshot per marketplace
+    subq = select(
+        PriceSnapshot.marketplace_id,
+        func.max(PriceSnapshot.snapshot_time).label("latest_time"),
+    ).where(
+        PriceSnapshot.card_id == card_id
+    ).group_by(PriceSnapshot.marketplace_id).subquery()
+    
+    # Join to get full snapshot data
+    query = select(PriceSnapshot, Marketplace).join(
+        Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
+    ).join(
+        subq,
+        (PriceSnapshot.marketplace_id == subq.c.marketplace_id) &
+        (PriceSnapshot.snapshot_time == subq.c.latest_time)
+    ).where(
+        PriceSnapshot.card_id == card_id
+    )
+    
+    result = await db.execute(query)
+    rows = result.all()
+    
+    return [
+        MarketplacePriceDetail(
+            marketplace_id=marketplace.id,
+            marketplace_name=marketplace.name,
+            marketplace_slug=marketplace.slug,
+            price=float(snapshot.price),
+            currency=snapshot.currency,
+            price_foil=float(snapshot.price_foil) if snapshot.price_foil else None,
+            num_listings=snapshot.num_listings,
+            last_updated=snapshot.snapshot_time,
+        )
+        for snapshot, marketplace in rows
+    ]
+
