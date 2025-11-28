@@ -130,6 +130,8 @@ class CardDetailResponse(BaseModel):
     current_prices: list[MarketplacePriceDetail] = []
     recent_signals: list["SignalSummary"] = []
     active_recommendations: list["RecommendationSummary"] = []
+    refresh_requested: bool = False
+    refresh_reason: Optional[str] = None
 
 
 class SignalSummary(BaseModel):

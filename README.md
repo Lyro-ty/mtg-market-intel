@@ -166,6 +166,27 @@ docker compose exec backend python -m app.scripts.import_scryfall \
 
 While the import is running you will see a `Processed: <n>` counter update in-place so you can monitor long jobs.
 
+### Restoring 30-day Demo Price History
+
+The full Scryfall import only persists the card catalog (plus the current TCGPlayer/Cardmarket snapshot Scryfall exposes). The earlier 150-card demo dataset showed 30-day charts and Card Kingdom prices because the seed script generated synthetic history in addition to importing the cards.
+
+Use the demo history generator after a bulk import to recreate that experience:
+
+```bash
+# Generate 30 days of synthetic history for 250 cards across all enabled marketplaces
+make seed-demo-prices
+
+# Target specific marketplaces and a larger card sample
+make seed-demo-prices CARD_LIMIT=400 PRICE_HISTORY_DAYS=45 MARKETPLACES="tcgplayer cardmarket cardkingdom"
+```
+
+The script:
+- backfills a rolling random-walk price curve for each card/marketplace pair
+- includes Card Kingdom (and any other enabled marketplace) so UI comparisons stay populated
+- purges overlapping snapshots for the selected cards before inserting fresh demo data (use `MARKETPLACES="..."` and `CARD_LIMIT` to keep the volume manageable)
+
+You only need to run this in demo/dev environments. In production you would rely on the ingestion Celery tasks plus real marketplace adapters to accumulate organic history over time.
+
 ## API Endpoints
 
 ### Health Check
@@ -174,6 +195,7 @@ While the import is running you will see a `Processed: <n>` counter update in-pl
 ### Cards
 - `GET /cards/search?q=...` - Search cards by name
 - `GET /cards/{id}` - Get card details
+- `POST /cards/{id}/refresh` - Force a data refresh (prices, metrics, recommendations)
 - `GET /cards/{id}/prices` - Get current prices across marketplaces
 - `GET /cards/{id}/history` - Get price history
 - `GET /cards/{id}/signals` - Get analytics signals

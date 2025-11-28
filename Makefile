@@ -1,6 +1,14 @@
-.PHONY: up down build logs restart migrate seed test test-backend test-frontend lint clean help
+.PHONY: up down build logs restart migrate seed seed-demo-prices test test-backend test-frontend lint clean help
 
 SCRYFALL_BATCH_SIZE ?= 1000
+CARD_LIMIT ?= 250
+PRICE_HISTORY_DAYS ?= 30
+
+ifdef MARKETPLACES
+MARKETPLACE_FLAGS := --marketplaces $(MARKETPLACES)
+else
+MARKETPLACE_FLAGS :=
+endif
 
 # Default target
 help:
@@ -19,6 +27,7 @@ help:
 	@echo "Database Commands:"
 	@echo "  make migrate          - Run database migrations"
 	@echo "  make seed             - Seed the database with initial data"
+	@echo "  make seed-demo-prices - Generate synthetic 30-day price history"
 	@echo "  make import-scryfall  - Import Scryfall card database (~30k cards)"
 	@echo "  make import-scryfall-all - Import ALL printings (~90k cards)"
 	@echo "  make db-shell         - Open psql shell"
@@ -71,6 +80,10 @@ migrate-new:
 
 seed:
 	docker compose exec backend python -m app.scripts.seed_data
+
+seed-demo-prices:
+	@echo "Generating synthetic price history for demo/testing..."
+	docker compose exec backend python -m app.scripts.generate_demo_price_history --card-limit $(CARD_LIMIT) --days $(PRICE_HISTORY_DAYS) $(MARKETPLACE_FLAGS)
 
 import-scryfall:
 	@echo "Importing Scryfall card database (default_cards)..."

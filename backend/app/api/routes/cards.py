@@ -2,9 +2,10 @@
 Card-related API endpoints.
 """
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from typing import Optional
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,8 +26,14 @@ from app.schemas.card import (
     RecommendationSummary,
 )
 from app.schemas.signal import SignalResponse, SignalListResponse
+from app.tasks.ingestion import scrape_marketplace
+from app.tasks.analytics import compute_card_metrics
+from app.tasks.recommendations import generate_card_recommendations
 
 router = APIRouter()
+logger = structlog.get_logger(__name__)
+
+REFRESH_THRESHOLD_HOURS = 24
 
 
 @router.get("/search", response_model=CardSearchResponse)
@@ -70,6 +77,7 @@ async def search_cards(
 @router.get("/{card_id}", response_model=CardDetailResponse)
 async def get_card(
     card_id: int,
+    refresh_if_stale: bool = Query(True, description="Automatically refresh data if stale"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -106,6 +114,11 @@ async def get_card(
     ).order_by(Recommendation.created_at.desc()).limit(5)
     result = await db.execute(recs_query)
     recommendations = result.scalars().all()
+    
+    refresh_requested = False
+    refresh_reason: Optional[str] = None
+    if refresh_if_stale:
+        refresh_requested, refresh_reason = await _maybe_trigger_refresh(db, card_id, metrics)
     
     return CardDetailResponse(
         card=CardResponse.model_validate(card),
@@ -144,6 +157,8 @@ async def get_card(
             )
             for r in recommendations
         ],
+        refresh_requested=refresh_requested,
+        refresh_reason=refresh_reason,
     )
 
 
@@ -277,6 +292,31 @@ async def get_card_signals(
     )
 
 
+@router.post("/{card_id}/refresh")
+async def refresh_card_data(
+    card_id: int,
+    marketplaces: Optional[list[str]] = Query(None, description="Specific marketplace slugs to refresh"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Manually trigger a refresh for a card's prices, metrics, and recommendations.
+    """
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    slugs = marketplaces or await _get_enabled_marketplace_slugs(db)
+    if not slugs:
+        raise HTTPException(status_code=400, detail="No enabled marketplaces to refresh")
+    
+    task_ids = _dispatch_refresh_tasks(card_id, slugs)
+    return {
+        "card_id": card_id,
+        "marketplaces": slugs,
+        "tasks": task_ids,
+    }
+
+
 async def _get_current_prices(
     db: AsyncSession,
     card_id: int,
@@ -317,4 +357,74 @@ async def _get_current_prices(
         )
         for snapshot, marketplace in rows
     ]
+
+
+async def _maybe_trigger_refresh(
+    db: AsyncSession,
+    card_id: int,
+    metrics: MetricsCardsDaily | None,
+) -> tuple[bool, Optional[str]]:
+    """Trigger background refresh if data is stale."""
+    threshold = datetime.utcnow() - timedelta(hours=REFRESH_THRESHOLD_HOURS)
+    
+    result = await db.execute(
+        select(func.max(PriceSnapshot.snapshot_time)).where(PriceSnapshot.card_id == card_id)
+    )
+    latest_snapshot = result.scalar_one_or_none()
+    
+    metrics_stale = True
+    if metrics and metrics.date:
+        metrics_dt = datetime.combine(metrics.date, time.min)
+        metrics_stale = metrics_dt < threshold
+    
+    prices_stale = latest_snapshot is None or latest_snapshot < threshold
+    
+    if not (metrics_stale or prices_stale):
+        return False, None
+    
+    slugs = await _get_enabled_marketplace_slugs(db)
+    if not slugs:
+        logger.info("Skipping refresh, no marketplaces enabled", card_id=card_id)
+        return False, None
+    
+    _dispatch_refresh_tasks(card_id, slugs)
+    reason = "missing_data" if latest_snapshot is None else "stale_data"
+    return True, reason
+
+
+async def _get_enabled_marketplace_slugs(db: AsyncSession) -> list[str]:
+    result = await db.execute(
+        select(Marketplace.slug).where(Marketplace.is_enabled == True)
+    )
+    return [row[0] for row in result.all()]
+
+
+def _dispatch_refresh_tasks(card_id: int, marketplace_slugs: list[str]) -> dict:
+    """Enqueue ingestion, analytics, and recommendation tasks."""
+    task_refs: dict[str, list[dict[str, Optional[str]]]] = {"marketplaces": []}
+    
+    for slug in marketplace_slugs:
+        try:
+            result = scrape_marketplace.delay(slug, [card_id])
+            task_refs["marketplaces"].append(
+                {"slug": slug, "task_id": getattr(result, "id", None)}
+            )
+        except Exception as exc:  # pragma: no cover - celery misconfig
+            logger.warning("Failed to dispatch marketplace scrape", slug=slug, card_id=card_id, error=str(exc))
+    
+    try:
+        analytics_task = compute_card_metrics.delay(card_id)
+        task_refs["analytics"] = getattr(analytics_task, "id", None)
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Failed to dispatch analytics task", card_id=card_id, error=str(exc))
+        task_refs["analytics"] = None
+    
+    try:
+        rec_task = generate_card_recommendations.delay(card_id)
+        task_refs["recommendations"] = getattr(rec_task, "id", None)
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Failed to dispatch recommendation task", card_id=card_id, error=str(exc))
+        task_refs["recommendations"] = None
+    
+    return task_refs
 
