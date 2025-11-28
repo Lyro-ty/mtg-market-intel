@@ -188,6 +188,7 @@ async def process_batch(
     tcgplayer: Marketplace | None,
     cardmarket: Marketplace | None,
     stats: dict,
+    language: str | None,
 ) -> None:
     """Process a batch of cards and persist to the database."""
     card_records: list[dict] = []
@@ -196,6 +197,11 @@ async def process_batch(
     for card in batch:
         try:
             if should_skip_card(card):
+                stats["cards_skipped"] += 1
+                continue
+
+            card_lang = (card.get("lang") or "").lower()
+            if language and card_lang and card_lang != language:
                 stats["cards_skipped"] += 1
                 continue
             
@@ -286,7 +292,11 @@ async def process_batch(
     await session.commit()
 
 
-async def import_cards(json_path: Path, batch_size: int = 1000) -> dict:
+async def import_cards(
+    json_path: Path,
+    batch_size: int = 1000,
+    language: str | None = "en",
+) -> dict:
     """Import cards from JSON file into database."""
     logger.info("Starting card import", path=str(json_path), batch_size=batch_size)
     
@@ -316,7 +326,9 @@ async def import_cards(json_path: Path, batch_size: int = 1000) -> dict:
             for card in parser:
                 batch.append(card)
                 if len(batch) >= batch_size:
-                    await process_batch(session, batch, tcgplayer, cardmarket, stats)
+                    await process_batch(
+                        session, batch, tcgplayer, cardmarket, stats, language
+                    )
                     print(
                         f"\rProcessed: {stats['cards_processed']:,} cards",
                         end="",
@@ -325,7 +337,9 @@ async def import_cards(json_path: Path, batch_size: int = 1000) -> dict:
                     batch.clear()
             
             if batch:
-                await process_batch(session, batch, tcgplayer, cardmarket, stats)
+                await process_batch(
+                    session, batch, tcgplayer, cardmarket, stats, language
+                )
                 print(
                     f"\rProcessed: {stats['cards_processed']:,} cards",
                     end="",
@@ -361,6 +375,12 @@ async def main():
         default=1000,
         help="Batch size for database inserts",
     )
+    parser.add_argument(
+        "--language",
+        type=str,
+        default="en",
+        help="Limit to a specific Scryfall language code (e.g., 'en'). Use '' to import all languages.",
+    )
     args = parser.parse_args()
     
     print(f"\n{'='*60}")
@@ -386,7 +406,12 @@ async def main():
         logger.info("Using existing file", path=str(json_path))
     
     # Import cards
-    stats = await import_cards(json_path, batch_size=args.batch_size)
+    language = args.language or None
+    stats = await import_cards(
+        json_path,
+        batch_size=args.batch_size,
+        language=language.lower() if language else None,
+    )
     
     print(f"\n{'='*60}")
     print("  Import Complete!")
