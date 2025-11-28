@@ -162,9 +162,43 @@ make import-scryfall-all SCRYFALL_BATCH_SIZE=2000
 # Re-use an existing download instead of pulling ~600MB again
 docker compose exec backend python -m app.scripts.import_scryfall \
   --type all_cards --skip-download --batch-size 2000
+
+# Limit imports to a specific language (defaults to English)
+docker compose exec backend python -m app.scripts.import_scryfall \
+  --type all_cards --language en
+
+# Import all languages explicitly
+docker compose exec backend python -m app.scripts.import_scryfall \
+  --type all_cards --language ""
 ```
 
 While the import is running you will see a `Processed: <n>` counter update in-place so you can monitor long jobs.
+
+### Resetting the Database
+
+To completely wipe Postgres (useful before re-importing with new flags):
+
+```bash
+# Stop services and delete volumes (removes the DB data directory)
+docker compose down -v
+
+# Bring services back up and re-run migrations/seeds
+docker compose up -d db backend
+docker compose exec backend alembic upgrade head
+docker compose exec backend python -m app.scripts.seed_data
+```
+
+Alternatively, truncate the tables without dropping the volume:
+
+```bash
+docker compose exec db psql -U mtg_user -d mtg_market_intel <<'SQL'
+TRUNCATE price_snapshots, listings, metrics_cards_daily, signals,
+         recommendations, cards
+RESTART IDENTITY CASCADE;
+SQL
+```
+
+Then re-run the importer (e.g., `make import-scryfall-all --language en`).
 
 ### Restoring 30-day Demo Price History
 
@@ -195,7 +229,7 @@ You only need to run this in demo/dev environments. In production you would rely
 ### Cards
 - `GET /cards/search?q=...` - Search cards by name
 - `GET /cards/{id}` - Get card details
-- `POST /cards/{id}/refresh` - Force a data refresh (prices, metrics, recommendations)
+- `POST /cards/{id}/refresh` - Force a data refresh (prices, metrics, recommendations). The frontend detail page now includes a "Refresh data" button that calls this endpoint and shows when a background refresh is running.
 - `GET /cards/{id}/prices` - Get current prices across marketplaces
 - `GET /cards/{id}/history` - Get price history
 - `GET /cards/{id}/signals` - Get analytics signals
