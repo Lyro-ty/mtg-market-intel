@@ -1,7 +1,8 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import Image from 'next/image';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
@@ -11,12 +12,16 @@ import { Button } from '@/components/ui/Button';
 import { LoadingPage } from '@/components/ui/Loading';
 import { PriceChart } from '@/components/charts/PriceChart';
 import { SpreadChart } from '@/components/charts/SpreadChart';
-import { getCard, getCardHistory } from '@/lib/api';
+import { getCard, getCardHistory, refreshCard } from '@/lib/api';
 import { formatCurrency, formatPercent, getRarityColor } from '@/lib/utils';
 
 export default function CardDetailPage() {
   const params = useParams();
   const cardId = Number(params.id);
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const queryClient = useQueryClient();
 
   const { data: cardDetail, isLoading, error } = useQuery({
     queryKey: ['card', cardId],
@@ -24,7 +29,7 @@ export default function CardDetailPage() {
     enabled: !!cardId,
   });
 
-  const { data: history } = useQuery({
+  const { data: history, refetch: refetchHistory } = useQuery({
     queryKey: ['card', cardId, 'history'],
     queryFn: () => getCardHistory(cardId, { days: 30 }),
     enabled: !!cardId,
@@ -46,7 +51,23 @@ export default function CardDetailPage() {
     );
   }
 
-  const { card, metrics, current_prices, recent_signals, active_recommendations } = cardDetail;
+  const { card, metrics, current_prices, recent_signals, active_recommendations, refresh_requested, refresh_reason } = cardDetail;
+
+  const triggerRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await refreshCard(cardId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'history'] }),
+      ]);
+    } catch (err) {
+      console.error('Failed to refresh card', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in">
@@ -81,7 +102,7 @@ export default function CardDetailPage() {
         {/* Card Info */}
         <div className="flex-1 space-y-6">
           <div>
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-[rgb(var(--foreground))]">{card.name}</h1>
                 <p className="text-lg text-[rgb(var(--muted-foreground))] mt-1">
@@ -93,6 +114,16 @@ export default function CardDetailPage() {
                   {card.rarity}
                 </Badge>
               )}
+            </div>
+            <div className="flex items-center gap-3">
+              {refresh_requested && (
+                <span className="text-sm text-[rgb(var(--muted-foreground))]">
+                  Refreshing ({refresh_reason})
+                </span>
+              )}
+              <Button variant="secondary" size="sm" disabled={isRefreshing} onClick={triggerRefresh}>
+                {isRefreshing ? 'Refreshing…' : 'Refresh data'}
+              </Button>
             </div>
 
             {card.type_line && (

@@ -82,6 +82,16 @@ export async function getCard(cardId: number): Promise<CardDetail> {
   return fetchApi(`/cards/${cardId}`);
 }
 
+export async function refreshCard(
+  cardId: number,
+  marketplaces?: string[]
+): Promise<{ card_id: number; marketplaces: string[]; tasks: Record<string, unknown> }> {
+  return fetchApi(`/cards/${cardId}/refresh`, {
+    method: 'POST',
+    body: JSON.stringify({ marketplaces }),
+  });
+}
+
 export async function getCardPrices(cardId: number): Promise<CardPrices> {
   return fetchApi(`/cards/${cardId}/prices`);
 }

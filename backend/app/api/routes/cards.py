@@ -295,7 +295,7 @@ async def get_card_signals(
 @router.post("/{card_id}/refresh")
 async def refresh_card_data(
     card_id: int,
-    marketplaces: Optional[list[str]] = Query(None, description="Specific marketplace slugs to refresh"),
+    payload: dict | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -305,6 +305,7 @@ async def refresh_card_data(
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
+    marketplaces = payload.get("marketplaces") if payload else None
     slugs = marketplaces or await _get_enabled_marketplace_slugs(db)
     if not slugs:
         raise HTTPException(status_code=400, detail="No enabled marketplaces to refresh")

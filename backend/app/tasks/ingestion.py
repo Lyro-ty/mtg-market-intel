@@ -54,7 +54,7 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
             return {"status": "no_marketplaces", "scraped": 0}
         
         # Get sample cards to scrape (top cards by activity or all)
-        cards_query = select(Card).limit(100)  # Start with 100 cards
+        cards_query = select(Card).limit(500)  # Process 500 cards per run
         result = await db.execute(cards_query)
         cards = result.scalars().all()
         
@@ -205,7 +205,7 @@ async def _scrape_marketplace_task_async(
         if card_ids:
             cards_query = select(Card).where(Card.id.in_(card_ids))
         else:
-            cards_query = select(Card).limit(100)
+            cards_query = select(Card).limit(500)
         
         result = await db.execute(cards_query)
         cards = result.scalars().all()
