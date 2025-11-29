@@ -14,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from app.api import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.services.ingestion import enable_adapter_caching
 
 # Setup logging
 setup_logging()
@@ -37,10 +38,18 @@ async def lifespan(app: FastAPI):
         debug=settings.api_debug,
     )
     
+    # Enable adapter caching for FastAPI (single event loop)
+    # This is safe here because FastAPI runs in a single event loop
+    # Celery workers should NOT enable this as they create new loops per task
+    enable_adapter_caching(True)
+    
     yield
     
     # Shutdown
     logger.info("Shutting down MTG Market Intel API")
+    
+    # Disable caching and clean up adapters
+    enable_adapter_caching(False)
 
 
 # Create FastAPI application

@@ -2,6 +2,10 @@
 Adapter registry for marketplace adapters.
 
 Provides a centralized way to access and manage adapters.
+
+NOTE: Adapter caching is disabled by default because HTTP clients (httpx/aiohttp)
+are bound to the event loop they were created in. In Celery workers, each task
+runs in a new event loop, so reusing cached adapters causes "Event loop is closed" errors.
 """
 import structlog
 from typing import Type
@@ -24,8 +28,10 @@ _ADAPTER_REGISTRY: dict[str, Type[MarketplaceAdapter]] = {
     "mock": MockMarketplaceAdapter,
 }
 
-# Cached adapter instances
+# Cached adapter instances - DISABLED by default due to event loop issues
+# Only use caching in long-running processes with a single event loop (e.g., FastAPI)
 _ADAPTER_INSTANCES: dict[str, MarketplaceAdapter] = {}
+_CACHING_ENABLED: bool = False  # Set to True only in FastAPI startup
 
 
 def register_adapter(slug: str, adapter_class: Type[MarketplaceAdapter]) -> None:
@@ -40,6 +46,24 @@ def register_adapter(slug: str, adapter_class: Type[MarketplaceAdapter]) -> None
     logger.info("Registered marketplace adapter", slug=slug, adapter=adapter_class.__name__)
 
 
+def enable_adapter_caching(enabled: bool = True) -> None:
+    """
+    Enable or disable adapter caching.
+    
+    Should only be enabled in long-running processes with a single event loop
+    (e.g., FastAPI). Must be disabled in Celery workers where each task
+    runs in a new event loop.
+    
+    Args:
+        enabled: Whether to enable caching.
+    """
+    global _CACHING_ENABLED
+    _CACHING_ENABLED = enabled
+    if not enabled:
+        _ADAPTER_INSTANCES.clear()
+    logger.info("Adapter caching", enabled=enabled)
+
+
 def get_adapter(
     slug: str,
     config: AdapterConfig | None = None,
@@ -51,7 +75,7 @@ def get_adapter(
     Args:
         slug: Adapter identifier.
         config: Optional custom configuration.
-        cached: Whether to use/store cached instance.
+        cached: Whether to use/store cached instance (only works if caching is enabled globally).
         
     Returns:
         Adapter instance.
@@ -64,8 +88,11 @@ def get_adapter(
     if slug not in _ADAPTER_REGISTRY:
         raise ValueError(f"Unknown adapter: {slug}. Available: {list(_ADAPTER_REGISTRY.keys())}")
     
+    # Only use cache if both global caching is enabled AND caller requests it
+    use_cache = _CACHING_ENABLED and cached and config is None
+    
     # Return cached instance if available
-    if cached and slug in _ADAPTER_INSTANCES and config is None:
+    if use_cache and slug in _ADAPTER_INSTANCES:
         return _ADAPTER_INSTANCES[slug]
     
     # Create new instance
@@ -75,8 +102,8 @@ def get_adapter(
     else:
         instance = adapter_class()
     
-    # Cache if requested
-    if cached and config is None:
+    # Cache if requested and caching is enabled
+    if use_cache:
         _ADAPTER_INSTANCES[slug] = instance
     
     return instance

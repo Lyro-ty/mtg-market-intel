@@ -10,7 +10,12 @@ from app.services.ingestion.base import (
     AdapterConfig,
 )
 from app.services.ingestion.scryfall import ScryfallAdapter
-from app.services.ingestion.registry import get_adapter, get_all_adapters, register_adapter
+from app.services.ingestion.registry import (
+    get_adapter,
+    get_all_adapters,
+    register_adapter,
+    enable_adapter_caching,
+)
 
 __all__ = [
     "MarketplaceAdapter",
@@ -21,5 +26,6 @@ __all__ = [
     "get_adapter",
     "get_all_adapters",
     "register_adapter",
+    "enable_adapter_caching",
 ]
 
