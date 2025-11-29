@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Search as SearchIcon } from 'lucide-react';
@@ -12,6 +12,14 @@ import { Button } from '@/components/ui/Button';
 import { searchCards } from '@/lib/api';
 
 export default function CardsPage() {
+  return (
+    <Suspense fallback={<LoadingPage />}>
+      <CardsPageContent />
+    </Suspense>
+  );
+}
+
+function CardsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') ?? '';
