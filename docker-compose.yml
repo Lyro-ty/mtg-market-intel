@@ -157,8 +157,8 @@ services:
       dockerfile: Dockerfile
     container_name: mtg-frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_APP_NAME=MTG Market Intel
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-MTG Market Intel}
     ports:
       - "3000:3000"
     volumes:
@@ -167,6 +167,8 @@ services:
       - /app/.next
     depends_on:
       - backend
+    command: >
+      sh -c "node .next/standalone/server.js"
     networks:
       - mtg-network
 
