@@ -7,16 +7,23 @@ import { Input } from '@/components/ui/Input';
 interface SearchBarProps {
   onSearch: (query: string) => void;
   placeholder?: string;
-  initialValue?: string;
+  value?: string;
 }
 
 export function SearchBar({
   onSearch,
   placeholder = 'Search cards...',
-  initialValue = '',
+  value: controlledValue,
 }: SearchBarProps) {
-  const [value, setValue] = useState(initialValue);
+  const [value, setValue] = useState(controlledValue ?? '');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    if (controlledValue !== undefined && controlledValue !== value) {
+      setValue(controlledValue);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlledValue]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;

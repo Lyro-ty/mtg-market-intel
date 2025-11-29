@@ -52,7 +52,7 @@ export default function CardsPage() {
       <Card>
         <CardContent className="p-4">
           <SearchBar
-            defaultValue={query}
+            value={query}
             onSearch={(q) => {
               setQuery(q);
               setPage(1);
