@@ -8,12 +8,35 @@ from typing import Any
 import structlog
 from celery import shared_task
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from app.db.session import async_session_maker
+from app.core.config import settings
 from app.models import Card, AppSettings
 from app.services.agents.recommendation import RecommendationAgent
 
 logger = structlog.get_logger()
+
+
+def create_task_session_maker():
+    """Create a new async engine and session maker for the current event loop."""
+    engine = create_async_engine(
+        settings.database_url_computed,
+        echo=settings.api_debug,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+    )
+    return async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    ), engine
 
 
 def run_async(coro):
@@ -75,26 +98,30 @@ async def _generate_recommendations_async(
     """Async implementation of recommendation generation."""
     logger.info("Starting recommendation generation", card_ids=card_ids, date=target_date)
     
-    async with async_session_maker() as db:
-        # Get settings
-        min_roi = await _get_settings_value(db, "min_roi_threshold", 0.10)
-        min_confidence = await _get_settings_value(db, "min_confidence_threshold", 0.60)
-        horizon_days = await _get_settings_value(db, "recommendation_horizon_days", 7)
-        
-        agent = RecommendationAgent(
-            db,
-            min_roi=min_roi,
-            min_confidence=min_confidence,
-            horizon_days=horizon_days,
-        )
-        
-        results = await agent.run_recommendations(
-            card_ids=card_ids,
-            target_date=target_date,
-        )
-        
-        logger.info("Recommendation generation completed", results=results)
-        return results
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            # Get settings
+            min_roi = await _get_settings_value(db, "min_roi_threshold", 0.10)
+            min_confidence = await _get_settings_value(db, "min_confidence_threshold", 0.60)
+            horizon_days = await _get_settings_value(db, "recommendation_horizon_days", 7)
+            
+            agent = RecommendationAgent(
+                db,
+                min_roi=min_roi,
+                min_confidence=min_confidence,
+                horizon_days=horizon_days,
+            )
+            
+            results = await agent.run_recommendations(
+                card_ids=card_ids,
+                target_date=target_date,
+            )
+            
+            logger.info("Recommendation generation completed", results=results)
+            return results
+    finally:
+        await engine.dispose()
 
 
 @shared_task(bind=True)
@@ -122,37 +149,41 @@ async def _generate_card_recommendations_async(
     target_date: date | None,
 ) -> dict[str, Any]:
     """Async implementation of single card recommendation generation."""
-    async with async_session_maker() as db:
-        # Get settings
-        min_roi = await _get_settings_value(db, "min_roi_threshold", 0.10)
-        min_confidence = await _get_settings_value(db, "min_confidence_threshold", 0.60)
-        horizon_days = await _get_settings_value(db, "recommendation_horizon_days", 7)
-        
-        agent = RecommendationAgent(
-            db,
-            min_roi=min_roi,
-            min_confidence=min_confidence,
-            horizon_days=horizon_days,
-        )
-        
-        recommendations = await agent.generate_recommendations(card_id, target_date)
-        await db.commit()
-        
-        return {
-            "card_id": card_id,
-            "date": str(target_date or date.today()),
-            "recommendations": [
-                {
-                    "action": r.action,
-                    "confidence": float(r.confidence),
-                    "rationale": r.rationale,
-                    "current_price": float(r.current_price) if r.current_price else None,
-                    "target_price": float(r.target_price) if r.target_price else None,
-                    "potential_profit_pct": float(r.potential_profit_pct) if r.potential_profit_pct else None,
-                }
-                for r in recommendations
-            ],
-        }
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            # Get settings
+            min_roi = await _get_settings_value(db, "min_roi_threshold", 0.10)
+            min_confidence = await _get_settings_value(db, "min_confidence_threshold", 0.60)
+            horizon_days = await _get_settings_value(db, "recommendation_horizon_days", 7)
+            
+            agent = RecommendationAgent(
+                db,
+                min_roi=min_roi,
+                min_confidence=min_confidence,
+                horizon_days=horizon_days,
+            )
+            
+            recommendations = await agent.generate_recommendations(card_id, target_date)
+            await db.commit()
+            
+            return {
+                "card_id": card_id,
+                "date": str(target_date or date.today()),
+                "recommendations": [
+                    {
+                        "action": r.action,
+                        "confidence": float(r.confidence),
+                        "rationale": r.rationale,
+                        "current_price": float(r.current_price) if r.current_price else None,
+                        "target_price": float(r.target_price) if r.target_price else None,
+                        "potential_profit_pct": float(r.potential_profit_pct) if r.potential_profit_pct else None,
+                    }
+                    for r in recommendations
+                ],
+            }
+    finally:
+        await engine.dispose()
 
 
 @shared_task(bind=True)
@@ -175,23 +206,27 @@ async def _cleanup_old_recommendations_async(days: int) -> dict[str, Any]:
     from app.models import Recommendation
     from sqlalchemy import delete
     
-    async with async_session_maker() as db:
-        cutoff = datetime.utcnow() - timedelta(days=days)
-        
-        # Delete old inactive recommendations
-        stmt = delete(Recommendation).where(
-            Recommendation.is_active == False,
-            Recommendation.created_at < cutoff,
-        )
-        result = await db.execute(stmt)
-        deleted = result.rowcount
-        
-        await db.commit()
-        
-        logger.info("Cleaned up old recommendations", deleted=deleted, cutoff=str(cutoff))
-        
-        return {
-            "deleted": deleted,
-            "cutoff_date": str(cutoff),
-        }
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            cutoff = datetime.utcnow() - timedelta(days=days)
+            
+            # Delete old inactive recommendations
+            stmt = delete(Recommendation).where(
+                Recommendation.is_active == False,
+                Recommendation.created_at < cutoff,
+            )
+            result = await db.execute(stmt)
+            deleted = result.rowcount
+            
+            await db.commit()
+            
+            logger.info("Cleaned up old recommendations", deleted=deleted, cutoff=str(cutoff))
+            
+            return {
+                "deleted": deleted,
+                "cutoff_date": str(cutoff),
+            }
+    finally:
+        await engine.dispose()
 

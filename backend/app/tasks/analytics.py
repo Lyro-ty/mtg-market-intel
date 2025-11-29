@@ -8,12 +8,35 @@ from typing import Any
 import structlog
 from celery import shared_task
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from app.db.session import async_session_maker
+from app.core.config import settings
 from app.models import Card
 from app.services.agents.analytics import AnalyticsAgent
 
 logger = structlog.get_logger()
+
+
+def create_task_session_maker():
+    """Create a new async engine and session maker for the current event loop."""
+    engine = create_async_engine(
+        settings.database_url_computed,
+        echo=settings.api_debug,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+    )
+    return async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    ), engine
 
 
 def run_async(coro):
@@ -49,17 +72,21 @@ async def _run_analytics_async(
     """Async implementation of analytics run."""
     logger.info("Starting analytics run", card_ids=card_ids, date=target_date)
     
-    async with async_session_maker() as db:
-        agent = AnalyticsAgent(db)
-        
-        results = await agent.run_daily_analytics(
-            card_ids=card_ids,
-            target_date=target_date,
-            generate_insights=True,
-        )
-        
-        logger.info("Analytics run completed", results=results)
-        return results
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            agent = AnalyticsAgent(db)
+            
+            results = await agent.run_daily_analytics(
+                card_ids=card_ids,
+                target_date=target_date,
+                generate_insights=True,
+            )
+            
+            logger.info("Analytics run completed", results=results)
+            return results
+    finally:
+        await engine.dispose()
 
 
 @shared_task(bind=True)
@@ -80,27 +107,31 @@ def compute_card_metrics(self, card_id: int, target_date: str | None = None) -> 
 
 async def _compute_card_metrics_async(card_id: int, target_date: date | None) -> dict[str, Any]:
     """Async implementation of single card metrics computation."""
-    async with async_session_maker() as db:
-        agent = AnalyticsAgent(db)
-        
-        metrics = await agent.compute_daily_metrics(card_id, target_date)
-        
-        if not metrics:
-            return {"card_id": card_id, "error": "No data available"}
-        
-        signals = await agent.generate_signals(card_id, target_date or date.today())
-        insight = await agent.generate_llm_insight(card_id, target_date or date.today())
-        
-        await db.commit()
-        
-        return {
-            "card_id": card_id,
-            "date": str(target_date or date.today()),
-            "avg_price": float(metrics.avg_price) if metrics.avg_price else None,
-            "price_change_7d": float(metrics.price_change_pct_7d) if metrics.price_change_pct_7d else None,
-            "signals_generated": len(signals),
-            "has_insight": insight is not None,
-        }
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            agent = AnalyticsAgent(db)
+            
+            metrics = await agent.compute_daily_metrics(card_id, target_date)
+            
+            if not metrics:
+                return {"card_id": card_id, "error": "No data available"}
+            
+            signals = await agent.generate_signals(card_id, target_date or date.today())
+            insight = await agent.generate_llm_insight(card_id, target_date or date.today())
+            
+            await db.commit()
+            
+            return {
+                "card_id": card_id,
+                "date": str(target_date or date.today()),
+                "avg_price": float(metrics.avg_price) if metrics.avg_price else None,
+                "price_change_7d": float(metrics.price_change_pct_7d) if metrics.price_change_pct_7d else None,
+                "signals_generated": len(signals),
+                "has_insight": insight is not None,
+            }
+    finally:
+        await engine.dispose()
 
 
 @shared_task(bind=True)
@@ -121,24 +152,28 @@ def generate_card_signals(self, card_id: int, target_date: str | None = None) ->
 
 async def _generate_card_signals_async(card_id: int, target_date: date | None) -> dict[str, Any]:
     """Async implementation of signal generation."""
-    async with async_session_maker() as db:
-        agent = AnalyticsAgent(db)
-        
-        signals = await agent.generate_signals(card_id, target_date or date.today())
-        await db.commit()
-        
-        return {
-            "card_id": card_id,
-            "date": str(target_date or date.today()),
-            "signals": [
-                {
-                    "type": s.signal_type,
-                    "value": float(s.value) if s.value else None,
-                    "confidence": float(s.confidence) if s.confidence else None,
-                }
-                for s in signals
-            ],
-        }
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            agent = AnalyticsAgent(db)
+            
+            signals = await agent.generate_signals(card_id, target_date or date.today())
+            await db.commit()
+            
+            return {
+                "card_id": card_id,
+                "date": str(target_date or date.today()),
+                "signals": [
+                    {
+                        "type": s.signal_type,
+                        "value": float(s.value) if s.value else None,
+                        "confidence": float(s.confidence) if s.confidence else None,
+                    }
+                    for s in signals
+                ],
+            }
+    finally:
+        await engine.dispose()
 
 
 @shared_task(bind=True)
@@ -169,30 +204,34 @@ async def _backfill_analytics_async(
     
     logger.info("Starting analytics backfill", days=days)
     
-    async with async_session_maker() as db:
-        agent = AnalyticsAgent(db)
-        
-        results = {
-            "days_processed": 0,
-            "total_metrics": 0,
-            "errors": [],
-        }
-        
-        today = date.today()
-        
-        for i in range(days):
-            target_date = today - timedelta(days=i)
-            try:
-                day_results = await agent.run_daily_analytics(
-                    card_ids=card_ids,
-                    target_date=target_date,
-                    generate_insights=False,  # Skip LLM for backfill
-                )
-                results["days_processed"] += 1
-                results["total_metrics"] += day_results.get("cards_processed", 0)
-            except Exception as e:
-                results["errors"].append(f"{target_date}: {str(e)}")
-        
-        logger.info("Analytics backfill completed", results=results)
-        return results
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            agent = AnalyticsAgent(db)
+            
+            results = {
+                "days_processed": 0,
+                "total_metrics": 0,
+                "errors": [],
+            }
+            
+            today = date.today()
+            
+            for i in range(days):
+                target_date = today - timedelta(days=i)
+                try:
+                    day_results = await agent.run_daily_analytics(
+                        card_ids=card_ids,
+                        target_date=target_date,
+                        generate_insights=False,  # Skip LLM for backfill
+                    )
+                    results["days_processed"] += 1
+                    results["total_metrics"] += day_results.get("cards_processed", 0)
+                except Exception as e:
+                    results["errors"].append(f"{target_date}: {str(e)}")
+            
+            logger.info("Analytics backfill completed", results=results)
+            return results
+    finally:
+        await engine.dispose()
 
