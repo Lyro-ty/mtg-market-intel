@@ -29,6 +29,9 @@ from app.schemas.signal import SignalResponse, SignalListResponse
 from app.tasks.ingestion import scrape_marketplace
 from app.tasks.analytics import compute_card_metrics
 from app.tasks.recommendations import generate_card_recommendations
+from app.services.ingestion import ScryfallAdapter
+from app.services.agents.analytics import AnalyticsAgent
+from app.services.agents.recommendation import RecommendationAgent
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
@@ -296,15 +299,24 @@ async def get_card_signals(
 async def refresh_card_data(
     card_id: int,
     payload: dict | None = None,
+    sync: bool = Query(True, description="Run synchronously and return updated data immediately"),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Manually trigger a refresh for a card's prices, metrics, and recommendations.
+    
+    If sync=True (default), fetches data immediately and returns updated card detail.
+    If sync=False, dispatches background tasks and returns task IDs.
     """
     card = await db.get(Card, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
+    if sync:
+        # Synchronous refresh - fetch data immediately and return
+        return await _sync_refresh_card(db, card)
+    
+    # Async refresh - dispatch background tasks
     marketplaces = payload.get("marketplaces") if payload else None
     slugs = marketplaces or await _get_enabled_marketplace_slugs(db)
     if not slugs:
@@ -431,4 +443,171 @@ def _dispatch_refresh_tasks(card_id: int, marketplace_slugs: list[str]) -> dict:
         task_refs["recommendations"] = None
     
     return task_refs
+
+
+async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse:
+    """
+    Synchronously refresh card data and return updated detail.
+    
+    1. Fetches latest price from Scryfall (includes TCGPlayer prices)
+    2. Creates price snapshot
+    3. Computes metrics
+    4. Generates recommendations
+    5. Returns complete card detail
+    """
+    logger.info("Sync refresh starting", card_id=card.id, card_name=card.name)
+    
+    # 1. Fetch price from Scryfall
+    scryfall = ScryfallAdapter()
+    try:
+        price_data = await scryfall.fetch_price(
+            card_name=card.name,
+            set_code=card.set_code,
+            collector_number=card.collector_number,
+            scryfall_id=card.scryfall_id,
+        )
+        
+        if price_data and price_data.price > 0:
+            # Get or create Scryfall marketplace entry
+            scryfall_mp = await _get_or_create_scryfall_marketplace(db)
+            
+            # Create price snapshot
+            snapshot = PriceSnapshot(
+                card_id=card.id,
+                marketplace_id=scryfall_mp.id,
+                snapshot_time=datetime.utcnow(),
+                price=price_data.price,
+                currency=price_data.currency,
+                price_foil=price_data.price_foil,
+            )
+            db.add(snapshot)
+            await db.flush()
+            logger.info("Price snapshot created", card_id=card.id, price=price_data.price)
+    except Exception as e:
+        logger.warning("Failed to fetch Scryfall price", card_id=card.id, error=str(e))
+    finally:
+        await scryfall.close()
+    
+    # 2. Compute metrics
+    try:
+        analytics = AnalyticsAgent(db)
+        metrics = await analytics.compute_daily_metrics(card.id)
+        if metrics:
+            await db.flush()
+            logger.info("Metrics computed", card_id=card.id)
+    except Exception as e:
+        logger.warning("Failed to compute metrics", card_id=card.id, error=str(e))
+        metrics = None
+    
+    # 3. Generate signals
+    signals = []
+    try:
+        analytics = AnalyticsAgent(db)
+        signals = await analytics.generate_signals(card.id)
+        if signals:
+            await db.flush()
+            logger.info("Signals generated", card_id=card.id, count=len(signals))
+    except Exception as e:
+        logger.warning("Failed to generate signals", card_id=card.id, error=str(e))
+    
+    # 4. Generate recommendations
+    recommendations = []
+    try:
+        rec_agent = RecommendationAgent(db)
+        recommendations = await rec_agent.generate_recommendations(card.id)
+        if recommendations:
+            await db.flush()
+            logger.info("Recommendations generated", card_id=card.id, count=len(recommendations))
+    except Exception as e:
+        logger.warning("Failed to generate recommendations", card_id=card.id, error=str(e))
+    
+    await db.commit()
+    
+    # 5. Fetch and return updated card detail
+    # Re-fetch metrics (might have been updated)
+    metrics_query = select(MetricsCardsDaily).where(
+        MetricsCardsDaily.card_id == card.id
+    ).order_by(MetricsCardsDaily.date.desc()).limit(1)
+    result = await db.execute(metrics_query)
+    latest_metrics = result.scalar_one_or_none()
+    
+    # Get current prices
+    current_prices = await _get_current_prices(db, card.id)
+    
+    # Get recent signals
+    signals_query = select(Signal).where(
+        Signal.card_id == card.id
+    ).order_by(Signal.date.desc()).limit(5)
+    result = await db.execute(signals_query)
+    recent_signals = result.scalars().all()
+    
+    # Get active recommendations
+    recs_query = select(Recommendation).where(
+        Recommendation.card_id == card.id,
+        Recommendation.is_active == True,
+    ).order_by(Recommendation.created_at.desc()).limit(5)
+    result = await db.execute(recs_query)
+    active_recs = result.scalars().all()
+    
+    return CardDetailResponse(
+        card=CardResponse.model_validate(card),
+        metrics=CardMetricsResponse(
+            card_id=card.id,
+            date=str(latest_metrics.date) if latest_metrics else None,
+            avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else None,
+            min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else None,
+            max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else None,
+            spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else None,
+            price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else None,
+            price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else None,
+            volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else None,
+            ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else None,
+            ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else None,
+            total_listings=latest_metrics.total_listings if latest_metrics else None,
+        ) if latest_metrics else None,
+        current_prices=current_prices,
+        recent_signals=[
+            SignalSummary(
+                signal_type=s.signal_type,
+                value=float(s.value) if s.value else None,
+                confidence=float(s.confidence) if s.confidence else None,
+                date=str(s.date),
+                llm_insight=s.llm_insight,
+            )
+            for s in recent_signals
+        ],
+        active_recommendations=[
+            RecommendationSummary(
+                action=r.action,
+                confidence=float(r.confidence),
+                rationale=r.rationale,
+                marketplace=None,
+                potential_profit_pct=float(r.potential_profit_pct) if r.potential_profit_pct else None,
+            )
+            for r in active_recs
+        ],
+        refresh_requested=False,
+        refresh_reason=None,
+    )
+
+
+async def _get_or_create_scryfall_marketplace(db: AsyncSession) -> Marketplace:
+    """Get or create the Scryfall marketplace entry."""
+    query = select(Marketplace).where(Marketplace.slug == "scryfall")
+    result = await db.execute(query)
+    marketplace = result.scalar_one_or_none()
+    
+    if not marketplace:
+        marketplace = Marketplace(
+            name="Scryfall (TCGPlayer)",
+            slug="scryfall",
+            base_url="https://scryfall.com",
+            is_enabled=True,
+            supports_api=True,
+            default_currency="USD",
+        )
+        db.add(marketplace)
+        await db.flush()
+    
+    return marketplace
 

@@ -57,11 +57,12 @@ export default function CardDetailPage() {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      await refreshCard(cardId);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'history'] }),
-      ]);
+      // Use sync=true to get immediate data back
+      const updatedData = await refreshCard(cardId, { sync: true });
+      // Update the cache with the new data
+      queryClient.setQueryData(['card', cardId], updatedData);
+      // Also refetch history to get new price points
+      await queryClient.invalidateQueries({ queryKey: ['card', cardId, 'history'] });
     } catch (err) {
       console.error('Failed to refresh card', err);
     } finally {

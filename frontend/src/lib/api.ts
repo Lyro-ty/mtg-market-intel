@@ -84,9 +84,13 @@ export async function getCard(cardId: number): Promise<CardDetail> {
 
 export async function refreshCard(
   cardId: number,
-  marketplaces?: string[]
-): Promise<{ card_id: number; marketplaces: string[]; tasks: Record<string, unknown> }> {
-  return fetchApi(`/cards/${cardId}/refresh`, {
+  options: { marketplaces?: string[]; sync?: boolean } = {}
+): Promise<CardDetail> {
+  const { marketplaces, sync = true } = options;
+  const params = new URLSearchParams();
+  params.set('sync', String(sync));
+  
+  return fetchApi(`/cards/${cardId}/refresh?${params}`, {
     method: 'POST',
     body: JSON.stringify({ marketplaces }),
   });
