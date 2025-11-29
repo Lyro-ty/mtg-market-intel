@@ -198,6 +198,8 @@ export interface CardDetail {
   current_prices: MarketplacePrice[];
   recent_signals: SignalSummary[];
   active_recommendations: RecommendationSummary[];
+  refresh_requested?: boolean;
+  refresh_reason?: string | null;
 }
 
 // Settings types
