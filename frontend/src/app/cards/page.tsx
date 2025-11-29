@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Search as SearchIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -11,8 +12,25 @@ import { Button } from '@/components/ui/Button';
 import { searchCards } from '@/lib/api';
 
 export default function CardsPage() {
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialQuery = searchParams.get('q') ?? '';
+  const initialPage = Number(searchParams.get('page') ?? '1') || 1;
+  
+  const [query, setQuery] = useState(initialQuery);
+  const [page, setPage] = useState(initialPage);
+  
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (query) {
+      params.set('q', query);
+    }
+    if (page > 1) {
+      params.set('page', String(page));
+    }
+    const search = params.toString();
+    router.replace(`/cards${search ? `?${search}` : ''}`);
+  }, [query, page, router]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['cards', 'search', query, page],
@@ -34,6 +52,7 @@ export default function CardsPage() {
       <Card>
         <CardContent className="p-4">
           <SearchBar
+            defaultValue={query}
             onSearch={(q) => {
               setQuery(q);
               setPage(1);
