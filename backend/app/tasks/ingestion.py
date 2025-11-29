@@ -92,25 +92,34 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
             
             normalizer = NormalizationService(db)
             
-            for marketplace in marketplaces:
-                try:
-                    adapter = get_adapter(marketplace.slug, cached=True)
-                    mp_results = await _scrape_marketplace(
-                        db, adapter, marketplace, cards, normalizer
-                    )
-                    results["marketplaces"][marketplace.slug] = mp_results
-                    results["total_listings"] += mp_results.get("listings", 0)
-                    results["total_snapshots"] += mp_results.get("snapshots", 0)
-                except Exception as e:
-                    error_msg = f"{marketplace.slug}: {str(e)}"
-                    results["errors"].append(error_msg)
-                    logger.error("Marketplace scrape failed", marketplace=marketplace.slug, error=str(e))
-            
-            await db.commit()
-            results["completed_at"] = datetime.utcnow().isoformat()
-            
-            logger.info("Marketplace scrape completed", results=results)
-            return results
+            try:
+                for marketplace in marketplaces:
+                    # Create fresh adapter for each marketplace (don't cache across event loops)
+                    adapter = get_adapter(marketplace.slug, cached=False)
+                    try:
+                        mp_results = await _scrape_marketplace(
+                            db, adapter, marketplace, cards, normalizer
+                        )
+                        results["marketplaces"][marketplace.slug] = mp_results
+                        results["total_listings"] += mp_results.get("listings", 0)
+                        results["total_snapshots"] += mp_results.get("snapshots", 0)
+                    except Exception as e:
+                        error_msg = f"{marketplace.slug}: {str(e)}"
+                        results["errors"].append(error_msg)
+                        logger.error("Marketplace scrape failed", marketplace=marketplace.slug, error=str(e))
+                    finally:
+                        # Always close adapter to release HTTP client resources
+                        if hasattr(adapter, 'close'):
+                            await adapter.close()
+                
+                await db.commit()
+                results["completed_at"] = datetime.utcnow().isoformat()
+                
+                logger.info("Marketplace scrape completed", results=results)
+                return results
+            finally:
+                # Always close normalizer to release Scryfall HTTP client
+                await normalizer.close()
     finally:
         await engine.dispose()
 
@@ -238,16 +247,23 @@ async def _scrape_marketplace_task_async(
             result = await db.execute(cards_query)
             cards = result.scalars().all()
             
-            adapter = get_adapter(marketplace_slug)
+            # Create fresh adapter (don't cache across event loops)
+            adapter = get_adapter(marketplace_slug, cached=False)
             normalizer = NormalizationService(db)
             
-            results = await _scrape_marketplace(db, adapter, marketplace, cards, normalizer)
-            await db.commit()
-            
-            return {
-                "marketplace": marketplace_slug,
-                **results,
-            }
+            try:
+                results = await _scrape_marketplace(db, adapter, marketplace, cards, normalizer)
+                await db.commit()
+                
+                return {
+                    "marketplace": marketplace_slug,
+                    **results,
+                }
+            finally:
+                # Always close adapter and normalizer to release HTTP client resources
+                if hasattr(adapter, 'close'):
+                    await adapter.close()
+                await normalizer.close()
     finally:
         await engine.dispose()
 
