@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import settings
-from app.models import Card, Marketplace, Listing, PriceSnapshot
+from app.models import Card, Marketplace, Listing, PriceSnapshot, InventoryItem
 from app.services.ingestion import get_adapter, get_all_adapters, ScryfallAdapter
 from app.services.agents.normalization import NormalizationService
 
@@ -77,10 +77,34 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
                 logger.warning("No enabled marketplaces found")
                 return {"status": "no_marketplaces", "scraped": 0}
             
-            # Get sample cards to scrape (top cards by activity or all)
-            cards_query = select(Card).limit(500)  # Process 500 cards per run
-            result = await db.execute(cards_query)
-            cards = result.scalars().all()
+            # PRIORITY 1: Get all cards in user's inventory (always scrape these)
+            inventory_cards_query = (
+                select(Card)
+                .join(InventoryItem, InventoryItem.card_id == Card.id)
+                .distinct()
+            )
+            result = await db.execute(inventory_cards_query)
+            inventory_cards = list(result.scalars().all())
+            inventory_card_ids = {c.id for c in inventory_cards}
+            
+            logger.info("Scraping inventory cards first", count=len(inventory_cards))
+            
+            # PRIORITY 2: Fill remaining slots with other cards (up to 500 total)
+            remaining_slots = max(0, 500 - len(inventory_cards))
+            if remaining_slots > 0:
+                other_cards_query = (
+                    select(Card)
+                    .where(Card.id.notin_(inventory_card_ids) if inventory_card_ids else True)
+                    .limit(remaining_slots)
+                )
+                result = await db.execute(other_cards_query)
+                other_cards = list(result.scalars().all())
+            else:
+                other_cards = []
+            
+            # Combine: inventory cards first, then others
+            cards = inventory_cards + other_cards
+            logger.info("Total cards to scrape", inventory=len(inventory_cards), other=len(other_cards), total=len(cards))
             
             results = {
                 "started_at": datetime.utcnow().isoformat(),
@@ -263,6 +287,91 @@ async def _scrape_marketplace_task_async(
                 # Always close adapter and normalizer to release HTTP client resources
                 if hasattr(adapter, 'close'):
                     await adapter.close()
+                await normalizer.close()
+    finally:
+        await engine.dispose()
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def scrape_inventory_cards(self) -> dict[str, Any]:
+    """
+    Scrape price data for all cards in user's inventory.
+    
+    This is a faster, targeted scrape that only updates inventory cards.
+    Useful for quick refreshes from the inventory page.
+    
+    Returns:
+        Summary of scraping results.
+    """
+    return run_async(_scrape_inventory_cards_async())
+
+
+async def _scrape_inventory_cards_async() -> dict[str, Any]:
+    """Async implementation of inventory-only scraping."""
+    logger.info("Starting inventory cards scrape")
+    
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            # Get enabled marketplaces
+            query = select(Marketplace).where(Marketplace.is_enabled == True)
+            result = await db.execute(query)
+            marketplaces = result.scalars().all()
+            
+            if not marketplaces:
+                logger.warning("No enabled marketplaces found")
+                return {"status": "no_marketplaces", "scraped": 0}
+            
+            # Get only cards that are in inventory
+            inventory_cards_query = (
+                select(Card)
+                .join(InventoryItem, InventoryItem.card_id == Card.id)
+                .distinct()
+            )
+            result = await db.execute(inventory_cards_query)
+            cards = list(result.scalars().all())
+            
+            if not cards:
+                logger.info("No inventory cards to scrape")
+                return {"status": "no_inventory", "scraped": 0}
+            
+            logger.info("Scraping inventory cards", count=len(cards))
+            
+            results = {
+                "started_at": datetime.utcnow().isoformat(),
+                "inventory_cards": len(cards),
+                "marketplaces": {},
+                "total_listings": 0,
+                "total_snapshots": 0,
+                "errors": [],
+            }
+            
+            normalizer = NormalizationService(db)
+            
+            try:
+                for marketplace in marketplaces:
+                    adapter = get_adapter(marketplace.slug, cached=False)
+                    try:
+                        mp_results = await _scrape_marketplace(
+                            db, adapter, marketplace, cards, normalizer
+                        )
+                        results["marketplaces"][marketplace.slug] = mp_results
+                        results["total_listings"] += mp_results.get("listings", 0)
+                        results["total_snapshots"] += mp_results.get("snapshots", 0)
+                    except Exception as e:
+                        error_msg = f"{marketplace.slug}: {str(e)}"
+                        results["errors"].append(error_msg)
+                        logger.error("Marketplace scrape failed", marketplace=marketplace.slug, error=str(e))
+                    finally:
+                        if hasattr(adapter, 'close'):
+                            await adapter.close()
+                
+                await db.commit()
+                results["completed_at"] = datetime.utcnow().isoformat()
+                
+                logger.info("Inventory scrape completed", results=results)
+                return results
+            finally:
                 await normalizer.close()
     finally:
         await engine.dispose()

@@ -897,6 +897,24 @@ async def get_inventory_recommendations(
     )
 
 
+@router.post("/scrape-prices")
+async def scrape_inventory_prices():
+    """
+    Trigger immediate price scraping for all inventory cards.
+    
+    This runs a targeted scrape that only fetches prices for cards
+    in your inventory, making it faster than a full marketplace scrape.
+    """
+    from app.tasks.ingestion import scrape_inventory_cards
+    
+    task = scrape_inventory_cards.delay()
+    
+    return {
+        "message": "Inventory price scrape started",
+        "task_id": str(task.id),
+    }
+
+
 @router.post("/refresh-valuations")
 async def refresh_inventory_valuations(
     db: AsyncSession = Depends(get_db),

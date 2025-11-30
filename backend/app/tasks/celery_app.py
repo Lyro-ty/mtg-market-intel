@@ -46,6 +46,13 @@ celery_app.conf.update(
             "options": {"queue": "ingestion"},
         },
         
+        # Scrape INVENTORY cards every 15 minutes (higher priority)
+        "scrape-inventory": {
+            "task": "app.tasks.ingestion.scrape_inventory_cards",
+            "schedule": crontab(minute="*/15"),
+            "options": {"queue": "ingestion"},
+        },
+        
         # Run analytics hourly
         "run-analytics": {
             "task": "app.tasks.analytics.run_analytics",

@@ -6,14 +6,15 @@ A production-ready web application for Magic: The Gathering card market intellig
 - 📈 **Price analytics & forecasting** - Moving averages, volatility, momentum indicators
 - 🤖 **AI-powered recommendations** - Buy/Sell/Hold signals with clear rationales
 - 📉 **Cross-market arbitrage detection** - Identify pricing discrepancies
-- 🎯 **Modern web UI** - Dashboard, search, charts, and recommendations
+- 📦 **Personal inventory management** - Track your collection with profit/loss analytics
+- 🎯 **Modern web UI** - Dashboard, search, charts, recommendations, and inventory
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Frontend (Next.js)                       │
-│   Dashboard │ Card Search │ Recommendations │ Settings           │
+│   Dashboard │ Search │ Inventory │ Recommendations │ Settings    │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -34,7 +35,7 @@ A production-ready web application for Magic: The Gathering card market intellig
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    PostgreSQL Database                           │
-│   Cards │ Listings │ Prices │ Metrics │ Signals │ Recommendations│
+│   Cards │ Prices │ Metrics │ Signals │ Recommendations │ Inventory│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -46,6 +47,8 @@ A production-ready web application for Magic: The Gathering card market intellig
 - **Task Queue**: Celery + Redis
 - **AI**: OpenAI/Anthropic API (with mock fallback)
 - **Containerization**: Docker, docker-compose
+
+---
 
 ## Quick Start
 
@@ -78,7 +81,7 @@ This will:
 - Start PostgreSQL database
 - Start Redis
 - Run database migrations
-- Seed initial data (popular MTG cards)
+- Seed initial data (popular MTG cards with 30-day mock price history)
 - Start the FastAPI backend
 - Start the Next.js frontend
 - Start Celery workers and scheduler
@@ -89,11 +92,218 @@ This will:
 - **API Docs**: http://localhost:8000/docs
 - **API**: http://localhost:8000
 
-### Windows + WSL Notes
+---
 
-- Open your WSL distro (`wsl -d Ubuntu` for example) and run all `docker`/`make` commands there so the Linux Docker CLI can be found.
-- If you need to launch a compose command from PowerShell, prefix it with `wsl -e`, e.g. `wsl -e docker compose up -d`.
-- The repo is shared between Windows and WSL via `/mnt/c/...`, so you can edit files in Windows but build/run inside WSL without copying anything.
+## Docker Compose Commands
+
+### Essential Commands
+
+```bash
+# Start all services (first time or after pulling updates)
+docker compose up --build
+
+# Start in background (detached mode)
+docker compose up -d
+
+# Stop all services
+docker compose down
+
+# Stop and remove volumes (DELETES ALL DATA)
+docker compose down -v
+
+# View logs (all services)
+docker compose logs -f
+
+# View logs for specific service
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f worker
+```
+
+### Rebuilding After Code Changes
+
+```bash
+# Rebuild a specific service (recommended for development)
+docker compose build backend
+docker compose build frontend
+
+# Rebuild with no cache (forces fresh install of dependencies)
+docker compose build --no-cache backend
+docker compose build --no-cache frontend
+
+# Rebuild and restart
+docker compose up --build backend
+docker compose up --build frontend
+
+# Full rebuild of everything (nuclear option)
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Running Commands Inside Containers
+
+```bash
+# Access backend shell
+docker compose exec backend bash
+
+# Access database
+docker compose exec db psql -U mtg_user -d mtg_market_intel
+
+# Run migrations manually
+docker compose exec backend alembic upgrade head
+
+# Run seed script
+docker compose exec backend python -m app.scripts.seed_data
+```
+
+### Triggering Tasks Manually
+
+```bash
+# Trigger full marketplace scrape
+docker compose exec worker celery -A app.tasks.celery_app call app.tasks.ingestion.scrape_all_marketplaces
+
+# Trigger inventory-only scrape (faster, just your cards)
+docker compose exec worker celery -A app.tasks.celery_app call app.tasks.ingestion.scrape_inventory_cards
+
+# Trigger analytics
+docker compose exec worker celery -A app.tasks.celery_app call app.tasks.analytics.run_analytics
+
+# Trigger recommendation generation
+docker compose exec worker celery -A app.tasks.celery_app call app.tasks.recommendations.generate_recommendations
+```
+
+---
+
+## Features
+
+### 📦 Personal Inventory Management
+
+Track your MTG collection with detailed profit/loss analytics.
+
+**Features:**
+- **Import from CSV or plaintext** - Supports common formats like "4x Lightning Bolt (MMA) NM"
+- **Track acquisition cost** - Know exactly what you paid
+- **Real-time valuations** - Current market prices across all marketplaces
+- **Profit/loss tracking** - See your gains and losses at a glance
+- **Condition tracking** - Mint, NM, LP, MP, HP, Damaged
+- **Foil support** - Track foil and non-foil separately
+- **Aggressive recommendations** - Faster, more actionable signals for YOUR cards
+
+**Import Formats Supported:**
+
+Plaintext:
+```
+4x Lightning Bolt
+2 Black Lotus [FOIL]
+1x Tarmogoyf (MMA) NM
+Force of Will - Alliances - LP
+```
+
+CSV:
+```csv
+card_name,set_code,quantity,condition,foil,price
+Lightning Bolt,M21,4,NM,false,2.50
+Black Lotus,LEA,1,LP,false,50000.00
+```
+
+**Quick Add:** You can also add cards directly from search results using the "Add to Inventory" button on the card detail page.
+
+### 📊 Multi-Marketplace Price Tracking
+
+Real-time price data from major MTG marketplaces:
+- **TCGPlayer** (USD) - US market prices
+- **Cardmarket** (EUR) - European market prices  
+- **Card Kingdom** (USD) - Estimated based on typical markup
+
+Price data is fetched via Scryfall's aggregated pricing API, which includes TCGPlayer and Cardmarket prices.
+
+### 🤖 AI-Powered Recommendations
+
+Two recommendation engines:
+
+| Engine | Purpose | Thresholds | Frequency |
+|--------|---------|------------|-----------|
+| **Market Recommendations** | General market signals | Conservative | Every 6 hours |
+| **Inventory Recommendations** | Your collection | Aggressive | Every 15 min |
+
+Inventory recommendations use:
+- Lower ROI thresholds (5% vs 10%)
+- Shorter time horizons (3-14 days vs 7-30 days)
+- Urgency levels (Critical, High, Normal, Low)
+- Profit from acquisition price calculations
+
+---
+
+## Automated Tasks Schedule
+
+The scheduler runs these tasks automatically:
+
+| Task | Frequency | Description |
+|------|-----------|-------------|
+| **Inventory Scrape** | Every 15 min | Scrapes prices for cards in your inventory only |
+| **Full Marketplace Scrape** | Every 30 min | Scrapes all cards (inventory cards first, then others) |
+| **Analytics** | Every hour | Calculates metrics, signals, price changes |
+| **Recommendations** | Every 6 hours | Generates buy/sell/hold recommendations |
+| **Card Catalog Sync** | Daily at 2 AM | Syncs card data from Scryfall |
+
+### Customizing Task Frequency
+
+Set these environment variables in `.env` or `docker-compose.yml`:
+
+```yaml
+environment:
+  - SCRAPE_INTERVAL_MINUTES=30      # Full scrape interval
+  - ANALYTICS_INTERVAL_HOURS=1      # Analytics interval
+  - RECOMMENDATIONS_INTERVAL_HOURS=6 # Recommendations interval
+```
+
+Inventory scraping runs every 15 minutes (hardcoded for responsiveness).
+
+---
+
+## API Endpoints
+
+### Health Check
+- `GET /health` - Service health status
+
+### Cards
+- `GET /cards/search?q=...` - Search cards by name
+- `GET /cards/{id}` - Get card details
+- `POST /cards/{id}/refresh` - Force a data refresh
+- `GET /cards/{id}/prices` - Get current prices across marketplaces
+- `GET /cards/{id}/history` - Get price history
+- `GET /cards/{id}/signals` - Get analytics signals
+
+### Inventory (NEW)
+- `POST /inventory/import` - Import inventory from CSV/plaintext
+- `GET /inventory` - List inventory items (with filtering/pagination)
+- `POST /inventory` - Add a single item to inventory
+- `GET /inventory/{id}` - Get inventory item details
+- `PATCH /inventory/{id}` - Update inventory item
+- `DELETE /inventory/{id}` - Remove from inventory
+- `GET /inventory/analytics` - Get inventory analytics dashboard
+- `GET /inventory/recommendations/list` - Get aggressive recommendations
+- `POST /inventory/scrape-prices` - Trigger immediate price refresh
+- `POST /inventory/refresh-valuations` - Refresh all valuations
+- `POST /inventory/run-recommendations` - Generate recommendations
+
+### Recommendations
+- `GET /recommendations` - Get trading recommendations (filterable)
+- `GET /recommendations/{id}` - Get specific recommendation
+- `GET /recommendations/card/{card_id}` - Get recommendations for a card
+
+### Dashboard
+- `GET /dashboard/summary` - Get dashboard metrics
+
+### Settings
+- `GET /settings` - Get application settings
+- `PUT /settings` - Update settings
+
+### Marketplaces
+- `GET /marketplaces` - List marketplaces
+- `PATCH /marketplaces/{id}/toggle` - Toggle marketplace enabled status
+
+---
 
 ## Development
 
@@ -145,176 +355,116 @@ docker compose exec backend pytest -v
 docker compose exec frontend npm test
 ```
 
+### Windows + WSL Notes
+
+- Open your WSL distro (`wsl -d Ubuntu` for example) and run all `docker`/`make` commands there
+- If you need to launch a compose command from PowerShell, prefix it with `wsl -e`, e.g. `wsl -e docker compose up -d`
+- The repo is shared between Windows and WSL via `/mnt/c/...`
+
+---
+
 ## Importing the Scryfall Database
 
-The importer streams the bulk download so you can ingest 90k+ records without exhausting memory and it automatically detects gzipped payloads that Scryfall may return.
+The importer streams the bulk download so you can ingest 90k+ records without exhausting memory.
 
 ```bash
 # Import one card per Oracle ID (~30k cards)
 make import-scryfall
 
-# Import every printing (~90k cards). Expect ~10-15 minutes depending on bandwidth.
+# Import every printing (~90k cards). Expect ~10-15 minutes.
 make import-scryfall-all
 
-# Increase the batch size for faster commits on beefier machines
+# Increase the batch size for faster commits
 make import-scryfall-all SCRYFALL_BATCH_SIZE=2000
 
-# Re-use an existing download instead of pulling ~600MB again
+# Re-use an existing download
 docker compose exec backend python -m app.scripts.import_scryfall \
   --type all_cards --skip-download --batch-size 2000
-
-# Limit imports to a specific language (defaults to English)
-docker compose exec backend python -m app.scripts.import_scryfall \
-  --type all_cards --language en
-
-# Import all languages explicitly
-docker compose exec backend python -m app.scripts.import_scryfall \
-  --type all_cards --language ""
 ```
-
-While the import is running you will see a `Processed: <n>` counter update in-place so you can monitor long jobs.
 
 ### Resetting the Database
 
-To completely wipe Postgres (useful before re-importing with new flags):
-
 ```bash
-# Stop services and delete volumes (removes the DB data directory)
+# Stop services and delete volumes (removes all data)
 docker compose down -v
 
-# Bring services back up and re-run migrations/seeds
-docker compose up -d db backend
-docker compose exec backend alembic upgrade head
-docker compose exec backend python -m app.scripts.seed_data
+# Bring services back up (will re-run migrations and seed)
+docker compose up -d
 ```
-
-Alternatively, truncate the tables without dropping the volume:
-
-```bash
-docker compose exec db psql -U mtg_user -d mtg_market_intel <<'SQL'
-TRUNCATE price_snapshots, listings, metrics_cards_daily, signals,
-         recommendations, cards
-RESTART IDENTITY CASCADE;
-SQL
-```
-
-Then re-run the importer (e.g., `make import-scryfall-all --language en`).
 
 ### Restoring 30-day Demo Price History
 
-The full Scryfall import only persists the card catalog (plus the current TCGPlayer/Cardmarket snapshot Scryfall exposes). The earlier 150-card demo dataset showed 30-day charts and Card Kingdom prices because the seed script generated synthetic history in addition to importing the cards.
-
-Use the demo history generator after a bulk import to recreate that experience:
+The seed script generates synthetic historical data for demo purposes:
 
 ```bash
-# Generate 30 days of synthetic history for 250 cards across all enabled marketplaces
+# Generate 30 days of synthetic history
 make seed-demo-prices
 
-# Target specific marketplaces and a larger card sample
+# Target specific marketplaces
 make seed-demo-prices CARD_LIMIT=400 PRICE_HISTORY_DAYS=45 MARKETPLACES="tcgplayer cardmarket cardkingdom"
 ```
 
-The script:
-- backfills a rolling random-walk price curve for each card/marketplace pair
-- includes Card Kingdom (and any other enabled marketplace) so UI comparisons stay populated
-- purges overlapping snapshots for the selected cards before inserting fresh demo data (use `MARKETPLACES="..."` and `CARD_LIMIT` to keep the volume manageable)
+---
 
-You only need to run this in demo/dev environments. In production you would rely on the ingestion Celery tasks plus real marketplace adapters to accumulate organic history over time.
+## Troubleshooting
 
-## API Endpoints
+### Frontend won't build
 
-### Health Check
-- `GET /health` - Service health status
+```bash
+# Check for TypeScript errors
+docker compose logs frontend
 
-### Cards
-- `GET /cards/search?q=...` - Search cards by name
-- `GET /cards/{id}` - Get card details
-- `POST /cards/{id}/refresh` - Force a data refresh (prices, metrics, recommendations). The frontend detail page now includes a "Refresh data" button that calls this endpoint and shows when a background refresh is running.
-- `GET /cards/{id}/prices` - Get current prices across marketplaces
-- `GET /cards/{id}/history` - Get price history
-- `GET /cards/{id}/signals` - Get analytics signals
-
-### Recommendations
-- `GET /recommendations` - Get trading recommendations (filterable)
-- `GET /recommendations/{id}` - Get specific recommendation
-- `GET /recommendations/card/{card_id}` - Get recommendations for a card
-
-### Dashboard
-- `GET /dashboard/summary` - Get dashboard metrics
-
-### Settings
-- `GET /settings` - Get application settings
-- `PUT /settings` - Update settings
-
-### Marketplaces
-- `GET /marketplaces` - List marketplaces
-- `PATCH /marketplaces/{id}/toggle` - Toggle marketplace enabled status
-
-## Adding a New Marketplace Adapter
-
-1. Create a new adapter file in `backend/app/services/ingestion/adapters/`:
-
-```python
-# backend/app/services/ingestion/adapters/newmarket.py
-from app.services.ingestion.base import MarketplaceAdapter, AdapterConfig, CardListing, CardPrice
-
-class NewMarketAdapter(MarketplaceAdapter):
-    @property
-    def marketplace_name(self) -> str:
-        return "New Market"
-    
-    @property
-    def marketplace_slug(self) -> str:
-        return "newmarket"
-    
-    async def fetch_listings(self, card_name, set_code, scryfall_id, limit):
-        # Implementation
-        pass
-    
-    async def fetch_price(self, card_name, set_code, collector_number, scryfall_id):
-        # Implementation
-        pass
-    
-    async def search_cards(self, query, limit):
-        # Implementation
-        pass
+# Rebuild with no cache
+docker compose build --no-cache frontend
+docker compose up frontend
 ```
 
-2. Register in `backend/app/services/ingestion/registry.py`:
+### Backend migration errors
 
-```python
-from app.services.ingestion.adapters.newmarket import NewMarketAdapter
+```bash
+# Check for multiple heads
+docker compose exec backend alembic heads
 
-_ADAPTER_REGISTRY["newmarket"] = NewMarketAdapter
+# If multiple heads, merge them or specify target
+docker compose exec backend alembic upgrade heads
 ```
 
-3. Add marketplace to database via seed script or API.
+### Scraping not working
 
-## Example User Flows
+```bash
+# Check worker logs
+docker compose logs worker -f
 
-### Search for a Card and View Prices
+# Manually trigger a scrape
+docker compose exec worker celery -A app.tasks.celery_app call app.tasks.ingestion.scrape_all_marketplaces
 
-1. Go to **Search Cards** in the sidebar
-2. Type a card name (e.g., "Lightning Bolt")
-3. Click on a card to view its detail page
-4. View current prices across all marketplaces
-5. See the 30-day price history chart
-6. Check any active signals and recommendations
+# Check if marketplaces are enabled
+docker compose exec db psql -U mtg_user -d mtg_market_intel -c "SELECT slug, is_enabled FROM marketplaces"
+```
 
-### View Trading Recommendations
+### Dashboard shows "No data"
 
-1. Go to **Recommendations** in the sidebar
-2. Filter by action type (BUY/SELL/HOLD)
-3. Sort by confidence or potential profit
-4. Click on a card to see full details
-5. Review the AI-generated rationale
+This usually means the analytics haven't run yet:
 
-### Configure Settings
+```bash
+# Trigger analytics manually
+docker compose exec worker celery -A app.tasks.celery_app call app.tasks.analytics.run_analytics
 
-1. Go to **Settings** in the sidebar
-2. Enable/disable specific marketplaces
-3. Adjust ROI and confidence thresholds
-4. Set recommendation time horizons
+# Or wait for the scheduled task (runs hourly)
+```
+
+### Container won't start
+
+```bash
+# Check what's wrong
+docker compose logs <service_name>
+
+# Common fix: rebuild
+docker compose build --no-cache <service_name>
+docker compose up -d
+```
+
+---
 
 ## Environment Variables
 
@@ -329,6 +479,9 @@ _ADAPTER_REGISTRY["newmarket"] = NewMarketAdapter
 | `ANTHROPIC_API_KEY` | Anthropic API key | Optional |
 | `SCRAPE_INTERVAL_MINUTES` | Scraping frequency | `30` |
 | `ANALYTICS_INTERVAL_HOURS` | Analytics frequency | `1` |
+| `RECOMMENDATIONS_INTERVAL_HOURS` | Recommendations frequency | `6` |
+
+---
 
 ## Project Structure
 
@@ -338,23 +491,42 @@ mtg-market-intel/
 │   ├── alembic/              # Database migrations
 │   ├── app/
 │   │   ├── api/              # FastAPI routes
+│   │   │   └── routes/
+│   │   │       ├── cards.py
+│   │   │       ├── inventory.py      # NEW: Inventory endpoints
+│   │   │       ├── recommendations.py
+│   │   │       └── ...
 │   │   ├── core/             # Configuration, logging
 │   │   ├── db/               # Database setup
 │   │   ├── models/           # SQLAlchemy models
+│   │   │   ├── card.py
+│   │   │   ├── inventory.py          # NEW: Inventory models
+│   │   │   └── ...
 │   │   ├── schemas/          # Pydantic schemas
+│   │   │   ├── inventory.py          # NEW: Inventory schemas
+│   │   │   └── ...
 │   │   ├── services/         # Business logic
-│   │   │   ├── agents/       # Analytics, recommendation agents
+│   │   │   ├── agents/
+│   │   │   │   ├── analytics.py
+│   │   │   │   ├── recommendation.py
+│   │   │   │   └── inventory_recommendation.py  # NEW
 │   │   │   ├── ingestion/    # Marketplace adapters
 │   │   │   └── llm/          # LLM client abstraction
 │   │   ├── tasks/            # Celery tasks
+│   │   │   ├── ingestion.py  # Includes inventory scraping
+│   │   │   └── ...
 │   │   └── scripts/          # Seed scripts
 │   ├── tests/
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── app/              # Next.js pages
-│   │   ├── components/       # React components
+│   │   ├── app/
+│   │   │   ├── inventory/    # NEW: Inventory page
+│   │   │   └── ...
+│   │   ├── components/
+│   │   │   ├── inventory/    # NEW: Inventory components
+│   │   │   └── ...
 │   │   ├── lib/              # API client, utilities
 │   │   └── types/            # TypeScript types
 │   ├── __tests__/
@@ -365,6 +537,8 @@ mtg-market-intel/
 ├── .env.example
 └── README.md
 ```
+
+---
 
 ## License
 
@@ -381,4 +555,3 @@ MIT License - See LICENSE file for details.
 ## Support
 
 For issues and feature requests, please use the GitHub Issues page.
-
