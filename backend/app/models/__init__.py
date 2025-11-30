@@ -9,6 +9,7 @@ from app.models.metrics import MetricsCardsDaily
 from app.models.signal import Signal
 from app.models.recommendation import Recommendation, ActionType
 from app.models.settings import AppSettings
+from app.models.inventory import InventoryItem, InventoryRecommendation, InventoryCondition
 
 __all__ = [
     "Card",
@@ -20,5 +21,8 @@ __all__ = [
     "Recommendation",
     "ActionType",
     "AppSettings",
+    "InventoryItem",
+    "InventoryRecommendation",
+    "InventoryCondition",
 ]
 

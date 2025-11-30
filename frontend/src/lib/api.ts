@@ -15,6 +15,14 @@ import type {
   SettingsUpdate,
   Marketplace,
   Signal,
+  InventoryItem,
+  InventoryListResponse,
+  InventoryImportResponse,
+  InventoryAnalytics,
+  InventoryRecommendationList,
+  InventoryCondition,
+  InventoryUrgency,
+  ActionType,
 } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -203,6 +211,153 @@ export async function toggleMarketplace(
 ): Promise<{ marketplace_id: number; is_enabled: boolean }> {
   return fetchApi(`/marketplaces/${marketplaceId}/toggle`, {
     method: 'PATCH',
+  });
+}
+
+// Inventory API
+export async function importInventory(
+  content: string,
+  options: {
+    format?: 'csv' | 'plaintext' | 'auto';
+    hasHeader?: boolean;
+    defaultCondition?: InventoryCondition;
+    defaultAcquisitionSource?: string;
+  } = {}
+): Promise<InventoryImportResponse> {
+  return fetchApi('/inventory/import', {
+    method: 'POST',
+    body: JSON.stringify({
+      content,
+      format: options.format || 'auto',
+      has_header: options.hasHeader ?? true,
+      default_condition: options.defaultCondition || 'NEAR_MINT',
+      default_acquisition_source: options.defaultAcquisitionSource,
+    }),
+  });
+}
+
+export async function getInventory(options: {
+  search?: string;
+  setCode?: string;
+  condition?: InventoryCondition;
+  isFoil?: boolean;
+  minValue?: number;
+  maxValue?: number;
+  sortBy?: 'created_at' | 'current_value' | 'value_change_pct' | 'card_name' | 'quantity';
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<InventoryListResponse> {
+  const params = new URLSearchParams();
+  
+  if (options.search) params.set('search', options.search);
+  if (options.setCode) params.set('set_code', options.setCode);
+  if (options.condition) params.set('condition', options.condition);
+  if (options.isFoil !== undefined) params.set('is_foil', String(options.isFoil));
+  if (options.minValue !== undefined) params.set('min_value', String(options.minValue));
+  if (options.maxValue !== undefined) params.set('max_value', String(options.maxValue));
+  if (options.sortBy) params.set('sort_by', options.sortBy);
+  if (options.sortOrder) params.set('sort_order', options.sortOrder);
+  params.set('page', String(options.page || 1));
+  params.set('page_size', String(options.pageSize || 20));
+  
+  return fetchApi(`/inventory?${params}`);
+}
+
+export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
+  return fetchApi('/inventory/analytics');
+}
+
+export async function getInventoryItem(itemId: number): Promise<InventoryItem> {
+  return fetchApi(`/inventory/${itemId}`);
+}
+
+export async function createInventoryItem(item: {
+  card_id: number;
+  quantity?: number;
+  condition?: InventoryCondition;
+  is_foil?: boolean;
+  language?: string;
+  acquisition_price?: number;
+  acquisition_currency?: string;
+  acquisition_date?: string;
+  acquisition_source?: string;
+  notes?: string;
+}): Promise<InventoryItem> {
+  return fetchApi('/inventory', {
+    method: 'POST',
+    body: JSON.stringify(item),
+  });
+}
+
+export async function updateInventoryItem(
+  itemId: number,
+  updates: Partial<{
+    quantity: number;
+    condition: InventoryCondition;
+    is_foil: boolean;
+    language: string;
+    acquisition_price: number;
+    acquisition_currency: string;
+    acquisition_date: string;
+    acquisition_source: string;
+    notes: string;
+  }>
+): Promise<InventoryItem> {
+  return fetchApi(`/inventory/${itemId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteInventoryItem(itemId: number): Promise<void> {
+  return fetchApi(`/inventory/${itemId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getInventoryRecommendations(options: {
+  action?: ActionType;
+  urgency?: InventoryUrgency;
+  minConfidence?: number;
+  isActive?: boolean;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<InventoryRecommendationList> {
+  const params = new URLSearchParams();
+  
+  if (options.action) params.set('action', options.action);
+  if (options.urgency) params.set('urgency', options.urgency);
+  if (options.minConfidence !== undefined) params.set('min_confidence', String(options.minConfidence));
+  if (options.isActive !== undefined) params.set('is_active', String(options.isActive));
+  params.set('page', String(options.page || 1));
+  params.set('page_size', String(options.pageSize || 20));
+  
+  return fetchApi(`/inventory/recommendations/list?${params}`);
+}
+
+export async function refreshInventoryValuations(): Promise<{
+  message: string;
+  updated_count: number;
+}> {
+  return fetchApi('/inventory/refresh-valuations', {
+    method: 'POST',
+  });
+}
+
+export async function runInventoryRecommendations(itemIds?: number[]): Promise<{
+  date: string;
+  items_processed: number;
+  total_recommendations: number;
+  sell_recommendations: number;
+  hold_recommendations: number;
+  critical_alerts: number;
+  high_priority: number;
+  errors: number;
+}> {
+  return fetchApi('/inventory/run-recommendations', {
+    method: 'POST',
+    body: JSON.stringify(itemIds ? { item_ids: itemIds } : {}),
   });
 }
 

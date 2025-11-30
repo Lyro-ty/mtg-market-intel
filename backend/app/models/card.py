@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.metrics import MetricsCardsDaily
     from app.models.signal import Signal
     from app.models.recommendation import Recommendation
+    from app.models.inventory import InventoryItem
 
 
 class Card(Base):
@@ -85,6 +86,9 @@ class Card(Base):
     )
     recommendations: Mapped[list["Recommendation"]] = relationship(
         "Recommendation", back_populates="card", cascade="all, delete-orphan"
+    )
+    inventory_items: Mapped[list["InventoryItem"]] = relationship(
+        "InventoryItem", back_populates="card", cascade="all, delete-orphan"
     )
     
     # Indexes for common queries

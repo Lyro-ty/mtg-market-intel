@@ -21,6 +21,21 @@ from app.schemas.signal import SignalResponse, SignalListResponse
 from app.schemas.marketplace import MarketplaceResponse, MarketplacePriceResponse
 from app.schemas.dashboard import DashboardSummary, TopCard, MarketSpread
 from app.schemas.settings import SettingsResponse, SettingsUpdate
+from app.schemas.inventory import (
+    InventoryCondition,
+    InventoryUrgency,
+    InventoryImportRequest,
+    InventoryImportResponse,
+    ImportedItem,
+    InventoryItemBase,
+    InventoryItemCreate,
+    InventoryItemUpdate,
+    InventoryItemResponse,
+    InventoryListResponse,
+    InventoryAnalytics,
+    InventoryRecommendationResponse,
+    InventoryRecommendationListResponse,
+)
 
 __all__ = [
     # Card schemas
@@ -50,5 +65,19 @@ __all__ = [
     # Settings schemas
     "SettingsResponse",
     "SettingsUpdate",
+    # Inventory schemas
+    "InventoryCondition",
+    "InventoryUrgency",
+    "InventoryImportRequest",
+    "InventoryImportResponse",
+    "ImportedItem",
+    "InventoryItemBase",
+    "InventoryItemCreate",
+    "InventoryItemUpdate",
+    "InventoryItemResponse",
+    "InventoryListResponse",
+    "InventoryAnalytics",
+    "InventoryRecommendationResponse",
+    "InventoryRecommendationListResponse",
 ]
 

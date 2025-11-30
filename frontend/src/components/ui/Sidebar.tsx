@@ -9,12 +9,14 @@ import {
   Settings,
   Sparkles,
   Store,
+  Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Search Cards', href: '/cards', icon: Search },
+  { name: 'My Inventory', href: '/inventory', icon: Package },
   { name: 'Recommendations', href: '/recommendations', icon: TrendingUp },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
