@@ -1,7 +1,7 @@
 """
 TCGPlayer marketplace adapter.
 
-Uses TCGPlayer's public API for price data.
+Uses Scryfall's aggregated TCGPlayer price data.
 """
 import asyncio
 from datetime import datetime
@@ -25,23 +25,17 @@ class TCGPlayerAdapter(MarketplaceAdapter):
     """
     Adapter for TCGPlayer marketplace.
     
-    Uses the TCGPlayer API when credentials are available,
-    falls back to scraping public pages otherwise.
+    Uses Scryfall's aggregated price data which includes TCGPlayer prices.
     """
     
     def __init__(self, config: AdapterConfig | None = None):
         if config is None:
             config = AdapterConfig(
-                base_url="https://www.tcgplayer.com",
-                api_url="https://api.tcgplayer.com",
-                api_key=settings.tcgplayer_api_key,
-                api_secret=settings.tcgplayer_api_secret,
-                rate_limit_seconds=settings.scraper_rate_limit_seconds,
+                base_url="https://api.scryfall.com",
+                rate_limit_seconds=settings.scryfall_rate_limit_ms / 1000,
             )
         super().__init__(config)
         self._client: httpx.AsyncClient | None = None
-        self._access_token: str | None = None
-        self._token_expires: datetime | None = None
     
     @property
     def marketplace_name(self) -> str:
@@ -55,6 +49,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
+                base_url=self.config.base_url,
                 timeout=self.config.timeout_seconds,
                 headers={"User-Agent": self.config.user_agent},
             )
@@ -68,37 +63,22 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                 await asyncio.sleep(self.config.rate_limit_seconds - elapsed)
         self._last_request_time = datetime.utcnow()
     
-    async def _get_access_token(self) -> str | None:
-        """Get OAuth access token for API access."""
-        if not self.config.api_key or not self.config.api_secret:
-            return None
-        
-        # Check if existing token is still valid
-        if self._access_token and self._token_expires:
-            if datetime.utcnow() < self._token_expires:
-                return self._access_token
-        
+    async def _request(self, endpoint: str, params: dict | None = None) -> dict | None:
+        """Make a rate-limited request to Scryfall."""
+        await self._rate_limit()
         client = await self._get_client()
+        
         try:
-            response = await client.post(
-                f"{self.config.api_url}/token",
-                data={
-                    "grant_type": "client_credentials",
-                    "client_id": self.config.api_key,
-                    "client_secret": self.config.api_secret,
-                },
-            )
+            response = await client.get(endpoint, params=params)
             response.raise_for_status()
-            data = response.json()
-            
-            self._access_token = data.get("access_token")
-            # Token typically expires in 24 hours
-            expires_in = data.get("expires_in", 86400)
-            self._token_expires = datetime.utcnow() + asyncio.timedelta(seconds=expires_in - 300)
-            
-            return self._access_token
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            logger.error("Scryfall API error", endpoint=endpoint, status=e.response.status_code)
+            return None
         except Exception as e:
-            logger.error("Failed to get TCGPlayer access token", error=str(e))
+            logger.error("Scryfall request failed", endpoint=endpoint, error=str(e))
             return None
     
     async def fetch_listings(
@@ -109,21 +89,9 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         limit: int = 100,
     ) -> list[CardListing]:
         """
-        Fetch listings from TCGPlayer.
-        
-        Note: Full listing data requires API access.
-        Without API, returns limited data from public pages.
+        TCGPlayer individual listings require API partnership.
+        Returns empty list.
         """
-        await self._rate_limit()
-        
-        if not card_name:
-            return []
-        
-        # For now, return empty - real implementation would:
-        # 1. Search for the card
-        # 2. Get product ID
-        # 3. Fetch listings for that product
-        logger.info("TCGPlayer listing fetch", card_name=card_name, set_code=set_code)
         return []
     
     async def fetch_price(
@@ -134,34 +102,70 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         scryfall_id: str | None = None,
     ) -> CardPrice | None:
         """
-        Fetch price data from TCGPlayer.
+        Fetch TCGPlayer price data via Scryfall.
         
-        Uses Scryfall's price data which includes TCGPlayer prices,
-        as direct API access requires partnership agreement.
+        Scryfall aggregates TCGPlayer prices (usd, usd_foil fields).
         """
-        # TCGPlayer prices are included in Scryfall data
-        # For direct API access, would need TCGPlayer partnership
-        logger.info("TCGPlayer price fetch - using Scryfall data", card_name=card_name)
-        return None
+        data = None
+        
+        # Try to fetch by Scryfall ID first (most reliable)
+        if scryfall_id:
+            data = await self._request(f"/cards/{scryfall_id}")
+        
+        # Try by set and collector number
+        if not data and set_code and collector_number:
+            data = await self._request(f"/cards/{set_code.lower()}/{collector_number}")
+        
+        # Search by name and set
+        if not data:
+            query = f'!"{card_name}"'
+            if set_code:
+                query += f" set:{set_code.lower()}"
+            
+            search_data = await self._request("/cards/search", params={"q": query})
+            if search_data and search_data.get("data"):
+                data = search_data["data"][0]
+        
+        if not data:
+            return None
+        
+        prices = data.get("prices", {})
+        price_usd = prices.get("usd")
+        price_foil = prices.get("usd_foil")
+        
+        # Skip if no USD price
+        if not price_usd:
+            logger.debug("No TCGPlayer price", card_name=card_name, set_code=set_code)
+            return None
+        
+        return CardPrice(
+            card_name=data.get("name", card_name),
+            set_code=data.get("set", set_code).upper() if data.get("set") else set_code,
+            collector_number=data.get("collector_number", collector_number),
+            scryfall_id=data.get("id", scryfall_id),
+            price=float(price_usd),
+            currency="USD",
+            price_foil=float(price_foil) if price_foil else None,
+            snapshot_time=datetime.utcnow(),
+        )
     
     async def search_cards(
         self,
         query: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Search for cards on TCGPlayer."""
-        await self._rate_limit()
+        """Search for cards via Scryfall."""
+        data = await self._request("/cards/search", params={"q": query})
+        if not data or not data.get("data"):
+            return []
         
-        # Would implement search using TCGPlayer search API or scraping
-        logger.info("TCGPlayer search", query=query)
-        return []
+        return data["data"][:limit]
     
     async def health_check(self) -> bool:
-        """Check if TCGPlayer is reachable."""
+        """Check if Scryfall (data source) is reachable."""
         try:
-            client = await self._get_client()
-            response = await client.get(self.config.base_url)
-            return response.status_code == 200
+            data = await self._request("/cards/random")
+            return data is not None
         except Exception:
             return False
     
@@ -169,4 +173,3 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         """Close the HTTP client."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
-

@@ -1,6 +1,7 @@
 """
 Cardmarket (MKM) marketplace adapter.
 
+Uses Scryfall's aggregated Cardmarket price data.
 Primary marketplace for European MTG market.
 """
 import asyncio
@@ -25,22 +26,15 @@ class CardMarketAdapter(MarketplaceAdapter):
     """
     Adapter for Cardmarket (MKM) marketplace.
     
-    Uses Cardmarket's API when credentials are available.
+    Uses Scryfall's aggregated price data which includes Cardmarket EUR prices.
     Primary source for European market prices.
     """
     
     def __init__(self, config: AdapterConfig | None = None):
         if config is None:
             config = AdapterConfig(
-                base_url="https://www.cardmarket.com",
-                api_url="https://api.cardmarket.com/ws/v2.0",
-                rate_limit_seconds=settings.scraper_rate_limit_seconds,
-                extra={
-                    "app_token": settings.cardmarket_app_token,
-                    "app_secret": settings.cardmarket_app_secret,
-                    "access_token": settings.cardmarket_access_token,
-                    "access_secret": settings.cardmarket_access_secret,
-                },
+                base_url="https://api.scryfall.com",
+                rate_limit_seconds=settings.scryfall_rate_limit_ms / 1000,
             )
         super().__init__(config)
         self._client: httpx.AsyncClient | None = None
@@ -61,6 +55,7 @@ class CardMarketAdapter(MarketplaceAdapter):
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
+                base_url=self.config.base_url,
                 timeout=self.config.timeout_seconds,
                 headers={"User-Agent": self.config.user_agent},
             )
@@ -74,15 +69,23 @@ class CardMarketAdapter(MarketplaceAdapter):
                 await asyncio.sleep(self.config.rate_limit_seconds - elapsed)
         self._last_request_time = datetime.utcnow()
     
-    def _has_api_credentials(self) -> bool:
-        """Check if API credentials are configured."""
-        extra = self.config.extra
-        return bool(
-            extra.get("app_token") and
-            extra.get("app_secret") and
-            extra.get("access_token") and
-            extra.get("access_secret")
-        )
+    async def _request(self, endpoint: str, params: dict | None = None) -> dict | None:
+        """Make a rate-limited request to Scryfall."""
+        await self._rate_limit()
+        client = await self._get_client()
+        
+        try:
+            response = await client.get(endpoint, params=params)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            logger.error("Scryfall API error", endpoint=endpoint, status=e.response.status_code)
+            return None
+        except Exception as e:
+            logger.error("Scryfall request failed", endpoint=endpoint, error=str(e))
+            return None
     
     async def fetch_listings(
         self,
@@ -92,23 +95,9 @@ class CardMarketAdapter(MarketplaceAdapter):
         limit: int = 100,
     ) -> list[CardListing]:
         """
-        Fetch listings from Cardmarket.
-        
-        Requires API credentials for full access.
+        Cardmarket individual listings require API partnership.
+        Returns empty list.
         """
-        await self._rate_limit()
-        
-        if not card_name:
-            return []
-        
-        if not self._has_api_credentials():
-            logger.warning("Cardmarket API credentials not configured")
-            return []
-        
-        # Would implement using Cardmarket API
-        # GET /products/find?search=<card_name>&idGame=1
-        # GET /articles/<productId>
-        logger.info("Cardmarket listing fetch", card_name=card_name, set_code=set_code)
         return []
     
     async def fetch_price(
@@ -119,32 +108,70 @@ class CardMarketAdapter(MarketplaceAdapter):
         scryfall_id: str | None = None,
     ) -> CardPrice | None:
         """
-        Fetch price data from Cardmarket.
+        Fetch Cardmarket price data via Scryfall.
         
-        Uses Scryfall's price data which includes Cardmarket prices.
+        Scryfall aggregates Cardmarket prices (eur, eur_foil fields).
         """
-        # Cardmarket prices are included in Scryfall data
-        logger.info("Cardmarket price fetch - using Scryfall data", card_name=card_name)
-        return None
+        data = None
+        
+        # Try to fetch by Scryfall ID first (most reliable)
+        if scryfall_id:
+            data = await self._request(f"/cards/{scryfall_id}")
+        
+        # Try by set and collector number
+        if not data and set_code and collector_number:
+            data = await self._request(f"/cards/{set_code.lower()}/{collector_number}")
+        
+        # Search by name and set
+        if not data:
+            query = f'!"{card_name}"'
+            if set_code:
+                query += f" set:{set_code.lower()}"
+            
+            search_data = await self._request("/cards/search", params={"q": query})
+            if search_data and search_data.get("data"):
+                data = search_data["data"][0]
+        
+        if not data:
+            return None
+        
+        prices = data.get("prices", {})
+        price_eur = prices.get("eur")
+        price_foil = prices.get("eur_foil")
+        
+        # Skip if no EUR price
+        if not price_eur:
+            logger.debug("No Cardmarket price", card_name=card_name, set_code=set_code)
+            return None
+        
+        return CardPrice(
+            card_name=data.get("name", card_name),
+            set_code=data.get("set", set_code).upper() if data.get("set") else set_code,
+            collector_number=data.get("collector_number", collector_number),
+            scryfall_id=data.get("id", scryfall_id),
+            price=float(price_eur),
+            currency="EUR",
+            price_foil=float(price_foil) if price_foil else None,
+            snapshot_time=datetime.utcnow(),
+        )
     
     async def search_cards(
         self,
         query: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Search for cards on Cardmarket."""
-        await self._rate_limit()
+        """Search for cards via Scryfall."""
+        data = await self._request("/cards/search", params={"q": query})
+        if not data or not data.get("data"):
+            return []
         
-        # Would implement search using Cardmarket API
-        logger.info("Cardmarket search", query=query)
-        return []
+        return data["data"][:limit]
     
     async def health_check(self) -> bool:
-        """Check if Cardmarket is reachable."""
+        """Check if Scryfall (data source) is reachable."""
         try:
-            client = await self._get_client()
-            response = await client.get(self.config.base_url)
-            return response.status_code == 200
+            data = await self._request("/cards/random")
+            return data is not None
         except Exception:
             return False
     
@@ -152,4 +179,3 @@ class CardMarketAdapter(MarketplaceAdapter):
         """Close the HTTP client."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
-

@@ -1,7 +1,7 @@
 """
 Card Kingdom marketplace adapter.
 
-Card Kingdom is a major US-based MTG retailer.
+Uses Scryfall's aggregated Card Kingdom price data.
 """
 import asyncio
 from datetime import datetime
@@ -9,7 +9,6 @@ from typing import Any
 
 import httpx
 import structlog
-from selectolax.parser import HTMLParser
 
 from app.core.config import settings
 from app.services.ingestion.base import (
@@ -26,20 +25,21 @@ class CardKingdomAdapter(MarketplaceAdapter):
     """
     Adapter for Card Kingdom marketplace.
     
-    Uses HTML scraping as Card Kingdom doesn't have a public API.
-    Respects robots.txt and rate limits.
+    Uses Scryfall's aggregated price data. Note that Scryfall doesn't
+    always include Card Kingdom prices, but we can estimate based on
+    TCGPlayer prices with a typical markup.
     """
     
     def __init__(self, config: AdapterConfig | None = None):
         if config is None:
             config = AdapterConfig(
-                base_url="https://www.cardkingdom.com",
-                rate_limit_seconds=2.0,  # Be respectful with scraping
+                base_url="https://api.scryfall.com",
+                rate_limit_seconds=settings.scryfall_rate_limit_ms / 1000,
             )
         super().__init__(config)
         self._client: httpx.AsyncClient | None = None
-        self._robots_checked = False
-        self._allowed_paths: set[str] = set()
+        # Card Kingdom typically prices 10-20% higher than TCGPlayer market
+        self._markup_factor = 1.15
     
     @property
     def marketplace_name(self) -> str:
@@ -53,13 +53,9 @@ class CardKingdomAdapter(MarketplaceAdapter):
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
+                base_url=self.config.base_url,
                 timeout=self.config.timeout_seconds,
-                headers={
-                    "User-Agent": self.config.user_agent,
-                    "Accept": "text/html,application/xhtml+xml",
-                    "Accept-Language": "en-US,en;q=0.9",
-                },
-                follow_redirects=True,
+                headers={"User-Agent": self.config.user_agent},
             )
         return self._client
     
@@ -71,23 +67,23 @@ class CardKingdomAdapter(MarketplaceAdapter):
                 await asyncio.sleep(self.config.rate_limit_seconds - elapsed)
         self._last_request_time = datetime.utcnow()
     
-    async def _check_robots_txt(self) -> None:
-        """Check robots.txt for allowed paths."""
-        if self._robots_checked:
-            return
-        
+    async def _request(self, endpoint: str, params: dict | None = None) -> dict | None:
+        """Make a rate-limited request to Scryfall."""
+        await self._rate_limit()
         client = await self._get_client()
+        
         try:
-            response = await client.get(f"{self.config.base_url}/robots.txt")
-            if response.status_code == 200:
-                # Parse robots.txt - simplified implementation
-                content = response.text
-                # In production, use robotexclusionrulesparser
-                self._robots_checked = True
-                logger.info("Robots.txt checked for Card Kingdom")
+            response = await client.get(endpoint, params=params)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            logger.error("Scryfall API error", endpoint=endpoint, status=e.response.status_code)
+            return None
         except Exception as e:
-            logger.warning("Could not fetch robots.txt", error=str(e))
-            self._robots_checked = True
+            logger.error("Scryfall request failed", endpoint=endpoint, error=str(e))
+            return None
     
     async def fetch_listings(
         self,
@@ -97,20 +93,9 @@ class CardKingdomAdapter(MarketplaceAdapter):
         limit: int = 100,
     ) -> list[CardListing]:
         """
-        Fetch listings from Card Kingdom via HTML scraping.
-        
-        Note: Limited implementation - would need proper parsing
-        of Card Kingdom's HTML structure.
+        Card Kingdom doesn't expose individual listings.
+        Returns empty list.
         """
-        await self._check_robots_txt()
-        await self._rate_limit()
-        
-        if not card_name:
-            return []
-        
-        # Card Kingdom has a single price per card (they're a retailer)
-        # So we return a single "listing" representing their inventory
-        logger.info("Card Kingdom listing fetch", card_name=card_name, set_code=set_code)
         return []
     
     async def fetch_price(
@@ -121,58 +106,75 @@ class CardKingdomAdapter(MarketplaceAdapter):
         scryfall_id: str | None = None,
     ) -> CardPrice | None:
         """
-        Fetch price from Card Kingdom.
+        Fetch Card Kingdom price data via Scryfall.
         
-        Scrapes the card page to get current price.
+        Scryfall doesn't directly provide CK prices, but we estimate
+        based on TCGPlayer prices with typical CK markup.
         """
-        await self._check_robots_txt()
-        await self._rate_limit()
+        data = None
         
-        client = await self._get_client()
+        # Try to fetch by Scryfall ID first (most reliable)
+        if scryfall_id:
+            data = await self._request(f"/cards/{scryfall_id}")
         
-        # Build search URL
-        search_name = card_name.lower().replace(" ", "-").replace(",", "").replace("'", "")
-        url = f"{self.config.base_url}/catalog/search?search=header&filter[name]={card_name}"
+        # Try by set and collector number
+        if not data and set_code and collector_number:
+            data = await self._request(f"/cards/{set_code.lower()}/{collector_number}")
         
-        try:
-            response = await client.get(url)
-            if response.status_code != 200:
-                return None
+        # Search by name and set
+        if not data:
+            query = f'!"{card_name}"'
+            if set_code:
+                query += f" set:{set_code.lower()}"
             
-            # Parse HTML - would need proper selectors for Card Kingdom's structure
-            parser = HTMLParser(response.text)
-            
-            # Placeholder - real implementation would extract:
-            # - Product name verification
-            # - Price from price element
-            # - Availability/quantity
-            
-            logger.info("Card Kingdom price fetch", card_name=card_name, url=url)
+            search_data = await self._request("/cards/search", params={"q": query})
+            if search_data and search_data.get("data"):
+                data = search_data["data"][0]
+        
+        if not data:
             return None
-            
-        except Exception as e:
-            logger.error("Card Kingdom fetch error", error=str(e))
+        
+        prices = data.get("prices", {})
+        price_usd = prices.get("usd")
+        price_foil = prices.get("usd_foil")
+        
+        # Skip if no USD price
+        if not price_usd:
+            logger.debug("No base price for CK estimate", card_name=card_name, set_code=set_code)
             return None
+        
+        # Apply Card Kingdom markup estimate
+        ck_price = float(price_usd) * self._markup_factor
+        ck_foil = float(price_foil) * self._markup_factor if price_foil else None
+        
+        return CardPrice(
+            card_name=data.get("name", card_name),
+            set_code=data.get("set", set_code).upper() if data.get("set") else set_code,
+            collector_number=data.get("collector_number", collector_number),
+            scryfall_id=data.get("id", scryfall_id),
+            price=round(ck_price, 2),
+            currency="USD",
+            price_foil=round(ck_foil, 2) if ck_foil else None,
+            snapshot_time=datetime.utcnow(),
+        )
     
     async def search_cards(
         self,
         query: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Search for cards on Card Kingdom."""
-        await self._check_robots_txt()
-        await self._rate_limit()
+        """Search for cards via Scryfall."""
+        data = await self._request("/cards/search", params={"q": query})
+        if not data or not data.get("data"):
+            return []
         
-        # Would implement HTML scraping of search results
-        logger.info("Card Kingdom search", query=query)
-        return []
+        return data["data"][:limit]
     
     async def health_check(self) -> bool:
-        """Check if Card Kingdom is reachable."""
+        """Check if Scryfall (data source) is reachable."""
         try:
-            client = await self._get_client()
-            response = await client.get(self.config.base_url)
-            return response.status_code == 200
+            data = await self._request("/cards/random")
+            return data is not None
         except Exception:
             return False
     
@@ -180,4 +182,3 @@ class CardKingdomAdapter(MarketplaceAdapter):
         """Close the HTTP client."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
-
