@@ -17,7 +17,7 @@ import {
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { LoadingPage, LoadingSpinner } from '@/components/ui/Loading';
+import { LoadingPage, Loading } from '@/components/ui/Loading';
 import { InventoryImportModal } from '@/components/inventory/InventoryImportModal';
 import { InventoryItemCard } from '@/components/inventory/InventoryItemCard';
 import { InventoryRecommendationCard } from '@/components/inventory/InventoryRecommendationCard';
@@ -100,7 +100,7 @@ export default function InventoryPage() {
             disabled={refreshMutation.isPending}
           >
             {refreshMutation.isPending ? (
-              <LoadingSpinner className="w-4 h-4 mr-1" />
+              <Loading size="sm" className="mr-1" />
             ) : (
               <RefreshCw className="w-4 h-4 mr-1" />
             )}
@@ -113,7 +113,7 @@ export default function InventoryPage() {
             disabled={runRecsMutation.isPending}
           >
             {runRecsMutation.isPending ? (
-              <LoadingSpinner className="w-4 h-4 mr-1" />
+              <Loading size="sm" className="mr-1" />
             ) : (
               <Zap className="w-4 h-4 mr-1" />
             )}
