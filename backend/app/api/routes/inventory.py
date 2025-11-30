@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models import Card, InventoryItem, InventoryRecommendation, MetricsCardsDaily
+from pydantic import BaseModel
 from app.schemas.inventory import (
     InventoryImportRequest,
     InventoryImportResponse,
@@ -30,6 +31,10 @@ from app.schemas.inventory import (
     InventoryUrgency,
     ActionType,
 )
+
+
+class RunRecommendationsRequest(BaseModel):
+    item_ids: Optional[list[int]] = None
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -936,7 +941,7 @@ async def refresh_inventory_valuations(
 
 @router.post("/run-recommendations")
 async def run_inventory_recommendations(
-    item_ids: Optional[list[int]] = None,
+    request: Optional[RunRecommendationsRequest] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -947,6 +952,7 @@ async def run_inventory_recommendations(
     from app.services.agents.inventory_recommendation import InventoryRecommendationAgent
     
     agent = InventoryRecommendationAgent(db)
+    item_ids = request.item_ids if request else None
     result = await agent.run_inventory_recommendations(item_ids)
     
     return result
