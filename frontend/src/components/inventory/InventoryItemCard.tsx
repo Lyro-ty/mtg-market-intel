@@ -47,11 +47,9 @@ export function InventoryItemCard({ item, onClick }: InventoryItemCardProps) {
   const isProfit = profitLoss !== null && profitLoss >= 0;
   
   return (
-    <Card 
-      className="group hover:border-amber-500/50 transition-all cursor-pointer"
-      onClick={onClick}
-    >
-      <CardContent className="p-0">
+    <div onClick={onClick} className={onClick ? 'cursor-pointer' : ''}>
+      <Card className="group hover:border-amber-500/50 transition-all">
+        <CardContent className="p-0">
         <div className="flex gap-4 p-4">
           {/* Card Image */}
           <Link href={`/cards/${item.card_id}`} className="shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -152,6 +150,7 @@ export function InventoryItemCard({ item, onClick }: InventoryItemCardProps) {
           </div>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+    </div>
   );
 }
