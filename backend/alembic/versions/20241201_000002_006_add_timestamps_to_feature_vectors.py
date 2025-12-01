@@ -1,6 +1,6 @@
 """Add timestamps to feature vector tables
 
-Revision ID: 006_add_timestamps_to_feature_vectors
+Revision ID: 006_feature_vectors_ts
 Revises: 005_feature_vectors
 Create Date: 2024-12-01
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '006_add_timestamps_to_feature_vectors'
+revision: str = '006_feature_vectors_ts'
 down_revision: Union[str, None] = '005_feature_vectors'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
