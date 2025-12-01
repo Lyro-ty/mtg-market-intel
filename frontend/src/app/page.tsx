@@ -440,7 +440,7 @@ function TopMoverItem({
         <p className="font-medium text-[rgb(var(--foreground))]">{mover.cardName}</p>
         <div className="flex items-center gap-2 mt-1">
           <p className="text-xs text-[rgb(var(--muted-foreground))]">{mover.setCode}</p>
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="default" className="text-xs">
             {mover.format}
           </Badge>
         </div>
