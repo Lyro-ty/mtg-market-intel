@@ -42,21 +42,25 @@ function InventoryPageContent() {
   const queryClient = useQueryClient();
   
   // Fetch inventory data
+  // Refetch every 15 minutes to match inventory scrape interval
   const { data: inventoryData, isLoading: inventoryLoading } = useQuery({
     queryKey: ['inventory', page],
     queryFn: () => getInventory({ page, pageSize: 20 }),
+    refetchInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
   });
   
   // Fetch analytics
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
     queryKey: ['inventory-analytics'],
     queryFn: getInventoryAnalytics,
+    refetchInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
   });
   
   // Fetch recommendations
   const { data: recommendations, isLoading: recsLoading } = useQuery({
     queryKey: ['inventory-recommendations', recPage],
     queryFn: () => getInventoryRecommendations({ page: recPage, pageSize: 20 }),
+    refetchInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
   });
   
   // Mutations

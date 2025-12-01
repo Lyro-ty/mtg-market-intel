@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc, and_, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import (
     Card,
@@ -128,34 +129,51 @@ async def get_market_index(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get market index data for charting.
+    Get market index data for charting using time-bucketed price snapshots.
     
     The market index is a normalized aggregate of card prices over time.
+    Uses price snapshots grouped by time intervals (30 minutes for recent data,
+    larger buckets for longer ranges to avoid too many data points).
     """
-    # Determine date range
+    settings = get_settings()
+    scrape_interval_minutes = settings.scrape_interval_minutes
+    
+    # Determine date range and bucket size
     now = datetime.utcnow()
     if range == "7d":
         start_date = now - timedelta(days=7)
+        bucket_minutes = scrape_interval_minutes  # 30 minutes
     elif range == "30d":
         start_date = now - timedelta(days=30)
+        bucket_minutes = 60  # 1 hour buckets for 30 days
     elif range == "90d":
         start_date = now - timedelta(days=90)
+        bucket_minutes = 240  # 4 hour buckets for 90 days
     else:  # 1y
         start_date = now - timedelta(days=365)
+        bucket_minutes = 1440  # Daily buckets for 1 year
     
-    # Get daily average prices across all cards
-    # This creates a market index by averaging card prices each day
+    # Get time-bucketed average prices from price snapshots
+    # Use epoch-based bucketing for flexible intervals
+    bucket_seconds = bucket_minutes * 60
+    
+    # Create bucket expression: floor(epoch / bucket_seconds) * bucket_seconds, then convert back to timestamp
+    bucket_expr = func.to_timestamp(
+        func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
+    )
+    
     query = select(
-        func.date(MetricsCardsDaily.date).label("date"),
-        func.avg(MetricsCardsDaily.avg_price).label("avg_price"),
-        func.count(func.distinct(MetricsCardsDaily.card_id)).label("card_count"),
+        bucket_expr.label("bucket_time"),
+        func.avg(PriceSnapshot.price).label("avg_price"),
+        func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
     ).where(
-        MetricsCardsDaily.date >= start_date.date(),
-        MetricsCardsDaily.avg_price.isnot(None),
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.price.isnot(None),
+        PriceSnapshot.price > 0,
     ).group_by(
-        func.date(MetricsCardsDaily.date)
+        bucket_expr
     ).order_by(
-        func.date(MetricsCardsDaily.date)
+        bucket_expr
     )
     
     result = await db.execute(query)
@@ -165,9 +183,17 @@ async def get_market_index(
         # Return mock data if no real data available
         points = []
         base_value = 100.0
-        for i in range(7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))):
-            date = start_date + timedelta(days=i)
-            # Simulate small variations
+        num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
+        if range == "7d":
+            # For 7d, create points every 30 minutes
+            num_points = 7 * 24 * 2  # 7 days * 24 hours * 2 (30-min intervals)
+        elif range == "30d":
+            num_points = 30 * 24  # 30 days * 24 hours
+        elif range == "90d":
+            num_points = 90 * 6  # 90 days * 6 (4-hour intervals)
+        
+        for i in range(min(num_points, 1000)):  # Cap at 1000 points
+            date = start_date + timedelta(minutes=i * bucket_minutes)
             value = base_value + (i % 10 - 5) * 0.5
             points.append({
                 "timestamp": date.isoformat(),
@@ -191,8 +217,16 @@ async def get_market_index(
             # Normalize to base 100
             index_value = (float(row.avg_price) / base_value) * 100.0
             
+            # bucket_time is already a datetime from PostgreSQL
+            bucket_dt = row.bucket_time
+            if isinstance(bucket_dt, datetime):
+                timestamp_str = bucket_dt.isoformat()
+            else:
+                # Fallback if it's a string or other type
+                timestamp_str = str(bucket_dt)
+            
             points.append({
-                "timestamp": row.date.isoformat() if isinstance(row.date, datetime) else str(row.date),
+                "timestamp": timestamp_str,
                 "indexValue": round(index_value, 2),
             })
     
@@ -335,26 +369,46 @@ async def get_volume_by_format(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get trading volume grouped by format over time.
+    Get trading volume grouped by format over time using time-bucketed price snapshots.
     """
+    settings = get_settings()
+    scrape_interval_minutes = settings.scrape_interval_minutes
+    
     start_date = datetime.utcnow() - timedelta(days=days)
     
-    # Get cards with legalities and their metrics
+    # Determine bucket size based on days
+    if days <= 7:
+        bucket_minutes = scrape_interval_minutes  # 30 minutes
+    elif days <= 30:
+        bucket_minutes = 60  # 1 hour
+    elif days <= 90:
+        bucket_minutes = 240  # 4 hours
+    else:
+        bucket_minutes = 1440  # Daily
+    
+    bucket_seconds = bucket_minutes * 60
+    
+    # Create bucket expression for time bucketing
+    bucket_expr = func.to_timestamp(
+        func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
+    )
+    
+    # Get cards with legalities and their price snapshots, grouped by time bucket
     query = select(
         Card.legalities,
-        MetricsCardsDaily.date,
-        func.sum(MetricsCardsDaily.total_listings * MetricsCardsDaily.avg_price).label("volume"),
+        bucket_expr.label("bucket_time"),
+        func.sum(PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)).label("volume"),
     ).join(
-        MetricsCardsDaily, Card.id == MetricsCardsDaily.card_id
+        PriceSnapshot, Card.id == PriceSnapshot.card_id
     ).where(
-        MetricsCardsDaily.date >= start_date.date(),
-        MetricsCardsDaily.avg_price.isnot(None),
-        MetricsCardsDaily.total_listings.isnot(None),
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.price.isnot(None),
+        PriceSnapshot.price > 0,
         Card.legalities.isnot(None),
         Card.legalities != "",
     ).group_by(
         Card.legalities,
-        MetricsCardsDaily.date
+        bucket_expr
     )
     
     result = await db.execute(query)
@@ -368,7 +422,7 @@ async def get_volume_by_format(
             "isMockData": True,
         }
     
-    # Group by format and date
+    # Group by format and time bucket
     format_data = {}
     
     for row in rows:
@@ -378,7 +432,13 @@ async def get_volume_by_format(
         try:
             legalities = json.loads(row.legalities)
             volume = float(row.volume) if row.volume else 0.0
-            date_str = row.date.isoformat() if isinstance(row.date, datetime) else str(row.date)
+            
+            # Get timestamp string
+            bucket_dt = row.bucket_time
+            if isinstance(bucket_dt, datetime):
+                timestamp_str = bucket_dt.isoformat()
+            else:
+                timestamp_str = str(bucket_dt)
             
             # Distribute volume across all formats where card is legal
             legal_formats = [fmt for fmt, status in legalities.items() if status == "legal"]
@@ -388,18 +448,18 @@ async def get_volume_by_format(
                 for fmt in legal_formats:
                     if fmt not in format_data:
                         format_data[fmt] = {}
-                    if date_str not in format_data[fmt]:
-                        format_data[fmt][date_str] = 0.0
-                    format_data[fmt][date_str] += volume_per_format
+                    if timestamp_str not in format_data[fmt]:
+                        format_data[fmt][timestamp_str] = 0.0
+                    format_data[fmt][timestamp_str] += volume_per_format
         except (json.JSONDecodeError, TypeError):
             continue
     
     # Convert to array format
     formats = []
-    for format_name, dates in format_data.items():
+    for format_name, timestamps in format_data.items():
         points = [
-            {"timestamp": date, "volume": round(vol, 2)}
-            for date, vol in sorted(dates.items())
+            {"timestamp": ts, "volume": round(vol, 2)}
+            for ts, vol in sorted(timestamps.items())
         ]
         formats.append({
             "format": format_name,
@@ -516,10 +576,10 @@ async def get_color_distribution(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get color/archetype distribution by format.
+    Get color/archetype distribution by format using price snapshots.
     
     Returns a matrix showing the share of volume for each color identity
-    within each format.
+    within each format, aggregated across the time window.
     """
     # Determine time window
     if window == "7d":
@@ -527,17 +587,18 @@ async def get_color_distribution(
     else:  # 30d
         start_date = datetime.utcnow() - timedelta(days=30)
     
-    # Get cards with color identity and their metrics
+    # Get cards with color identity and their price snapshots
+    # Aggregate volume across all snapshots in the time window
     query = select(
         Card.color_identity,
         Card.legalities,
-        func.sum(MetricsCardsDaily.total_listings * MetricsCardsDaily.avg_price).label("volume"),
+        func.sum(PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)).label("volume"),
     ).join(
-        MetricsCardsDaily, Card.id == MetricsCardsDaily.card_id
+        PriceSnapshot, Card.id == PriceSnapshot.card_id
     ).where(
-        MetricsCardsDaily.date >= start_date.date(),
-        MetricsCardsDaily.avg_price.isnot(None),
-        MetricsCardsDaily.total_listings.isnot(None),
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.price.isnot(None),
+        PriceSnapshot.price > 0,
         Card.color_identity.isnot(None),
         Card.color_identity != "",
         Card.legalities.isnot(None),

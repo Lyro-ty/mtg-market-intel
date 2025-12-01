@@ -47,10 +47,17 @@ export function VolumeByFormatChart({
 
   const sortedDates = Array.from(allDates).sort();
 
+  // Determine if we have high-frequency data
+  const isHighFrequency = sortedDates.length > 50;
+  
   const chartData = sortedDates.map((timestamp) => {
     const date = new Date(timestamp);
+    // Use more detailed format for higher frequency data
+    const dateFormat = isHighFrequency 
+      ? format(date, 'MMM d HH:mm')
+      : format(date, 'MMM d');
     const point: Record<string, string | number> = {
-      date: format(date, 'MMM d'),
+      date: dateFormat,
       fullDate: timestamp,
     };
 
@@ -126,6 +133,7 @@ export function VolumeByFormatChart({
                 angle={-45}
                 textAnchor="end"
                 height={60}
+                interval={isHighFrequency ? Math.floor(sortedDates.length / 10) : 0}
               />
               <YAxis
                 stroke="rgb(var(--muted-foreground))"

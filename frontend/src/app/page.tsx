@@ -25,33 +25,39 @@ export default function DashboardPage() {
   const [colorWindow, setColorWindow] = useState<'7d' | '30d'>('7d');
 
   // Market Overview Stats
+  // Refetch every 30 minutes to match scrape interval
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ['market-overview'],
     queryFn: getMarketOverview,
+    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
   });
 
   // Market Index Chart
   const { data: marketIndex, isLoading: indexLoading } = useQuery({
     queryKey: ['market-index', marketIndexRange],
     queryFn: () => getMarketIndex(marketIndexRange),
+    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
   });
 
   // Top Movers (24h)
   const { data: topMovers, isLoading: moversLoading } = useQuery({
     queryKey: ['top-movers', '24h'],
     queryFn: () => getTopMovers('24h'),
+    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
   });
 
   // Volume by Format
   const { data: volumeByFormat, isLoading: volumeLoading } = useQuery({
     queryKey: ['volume-by-format', 30],
     queryFn: () => getVolumeByFormat(30),
+    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
   });
 
   // Color Distribution
   const { data: colorDistribution, isLoading: colorLoading } = useQuery({
     queryKey: ['color-distribution', colorWindow],
     queryFn: () => getColorDistribution(colorWindow),
+    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
   });
 
   const isLoading = overviewLoading || indexLoading || moversLoading || volumeLoading || colorLoading;

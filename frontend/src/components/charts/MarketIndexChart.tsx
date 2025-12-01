@@ -47,16 +47,21 @@ export function MarketIndexChart({
   // Transform data for chart
   const chartData = data.points.map((point) => {
     const date = new Date(point.timestamp);
+    // Use more detailed format for higher frequency data
+    // If we have many points (more than 50), show time as well
+    const dateFormat = data.points.length > 50 
+      ? format(date, 'MMM d HH:mm')
+      : format(date, 'MMM d');
     return {
-      date: format(date, 'MMM d'),
+      date: dateFormat,
       fullDate: point.timestamp,
       index: point.indexValue,
-      // Calculate % change from previous day if available
+      // Calculate % change from previous point
       change: null as number | null,
     };
   });
 
-  // Calculate day-over-day change
+  // Calculate change from previous point
   for (let i = 1; i < chartData.length; i++) {
     const prev = chartData[i - 1].index;
     const curr = chartData[i].index;
@@ -127,6 +132,7 @@ export function MarketIndexChart({
                 angle={-45}
                 textAnchor="end"
                 height={60}
+                interval={data.points.length > 50 ? Math.floor(data.points.length / 10) : 0}
               />
               <YAxis
                 stroke="rgb(var(--muted-foreground))"
