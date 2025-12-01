@@ -387,3 +387,55 @@ export interface InventoryRecommendationList {
   hold_count: number;
 }
 
+// Market types
+export interface MarketOverview {
+  totalCardsTracked: number;
+  totalListings: number | null;
+  volume24hUsd: number;
+  avgPriceChange24hPct: number | null;
+  activeFormatsTracked: number;
+}
+
+export interface MarketIndexPoint {
+  timestamp: string;
+  indexValue: number;
+}
+
+export interface MarketIndex {
+  range: '7d' | '30d' | '90d' | '1y';
+  points: MarketIndexPoint[];
+  isMockData?: boolean;
+}
+
+export interface TopMover {
+  cardName: string;
+  setCode: string;
+  format: string;
+  currentPriceUsd: number;
+  changePct: number;
+  volume: number;
+}
+
+export interface TopMovers {
+  window: '24h' | '7d';
+  gainers: TopMover[];
+  losers: TopMover[];
+  isMockData?: boolean;
+}
+
+export interface VolumeByFormatPoint {
+  timestamp: string;
+  volume: number;
+}
+
+export interface FormatVolume {
+  format: string;
+  data: VolumeByFormatPoint[];
+}
+
+export interface VolumeByFormat {
+  days: number;
+  formats: FormatVolume[];
+  isMockData?: boolean;
+}
+

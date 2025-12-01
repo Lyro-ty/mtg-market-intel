@@ -27,6 +27,10 @@ import type {
   LoginCredentials,
   RegisterData,
   AuthToken,
+  MarketOverview,
+  MarketIndex,
+  TopMovers,
+  VolumeByFormat,
 } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -445,6 +449,29 @@ export async function runInventoryRecommendations(itemIds?: number[]): Promise<{
     method: 'POST',
     body: JSON.stringify(itemIds ? { item_ids: itemIds } : {}),
   }, true);
+}
+
+// Market API
+export async function getMarketOverview(): Promise<MarketOverview> {
+  return fetchApi('/market/overview');
+}
+
+export async function getMarketIndex(
+  range: '7d' | '30d' | '90d' | '1y' = '7d'
+): Promise<MarketIndex> {
+  return fetchApi(`/market/index?range=${range}`);
+}
+
+export async function getTopMovers(
+  window: '24h' | '7d' = '24h'
+): Promise<TopMovers> {
+  return fetchApi(`/market/top-movers?window=${window}`);
+}
+
+export async function getVolumeByFormat(
+  days: number = 30
+): Promise<VolumeByFormat> {
+  return fetchApi(`/market/volume-by-format?days=${days}`);
 }
 
 // Export error class for use in components
