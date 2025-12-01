@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc, and_, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import get_dashboard_cache
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import (
@@ -21,6 +22,7 @@ from app.models import (
 from app.schemas.dashboard import TopCard
 
 router = APIRouter()
+cache = get_dashboard_cache()
 
 
 @router.get("/overview")
@@ -32,6 +34,12 @@ async def get_market_overview(
     
     Returns key market metrics for the dashboard stats strip.
     """
+    # Check cache first
+    cache_key = "market:overview"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
     # Total cards tracked
     total_cards = await db.scalar(select(func.count(Card.id))) or 0
     
@@ -76,24 +84,18 @@ async def get_market_overview(
         if row and row.avg_change:
             avg_price_change_24h = float(row.avg_change)
     
-    # Active formats tracked - count unique formats from card legalities
-    # Parse legalities JSON to count formats where card is legal
-    # For now, we'll use a simple count of cards with legalities data
-    # In a real implementation, you'd parse the JSON and count unique formats
-    cards_with_legalities = await db.scalar(
-        select(func.count(Card.id)).where(
-            Card.legalities.isnot(None),
-            Card.legalities != ""
-        )
-    ) or 0
+    # Active formats tracked - use a more efficient approach
+    # Instead of parsing 1000 cards, use a smaller sample and cache the result
+    # Common formats we track
+    COMMON_FORMATS = ["Standard", "Modern", "Legacy", "Vintage", "Commander", "Pioneer", "Pauper", "Historic", "Brawl", "Alchemy"]
     
-    # Estimate active formats by parsing a sample of legalities
-    # This is a simplified approach - in production you'd want to cache this
+    # Count formats by checking if any card is legal in each format
+    # Use a more efficient query that checks for format existence
     sample_cards = await db.execute(
         select(Card.legalities).where(
             Card.legalities.isnot(None),
             Card.legalities != ""
-        ).limit(1000)
+        ).limit(100)  # Reduced from 1000 to 100 for faster parsing
     )
     
     formats_set = set()
@@ -105,22 +107,28 @@ async def get_market_overview(
                 for format_name, status in legalities.items():
                     if status in ["legal", "restricted"]:
                         formats_set.add(format_name)
+                        # Early exit if we've found all common formats
+                        if len(formats_set) >= len(COMMON_FORMATS):
+                            break
             except (json.JSONDecodeError, TypeError):
                 continue
+        if len(formats_set) >= len(COMMON_FORMATS):
+            break
     
-    active_formats_tracked = len(formats_set) if formats_set else 0
+    active_formats_tracked = len(formats_set) if formats_set else len(COMMON_FORMATS)
     
-    # If we couldn't determine formats, use a default estimate
-    if active_formats_tracked == 0:
-        active_formats_tracked = 10  # Common formats: Standard, Modern, Legacy, Vintage, Commander, etc.
-    
-    return {
+    result = {
         "totalCardsTracked": total_cards,
         "totalListings": int(total_listings),
         "volume24hUsd": float(volume_24h),
         "avgPriceChange24hPct": avg_price_change_24h,
         "activeFormatsTracked": active_formats_tracked,
     }
+    
+    # Cache result for 5 minutes
+    cache.set(cache_key, result, ttl=300)
+    
+    return result
 
 
 @router.get("/index")

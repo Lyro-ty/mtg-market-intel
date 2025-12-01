@@ -60,13 +60,16 @@ export default function DashboardPage() {
     refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
   });
 
-  const isLoading = overviewLoading || indexLoading || moversLoading || volumeLoading || colorLoading;
-
-  if (isLoading) return <LoadingPage />;
-
-  // Show error state if critical data fails
-  const hasError = !overview && !overviewLoading;
-  if (hasError) {
+  // Progressive loading - show content as it becomes available
+  const hasCriticalError = !overview && !overviewLoading;
+  
+  // Show loading only if we have no data at all
+  if (overviewLoading && !overview && !marketIndex && !topMovers && !volumeByFormat && !colorDistribution) {
+    return <LoadingPage />;
+  }
+  
+  // Show error state only if critical data fails after loading completes
+  if (hasCriticalError) {
     return (
       <div className="text-center py-12">
         <p className="text-red-500 mb-2">Failed to load market data</p>
@@ -88,7 +91,21 @@ export default function DashboardPage() {
       </div>
 
       {/* Market Overview Stats Strip */}
-      {overview && (
+      {overviewLoading && !overview ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-[rgb(var(--secondary))] rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-[rgb(var(--secondary))] rounded w-1/2 mb-1"></div>
+                  <div className="h-3 bg-[rgb(var(--secondary))] rounded w-2/3"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : overview ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Total Cards Tracked"
@@ -136,18 +153,44 @@ export default function DashboardPage() {
             icon={Activity}
           />
         </div>
-      )}
+      ) : null}
 
       {/* Global MTG Market Index */}
-      {marketIndex && (
+      {indexLoading && !marketIndex ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Market Index</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
+          </CardContent>
+        </Card>
+      ) : marketIndex ? (
         <MarketIndexChart
           data={marketIndex}
           onRangeChange={(range) => setMarketIndexRange(range)}
         />
-      )}
+      ) : null}
 
       {/* Top Movers: Gainers & Losers */}
-      {topMovers && (
+      {moversLoading && !topMovers ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[1, 2].map((i) => (
+            <Card key={i}>
+              <CardHeader>
+                <CardTitle>Loading...</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {[1, 2, 3].map((j) => (
+                    <div key={j} className="h-16 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : topMovers ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Top Gainers */}
           <Card>
@@ -207,20 +250,38 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
-      )}
+      ) : null}
 
       {/* Volume by Format */}
-      {volumeByFormat && (
+      {volumeLoading && !volumeByFormat ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Volume by Format</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
+          </CardContent>
+        </Card>
+      ) : volumeByFormat ? (
         <VolumeByFormatChart data={volumeByFormat} />
-      )}
+      ) : null}
 
       {/* Color Distribution */}
-      {colorDistribution && (
+      {colorLoading && !colorDistribution ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Color Distribution</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
+          </CardContent>
+        </Card>
+      ) : colorDistribution ? (
         <ColorDistributionChart
           data={colorDistribution}
           onWindowChange={(window) => setColorWindow(window)}
         />
-      )}
+      ) : null}
     </div>
   );
 }

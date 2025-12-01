@@ -7,11 +7,13 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import get_dashboard_cache
 from app.db.session import get_db
 from app.models import Card, MetricsCardsDaily, Recommendation, Marketplace, PriceSnapshot
 from app.schemas.dashboard import DashboardSummary, TopCard, MarketSpread
 
 router = APIRouter()
+cache = get_dashboard_cache()
 
 
 @router.get("/summary", response_model=DashboardSummary)
@@ -21,6 +23,12 @@ async def get_dashboard_summary(
     """
     Get dashboard summary with key metrics and top movers.
     """
+    # Check cache first
+    cache_key = "dashboard:summary"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
     # Get total counts
     total_cards = await db.scalar(select(func.count(Card.id))) or 0
     total_marketplaces = await db.scalar(
@@ -82,6 +90,11 @@ async def get_dashboard_summary(
         avg_price_change_7d=float(stats_row.avg_change_7d) if stats_row and stats_row.avg_change_7d else None,
         avg_spread_pct=float(stats_row.avg_spread) if stats_row and stats_row.avg_spread else None,
     )
+    
+    # Cache result for 5 minutes
+    cache.set(cache_key, result, ttl=300)
+    
+    return result
 
 
 async def _get_top_movers(
@@ -142,6 +155,7 @@ async def _get_highest_spreads(
     if not latest_date:
         return []
     
+    # Get top cards by spread
     query = select(MetricsCardsDaily, Card).join(
         Card, MetricsCardsDaily.card_id == Card.id
     ).where(
@@ -155,32 +169,91 @@ async def _get_highest_spreads(
     result = await db.execute(query)
     rows = result.all()
     
+    if not rows:
+        return []
+    
+    # Extract card IDs for batch query
+    card_ids = [card.id for _, card in rows]
+    
+    # Batch fetch all price snapshots for these cards in a single query
+    # Get min and max prices per card using subqueries
+    from sqlalchemy import and_
+    
+    # Get lowest price per card
+    lowest_subq = select(
+        PriceSnapshot.card_id,
+        PriceSnapshot.price,
+        Marketplace.name.label("marketplace_name"),
+        func.row_number().over(
+            partition_by=PriceSnapshot.card_id,
+            order_by=PriceSnapshot.price.asc()
+        ).label("rn")
+    ).join(
+        Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
+    ).where(
+        PriceSnapshot.card_id.in_(card_ids),
+        func.date(PriceSnapshot.snapshot_time) == latest_date,
+    ).subquery()
+    
+    lowest_query = select(
+        lowest_subq.c.card_id,
+        lowest_subq.c.price,
+        lowest_subq.c.marketplace_name,
+    ).where(lowest_subq.c.rn == 1)
+    
+    # Get highest price per card
+    highest_subq = select(
+        PriceSnapshot.card_id,
+        PriceSnapshot.price,
+        Marketplace.name.label("marketplace_name"),
+        func.row_number().over(
+            partition_by=PriceSnapshot.card_id,
+            order_by=PriceSnapshot.price.desc()
+        ).label("rn")
+    ).join(
+        Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
+    ).where(
+        PriceSnapshot.card_id.in_(card_ids),
+        func.date(PriceSnapshot.snapshot_time) == latest_date,
+    ).subquery()
+    
+    highest_query = select(
+        highest_subq.c.card_id,
+        highest_subq.c.price,
+        highest_subq.c.marketplace_name,
+    ).where(highest_subq.c.rn == 1)
+    
+    # Execute both queries
+    lowest_result = await db.execute(lowest_query)
+    highest_result = await db.execute(highest_query)
+    
+    # Group snapshots by card_id
+    card_snapshots = {}
+    for row in lowest_result.all():
+        card_snapshots[row.card_id] = {"lowest": (row.price, row.marketplace_name), "highest": None}
+    
+    for row in highest_result.all():
+        if row.card_id not in card_snapshots:
+            card_snapshots[row.card_id] = {"lowest": None, "highest": None}
+        card_snapshots[row.card_id]["highest"] = (row.price, row.marketplace_name)
+    
+    # Build spreads list
     spreads = []
     for metrics, card in rows:
-        # Get marketplaces for this card
-        snapshot_query = select(PriceSnapshot, Marketplace).join(
-            Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
-        ).where(
-            PriceSnapshot.card_id == card.id,
-            func.date(PriceSnapshot.snapshot_time) == latest_date,
-        ).order_by(PriceSnapshot.price)
+        snapshots = card_snapshots.get(card.id, {})
+        lowest = snapshots.get("lowest")
+        highest = snapshots.get("highest")
         
-        snapshot_result = await db.execute(snapshot_query)
-        snapshot_rows = snapshot_result.all()
-        
-        if len(snapshot_rows) >= 2:
-            lowest_snapshot, lowest_mp = snapshot_rows[0]
-            highest_snapshot, highest_mp = snapshot_rows[-1]
-            
+        if lowest and highest and len({lowest[1], highest[1]}) >= 1:  # At least one marketplace
             spreads.append(MarketSpread(
                 card_id=card.id,
                 card_name=card.name,
                 set_code=card.set_code,
                 image_url=card.image_url_small,
-                lowest_price=float(lowest_snapshot.price),
-                lowest_marketplace=lowest_mp.name,
-                highest_price=float(highest_snapshot.price),
-                highest_marketplace=highest_mp.name,
+                lowest_price=float(lowest[0]),
+                lowest_marketplace=lowest[1],
+                highest_price=float(highest[0]),
+                highest_marketplace=highest[1],
                 spread_pct=float(metrics.spread_pct) if metrics.spread_pct else 0,
             ))
     
@@ -194,6 +267,12 @@ async def get_quick_stats(
     """
     Get quick statistics for the dashboard header.
     """
+    # Check cache first
+    cache_key = "dashboard:stats"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
     total_cards = await db.scalar(select(func.count(Card.id))) or 0
     active_recs = await db.scalar(
         select(func.count(Recommendation.id)).where(Recommendation.is_active == True)
@@ -219,10 +298,15 @@ async def get_quick_stats(
         avg_change = 0
         tracked_cards = 0
     
-    return {
+    result = {
         "total_cards": total_cards,
         "tracked_cards": tracked_cards,
         "active_recommendations": active_recs,
         "avg_price_change_7d": round(avg_change, 2),
     }
+    
+    # Cache result for 5 minutes
+    cache.set(cache_key, result, ttl=300)
+    
+    return result
 
