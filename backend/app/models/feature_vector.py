@@ -26,9 +26,9 @@ class CardFeatureVector(Base):
     """
     
     __tablename__ = "card_feature_vectors"
-    
-    # Override base id to not be a primary key (we use card_id instead)
-    id: Mapped[int] = mapped_column(primary_key=False)
+    __mapper_args__ = {
+        "exclude_properties": ["id"]
+    }
     
     # Primary key (overrides base id)
     card_id: Mapped[int] = mapped_column(
@@ -92,9 +92,9 @@ class ListingFeatureVector(Base):
     """
     
     __tablename__ = "listing_feature_vectors"
-    
-    # Override base id to not be a primary key (we use listing_id instead)
-    id: Mapped[int] = mapped_column(primary_key=False)
+    __mapper_args__ = {
+        "exclude_properties": ["id"]
+    }
     
     # Primary key (overrides base id)
     listing_id: Mapped[int] = mapped_column(
