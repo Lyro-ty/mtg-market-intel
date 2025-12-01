@@ -21,6 +21,7 @@ import { LoadingPage, Loading } from '@/components/ui/Loading';
 import { InventoryImportModal } from '@/components/inventory/InventoryImportModal';
 import { InventoryItemCard } from '@/components/inventory/InventoryItemCard';
 import { InventoryRecommendationCard } from '@/components/inventory/InventoryRecommendationCard';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import {
   getInventory,
   getInventoryAnalytics,
@@ -32,7 +33,7 @@ import { formatCurrency } from '@/lib/utils';
 
 type TabType = 'overview' | 'items' | 'recommendations';
 
-export default function InventoryPage() {
+function InventoryPageContent() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -530,5 +531,13 @@ export default function InventoryPage() {
       {/* Import Modal */}
       <InventoryImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
     </div>
+  );
+}
+
+export default function InventoryPage() {
+  return (
+    <ProtectedRoute>
+      <InventoryPageContent />
+    </ProtectedRoute>
   );
 }

@@ -1,7 +1,8 @@
-# MTG Market Intel
+# Dualcaster Deals
 
 A production-ready web application for Magic: The Gathering card market intelligence, featuring:
 
+- 🔐 **Secure user authentication** - Personal accounts with isolated inventory data
 - 📊 **Multi-marketplace price tracking** - Collects data from TCGPlayer, Cardmarket, Card Kingdom, and more
 - 📈 **Price analytics & forecasting** - Moving averages, volatility, momentum indicators
 - 🤖 **AI-powered recommendations** - Buy/Sell/Hold signals with clear rationales
@@ -9,18 +10,21 @@ A production-ready web application for Magic: The Gathering card market intellig
 - 📦 **Personal inventory management** - Track your collection with profit/loss analytics
 - 🎯 **Modern web UI** - Dashboard, search, charts, recommendations, and inventory
 
+**Live at: [dualcasterdeals.com](https://dualcasterdeals.com)**
+
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Frontend (Next.js)                       │
 │   Dashboard │ Search │ Inventory │ Recommendations │ Settings    │
+│   Login │ Register │ User Profile                                │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Backend API (FastAPI)                       │
-│   REST Endpoints │ Authentication │ Rate Limiting                │
+│   REST Endpoints │ JWT Authentication │ Rate Limiting            │
 └─────────────────────────────────────────────────────────────────┘
                                 │
          ┌──────────────────────┼──────────────────────┐
@@ -35,7 +39,7 @@ A production-ready web application for Magic: The Gathering card market intellig
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    PostgreSQL Database                           │
-│   Cards │ Prices │ Metrics │ Signals │ Recommendations │ Inventory│
+│   Users │ Cards │ Prices │ Metrics │ Signals │ Recommendations   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,8 +49,10 @@ A production-ready web application for Magic: The Gathering card market intellig
 - **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS, Recharts
 - **Database**: PostgreSQL 16
 - **Task Queue**: Celery + Redis
+- **Authentication**: JWT tokens, bcrypt password hashing
 - **AI**: OpenAI/Anthropic API (with mock fallback)
 - **Containerization**: Docker, docker-compose
+- **Production**: Nginx, Let's Encrypt SSL
 
 ---
 
@@ -67,7 +73,7 @@ cd mtg-market-intel
 ### 2. Configure Environment
 
 ```bash
-cp .env.example .env
+cp env.example .env
 # Edit .env with your settings (API keys are optional for demo)
 ```
 
@@ -91,6 +97,52 @@ This will:
 - **Frontend**: http://localhost:3000
 - **API Docs**: http://localhost:8000/docs
 - **API**: http://localhost:8000
+
+### 5. Create an Account
+
+1. Click "Create account" in the sidebar
+2. Register with email, username, and password
+3. Start adding cards to your inventory!
+
+---
+
+## 🔐 User Authentication
+
+Dualcaster Deals features a complete user authentication system:
+
+### Features
+
+- **Secure Registration** - Email, username, password with strength requirements
+- **JWT Authentication** - Stateless tokens with 24-hour expiration
+- **Password Security** - bcrypt hashing with cost factor 12
+- **Account Protection** - Lockout after 5 failed attempts
+- **User-Isolated Data** - Each user's inventory is completely private
+
+### Password Requirements
+
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one digit
+
+### API Authentication
+
+Include the JWT token in the Authorization header:
+
+```bash
+Authorization: Bearer <your_token>
+```
+
+### Auth Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/register` | POST | Create new account |
+| `/auth/login` | POST | Get access token |
+| `/auth/me` | GET | Get current user |
+| `/auth/me` | PATCH | Update profile |
+| `/auth/change-password` | POST | Change password |
+| `/auth/logout` | POST | Logout (client-side) |
 
 ---
 
@@ -178,7 +230,7 @@ docker compose exec worker celery -A app.tasks.celery_app call app.tasks.recomme
 
 ### 📦 Personal Inventory Management
 
-Track your MTG collection with detailed profit/loss analytics.
+Track your MTG collection with detailed profit/loss analytics. **Each user's inventory is private and isolated.**
 
 **Features:**
 - **Import from CSV or plaintext** - Supports common formats like "4x Lightning Bolt (MMA) NM"
@@ -266,6 +318,14 @@ Inventory scraping runs every 15 minutes (hardcoded for responsiveness).
 ### Health Check
 - `GET /health` - Service health status
 
+### Authentication
+- `POST /auth/register` - Create new account
+- `POST /auth/login` - Login and get token
+- `GET /auth/me` - Get current user
+- `PATCH /auth/me` - Update profile
+- `POST /auth/change-password` - Change password
+- `POST /auth/logout` - Logout
+
 ### Cards
 - `GET /cards/search?q=...` - Search cards by name
 - `GET /cards/{id}` - Get card details
@@ -274,7 +334,7 @@ Inventory scraping runs every 15 minutes (hardcoded for responsiveness).
 - `GET /cards/{id}/history` - Get price history
 - `GET /cards/{id}/signals` - Get analytics signals
 
-### Inventory (NEW)
+### Inventory (Requires Authentication)
 - `POST /inventory/import` - Import inventory from CSV/plaintext
 - `GET /inventory` - List inventory items (with filtering/pagination)
 - `POST /inventory` - Add a single item to inventory
@@ -302,6 +362,32 @@ Inventory scraping runs every 15 minutes (hardcoded for responsiveness).
 ### Marketplaces
 - `GET /marketplaces` - List marketplaces
 - `PATCH /marketplaces/{id}/toggle` - Toggle marketplace enabled status
+
+---
+
+## Production Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete production deployment instructions.
+
+### Quick Overview
+
+1. **Server Setup**: Install Docker on your server
+2. **DNS**: Point dualcasterdeals.com to your server
+3. **Environment**: Copy `env.production.example` to `.env.production`
+4. **SSL**: Get certificates via Let's Encrypt
+5. **Deploy**: `docker compose -f docker-compose.production.yml up -d`
+
+### Security Features
+
+- HTTPS enforced with TLS 1.2+
+- Security headers (HSTS, CSP, X-Frame-Options)
+- Rate limiting on API and auth endpoints
+- bcrypt password hashing (cost factor 12)
+- JWT tokens with expiration
+- Account lockout protection
+- User data isolation
+
+See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the full security audit.
 
 ---
 
@@ -464,6 +550,19 @@ docker compose build --no-cache <service_name>
 docker compose up -d
 ```
 
+### Authentication Issues
+
+```bash
+# Check if migrations ran
+docker compose exec backend alembic current
+
+# Re-run auth migration if needed
+docker compose exec backend alembic upgrade head
+
+# Check user in database
+docker compose exec db psql -U mtg_user -d mtg_market_intel -c "SELECT id, email, username, is_active FROM users"
+```
+
 ---
 
 ## Environment Variables
@@ -471,7 +570,9 @@ docker compose up -d
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `API_DEBUG` | Enable debug mode | `true` |
-| `SECRET_KEY` | Application secret key | Required |
+| `SECRET_KEY` | Application secret key (JWT signing) | Required |
+| `DOMAIN` | Production domain | `localhost` |
+| `FRONTEND_URL` | Frontend URL for CORS | `http://localhost:3000` |
 | `POSTGRES_*` | Database configuration | See .env.example |
 | `REDIS_*` | Redis configuration | See .env.example |
 | `LLM_PROVIDER` | AI provider (openai/anthropic/mock) | `mock` |
@@ -486,30 +587,35 @@ docker compose up -d
 ## Project Structure
 
 ```
-mtg-market-intel/
+dualcaster-deals/
 ├── backend/
 │   ├── alembic/              # Database migrations
 │   ├── app/
 │   │   ├── api/              # FastAPI routes
+│   │   │   ├── deps.py               # Auth dependencies
 │   │   │   └── routes/
+│   │   │       ├── auth.py           # Authentication endpoints
 │   │   │       ├── cards.py
-│   │   │       ├── inventory.py      # NEW: Inventory endpoints
+│   │   │       ├── inventory.py      # User-scoped inventory
 │   │   │       ├── recommendations.py
 │   │   │       └── ...
 │   │   ├── core/             # Configuration, logging
 │   │   ├── db/               # Database setup
 │   │   ├── models/           # SQLAlchemy models
+│   │   │   ├── user.py               # User model
 │   │   │   ├── card.py
-│   │   │   ├── inventory.py          # NEW: Inventory models
+│   │   │   ├── inventory.py          # Inventory with user_id
 │   │   │   └── ...
 │   │   ├── schemas/          # Pydantic schemas
-│   │   │   ├── inventory.py          # NEW: Inventory schemas
+│   │   │   ├── auth.py               # Auth schemas
+│   │   │   ├── inventory.py
 │   │   │   └── ...
 │   │   ├── services/         # Business logic
+│   │   │   ├── auth.py               # Auth service
 │   │   │   ├── agents/
 │   │   │   │   ├── analytics.py
 │   │   │   │   ├── recommendation.py
-│   │   │   │   └── inventory_recommendation.py  # NEW
+│   │   │   │   └── inventory_recommendation.py
 │   │   │   ├── ingestion/    # Marketplace adapters
 │   │   │   └── llm/          # LLM client abstraction
 │   │   ├── tasks/            # Celery tasks
@@ -522,19 +628,32 @@ mtg-market-intel/
 ├── frontend/
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── inventory/    # NEW: Inventory page
+│   │   │   ├── login/        # Login page
+│   │   │   ├── register/     # Registration page
+│   │   │   ├── inventory/    # Protected inventory page
 │   │   │   └── ...
 │   │   ├── components/
-│   │   │   ├── inventory/    # NEW: Inventory components
-│   │   │   └── ...
+│   │   │   ├── auth/         # Auth components
+│   │   │   ├── layout/       # Layout components
+│   │   │   ├── inventory/    # Inventory components
+│   │   │   └── ui/           # UI components (with auth)
+│   │   ├── contexts/
+│   │   │   └── AuthContext.tsx  # Auth state management
 │   │   ├── lib/              # API client, utilities
 │   │   └── types/            # TypeScript types
 │   ├── __tests__/
 │   ├── Dockerfile
+│   ├── Dockerfile.production
 │   └── package.json
+├── nginx/
+│   └── nginx.conf            # Production reverse proxy
 ├── docker-compose.yml
+├── docker-compose.production.yml
 ├── Makefile
-├── .env.example
+├── env.example
+├── env.production.example
+├── DEPLOYMENT.md
+├── SECURITY_REVIEW.md
 └── README.md
 ```
 

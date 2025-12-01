@@ -12,6 +12,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.card import Card
+    from app.models.user import User
 
 
 class InventoryCondition(str, Enum):
@@ -32,6 +33,13 @@ class InventoryItem(Base):
     """
     
     __tablename__ = "inventory_items"
+    
+    # Foreign key to user (owner)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
     
     # Foreign key to card
     card_id: Mapped[int] = mapped_column(
@@ -69,10 +77,13 @@ class InventoryItem(Base):
     import_raw_line: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="inventory_items")
     card: Mapped["Card"] = relationship("Card", back_populates="inventory_items")
     
     # Indexes
     __table_args__ = (
+        Index("ix_inventory_user", "user_id"),
+        Index("ix_inventory_user_card", "user_id", "card_id"),
         Index("ix_inventory_card_condition", "card_id", "condition"),
         Index("ix_inventory_acquisition_date", "acquisition_date"),
         Index("ix_inventory_value", "current_value"),

@@ -10,6 +10,7 @@ from app.models.signal import Signal
 from app.models.recommendation import Recommendation, ActionType
 from app.models.settings import AppSettings
 from app.models.inventory import InventoryItem, InventoryRecommendation, InventoryCondition
+from app.models.user import User
 
 __all__ = [
     "Card",
@@ -24,5 +25,6 @@ __all__ = [
     "InventoryItem",
     "InventoryRecommendation",
     "InventoryCondition",
+    "User",
 ]
 

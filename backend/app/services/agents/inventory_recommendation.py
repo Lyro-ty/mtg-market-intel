@@ -576,24 +576,37 @@ class InventoryRecommendationAgent:
         self,
         inventory_item_ids: list[int] | None = None,
         target_date: date | None = None,
+        user_id: int | None = None,
     ) -> dict[str, Any]:
         """
         Run recommendation generation for inventory items.
         
         Args:
-            inventory_item_ids: List of inventory item IDs to process. None = all items.
+            inventory_item_ids: List of inventory item IDs to process. None = all items for user.
             target_date: Date to use. Defaults to today.
+            user_id: User ID to filter items by (required for security).
             
         Returns:
             Summary of results.
         """
         target_date = target_date or date.today()
         
-        # Get items to process
+        # Get items to process - always filter by user if provided
         if inventory_item_ids:
-            items_query = select(InventoryItem).where(InventoryItem.id.in_(inventory_item_ids))
+            if user_id:
+                items_query = select(InventoryItem).where(
+                    and_(
+                        InventoryItem.id.in_(inventory_item_ids),
+                        InventoryItem.user_id == user_id
+                    )
+                )
+            else:
+                items_query = select(InventoryItem).where(InventoryItem.id.in_(inventory_item_ids))
         else:
-            items_query = select(InventoryItem)
+            if user_id:
+                items_query = select(InventoryItem).where(InventoryItem.user_id == user_id)
+            else:
+                items_query = select(InventoryItem)
         
         result = await self.db.execute(items_query)
         items = result.scalars().all()

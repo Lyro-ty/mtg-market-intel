@@ -15,9 +15,17 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # Application
-    app_name: str = "MTG Market Intel"
+    app_name: str = "Dualcaster Deals"
     api_debug: bool = True
     secret_key: str = "dev-secret-key-change-in-production"
+    
+    # JWT Settings
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60 * 24  # 24 hours
+    
+    # Domain settings for production
+    domain: str = "localhost"
+    frontend_url: str = "http://localhost:3000"
     
     # API Server
     api_host: str = "0.0.0.0"

@@ -1,5 +1,7 @@
 """
 Inventory management API endpoints.
+
+All inventory endpoints require authentication and filter data by the current user.
 """
 import csv
 import io
@@ -13,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, and_, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import CurrentUser
 from app.db.session import get_db
 from app.models import Card, InventoryItem, InventoryRecommendation, MetricsCardsDaily
 from pydantic import BaseModel
@@ -140,6 +143,7 @@ async def find_card(db: AsyncSession, name: str, set_code: Optional[str] = None)
 @router.post("/import", response_model=InventoryImportResponse)
 async def import_inventory(
     request: InventoryImportRequest,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -220,6 +224,7 @@ async def import_inventory(
                 
                 # Create inventory item
                 inv_item = InventoryItem(
+                    user_id=current_user.id,
                     card_id=card.id,
                     quantity=quantity,
                     condition=parse_condition(condition_str).value,
@@ -280,6 +285,7 @@ async def import_inventory(
                 
                 # Create inventory item
                 inv_item = InventoryItem(
+                    user_id=current_user.id,
                     card_id=card.id,
                     quantity=parsed["quantity"],
                     condition=parsed["condition"].value,
@@ -332,6 +338,7 @@ async def import_inventory(
 
 @router.get("", response_model=InventoryListResponse)
 async def get_inventory(
+    current_user: CurrentUser,
     search: Optional[str] = None,
     set_code: Optional[str] = None,
     condition: Optional[InventoryCondition] = None,
@@ -345,10 +352,12 @@ async def get_inventory(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get inventory items with filtering and pagination.
+    Get the current user's inventory items with filtering and pagination.
     """
-    # Build base query
-    query = select(InventoryItem, Card).join(Card, InventoryItem.card_id == Card.id)
+    # Build base query - filter by current user
+    query = select(InventoryItem, Card).join(Card, InventoryItem.card_id == Card.id).where(
+        InventoryItem.user_id == current_user.id
+    )
     
     # Apply filters
     if search:
@@ -373,13 +382,13 @@ async def get_inventory(
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query) or 0
     
-    # Get summary stats
+    # Get summary stats for current user only
     stats_query = select(
         func.count(InventoryItem.id).label("total_items"),
         func.sum(InventoryItem.quantity).label("total_quantity"),
         func.sum(InventoryItem.current_value * InventoryItem.quantity).label("total_value"),
         func.sum(InventoryItem.acquisition_price * InventoryItem.quantity).label("total_cost"),
-    ).select_from(InventoryItem)
+    ).select_from(InventoryItem).where(InventoryItem.user_id == current_user.id)
     
     stats_result = await db.execute(stats_query)
     stats = stats_result.one()
@@ -456,18 +465,19 @@ async def get_inventory(
 
 @router.get("/analytics", response_model=InventoryAnalytics)
 async def get_inventory_analytics(
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get comprehensive inventory analytics.
+    Get comprehensive analytics for the current user's inventory.
     """
-    # Basic stats
+    # Basic stats - filtered by current user
     stats_query = select(
         func.count(func.distinct(InventoryItem.card_id)).label("unique_cards"),
         func.sum(InventoryItem.quantity).label("total_quantity"),
         func.sum(InventoryItem.acquisition_price * InventoryItem.quantity).label("total_cost"),
         func.sum(InventoryItem.current_value * InventoryItem.quantity).label("total_value"),
-    ).select_from(InventoryItem)
+    ).select_from(InventoryItem).where(InventoryItem.user_id == current_user.id)
     
     stats_result = await db.execute(stats_query)
     stats = stats_result.one()
@@ -477,20 +487,23 @@ async def get_inventory_analytics(
     total_profit_loss = total_value - total_cost
     profit_loss_pct = (total_profit_loss / total_cost * 100) if total_cost > 0 else None
     
-    # Condition breakdown
+    # Condition breakdown for current user
     condition_query = select(
         InventoryItem.condition,
         func.count(InventoryItem.id).label("count"),
-    ).group_by(InventoryItem.condition)
+    ).where(InventoryItem.user_id == current_user.id).group_by(InventoryItem.condition)
     
     condition_result = await db.execute(condition_query)
     condition_breakdown = {row.condition: row.count for row in condition_result.all()}
     
-    # Top gainers
+    # Top gainers for current user
     gainers_query = select(InventoryItem, Card).join(
         Card, InventoryItem.card_id == Card.id
     ).where(
-        InventoryItem.value_change_pct.isnot(None)
+        and_(
+            InventoryItem.user_id == current_user.id,
+            InventoryItem.value_change_pct.isnot(None)
+        )
     ).order_by(
         InventoryItem.value_change_pct.desc()
     ).limit(5)
@@ -519,11 +532,14 @@ async def get_inventory_analytics(
         for inv, card in gainers_result.all()
     ]
     
-    # Top losers
+    # Top losers for current user
     losers_query = select(InventoryItem, Card).join(
         Card, InventoryItem.card_id == Card.id
     ).where(
-        InventoryItem.value_change_pct.isnot(None)
+        and_(
+            InventoryItem.user_id == current_user.id,
+            InventoryItem.value_change_pct.isnot(None)
+        )
     ).order_by(
         InventoryItem.value_change_pct.asc()
     ).limit(5)
@@ -564,7 +580,12 @@ async def get_inventory_analytics(
     dist_query = select(
         InventoryItem.current_value,
         InventoryItem.quantity,
-    ).where(InventoryItem.current_value.isnot(None))
+    ).where(
+        and_(
+            InventoryItem.user_id == current_user.id,
+            InventoryItem.current_value.isnot(None)
+        )
+    )
     
     dist_result = await db.execute(dist_query)
     for row in dist_result.all():
@@ -581,12 +602,19 @@ async def get_inventory_analytics(
         else:
             value_ranges["$100+"] += qty
     
-    # Recommendation counts
+    # Recommendation counts for current user's inventory items
     rec_query = select(
         func.count(case((InventoryRecommendation.action == "SELL", 1))).label("sell_count"),
         func.count(case((InventoryRecommendation.action == "HOLD", 1))).label("hold_count"),
         func.count(case((InventoryRecommendation.urgency == "CRITICAL", 1))).label("critical_count"),
-    ).where(InventoryRecommendation.is_active == True)
+    ).join(
+        InventoryItem, InventoryRecommendation.inventory_item_id == InventoryItem.id
+    ).where(
+        and_(
+            InventoryRecommendation.is_active == True,
+            InventoryItem.user_id == current_user.id
+        )
+    )
     
     rec_result = await db.execute(rec_query)
     rec_stats = rec_result.one()
@@ -611,10 +639,11 @@ async def get_inventory_analytics(
 @router.post("", response_model=InventoryItemResponse)
 async def create_inventory_item(
     item: InventoryItemCreate,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Create a new inventory item.
+    Create a new inventory item for the current user.
     """
     # Verify card exists
     card = await db.get(Card, item.card_id)
@@ -622,6 +651,7 @@ async def create_inventory_item(
         raise HTTPException(status_code=404, detail="Card not found")
     
     inv_item = InventoryItem(
+        user_id=current_user.id,
         card_id=item.card_id,
         quantity=item.quantity,
         condition=item.condition.value,
@@ -665,14 +695,20 @@ async def create_inventory_item(
 @router.get("/{item_id}", response_model=InventoryItemResponse)
 async def get_inventory_item(
     item_id: int,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get a specific inventory item by ID.
+    Get a specific inventory item by ID (must belong to current user).
     """
     query = select(InventoryItem, Card).join(
         Card, InventoryItem.card_id == Card.id
-    ).where(InventoryItem.id == item_id)
+    ).where(
+        and_(
+            InventoryItem.id == item_id,
+            InventoryItem.user_id == current_user.id
+        )
+    )
     
     result = await db.execute(query)
     row = result.first()
@@ -712,14 +748,20 @@ async def get_inventory_item(
 async def update_inventory_item(
     item_id: int,
     updates: InventoryItemUpdate,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Update an inventory item.
+    Update an inventory item (must belong to current user).
     """
     query = select(InventoryItem, Card).join(
         Card, InventoryItem.card_id == Card.id
-    ).where(InventoryItem.id == item_id)
+    ).where(
+        and_(
+            InventoryItem.id == item_id,
+            InventoryItem.user_id == current_user.id
+        )
+    )
     
     result = await db.execute(query)
     row = result.first()
@@ -769,12 +811,21 @@ async def update_inventory_item(
 @router.delete("/{item_id}")
 async def delete_inventory_item(
     item_id: int,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Delete an inventory item.
+    Delete an inventory item (must belong to current user).
     """
-    inv_item = await db.get(InventoryItem, item_id)
+    query = select(InventoryItem).where(
+        and_(
+            InventoryItem.id == item_id,
+            InventoryItem.user_id == current_user.id
+        )
+    )
+    result = await db.execute(query)
+    inv_item = result.scalar_one_or_none()
+    
     if not inv_item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
@@ -786,6 +837,7 @@ async def delete_inventory_item(
 
 @router.get("/recommendations/list", response_model=InventoryRecommendationListResponse)
 async def get_inventory_recommendations(
+    current_user: CurrentUser,
     action: Optional[ActionType] = None,
     urgency: Optional[InventoryUrgency] = None,
     min_confidence: Optional[float] = Query(None, ge=0, le=1),
@@ -795,17 +847,17 @@ async def get_inventory_recommendations(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get inventory-specific recommendations.
+    Get inventory-specific recommendations for the current user.
     
     These recommendations are more aggressive than market-wide ones,
     with lower thresholds and shorter time horizons.
     """
-    # Build base query
+    # Build base query - filter by current user's inventory items
     query = select(InventoryRecommendation, InventoryItem, Card).join(
         InventoryItem, InventoryRecommendation.inventory_item_id == InventoryItem.id
     ).join(
         Card, InventoryRecommendation.card_id == Card.id
-    )
+    ).where(InventoryItem.user_id == current_user.id)
     
     # Apply filters
     if is_active:
@@ -824,7 +876,7 @@ async def get_inventory_recommendations(
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query) or 0
     
-    # Get counts by urgency and action
+    # Get counts by urgency and action for current user
     urgency_query = select(
         func.count(case((InventoryRecommendation.urgency == "CRITICAL", 1))).label("critical"),
         func.count(case((InventoryRecommendation.urgency == "HIGH", 1))).label("high"),
@@ -832,7 +884,14 @@ async def get_inventory_recommendations(
         func.count(case((InventoryRecommendation.urgency == "LOW", 1))).label("low"),
         func.count(case((InventoryRecommendation.action == "SELL", 1))).label("sell"),
         func.count(case((InventoryRecommendation.action == "HOLD", 1))).label("hold"),
-    ).where(InventoryRecommendation.is_active == True)
+    ).join(
+        InventoryItem, InventoryRecommendation.inventory_item_id == InventoryItem.id
+    ).where(
+        and_(
+            InventoryRecommendation.is_active == True,
+            InventoryItem.user_id == current_user.id
+        )
+    )
     
     counts_result = await db.execute(urgency_query)
     counts = counts_result.one()
@@ -917,13 +976,14 @@ async def scrape_inventory_prices():
 
 @router.post("/refresh-valuations")
 async def refresh_inventory_valuations(
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Refresh current valuations for all inventory items based on latest metrics.
+    Refresh current valuations for all of the current user's inventory items based on latest metrics.
     """
-    # Get all inventory items
-    query = select(InventoryItem)
+    # Get current user's inventory items
+    query = select(InventoryItem).where(InventoryItem.user_id == current_user.id)
     result = await db.execute(query)
     items = result.scalars().all()
     
@@ -959,11 +1019,12 @@ async def refresh_inventory_valuations(
 
 @router.post("/run-recommendations")
 async def run_inventory_recommendations(
+    current_user: CurrentUser,
     request: Optional[RunRecommendationsRequest] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Generate aggressive recommendations for inventory items.
+    Generate aggressive recommendations for the current user's inventory items.
     
     This uses lower thresholds and shorter time horizons than market recommendations.
     """
@@ -971,6 +1032,6 @@ async def run_inventory_recommendations(
     
     agent = InventoryRecommendationAgent(db)
     item_ids = request.item_ids if request else None
-    result = await agent.run_inventory_recommendations(item_ids)
+    result = await agent.run_inventory_recommendations(item_ids, user_id=current_user.id)
     
     return result

@@ -3,12 +3,13 @@ API module for FastAPI routes.
 """
 from fastapi import APIRouter
 
-from app.api.routes import health, cards, recommendations, dashboard, settings, marketplaces, inventory
+from app.api.routes import auth, health, cards, recommendations, dashboard, settings, marketplaces, inventory
 
 api_router = APIRouter()
 
 # Include all route modules
 api_router.include_router(health.router, tags=["Health"])
+api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(cards.router, prefix="/cards", tags=["Cards"])
 api_router.include_router(recommendations.router, prefix="/recommendations", tags=["Recommendations"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])

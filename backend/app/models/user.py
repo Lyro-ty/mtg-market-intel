@@ -1,0 +1,65 @@
+"""
+User model for authentication.
+"""
+from datetime import datetime
+from typing import TYPE_CHECKING, Optional
+
+from sqlalchemy import Boolean, DateTime, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.inventory import InventoryItem
+
+
+class User(Base):
+    """
+    User model for authentication and authorization.
+    
+    Passwords are stored using bcrypt hashing.
+    """
+    
+    __tablename__ = "users"
+    
+    # Core user fields
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True
+    )
+    username: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True
+    )
+    hashed_password: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False
+    )
+    
+    # Profile fields
+    display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
+    # Account status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    
+    # Security fields
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_login_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    inventory_items: Mapped[list["InventoryItem"]] = relationship(
+        "InventoryItem",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    
+    def __repr__(self) -> str:
+        return f"<User {self.username} ({self.email})>"
+

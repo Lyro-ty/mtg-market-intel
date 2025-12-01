@@ -2,6 +2,36 @@
  * TypeScript types for the MTG Market Intel frontend
  */
 
+// Authentication types
+export interface User {
+  id: number;
+  email: string;
+  username: string;
+  display_name?: string;
+  is_active: boolean;
+  is_verified: boolean;
+  created_at: string;
+  last_login?: string;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData {
+  email: string;
+  username: string;
+  password: string;
+  display_name?: string;
+}
+
+export interface AuthToken {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
 // Card types
 export interface Card {
   id: number;

@@ -23,9 +23,16 @@ import type {
   InventoryCondition,
   InventoryUrgency,
   ActionType,
+  User,
+  LoginCredentials,
+  RegisterData,
+  AuthToken,
 } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// Token storage key
+const TOKEN_KEY = 'auth_token';
 
 class ApiError extends Error {
   status: number;
@@ -37,26 +44,105 @@ class ApiError extends Error {
   }
 }
 
+// Token management functions
+export function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setStoredToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearStoredToken(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(TOKEN_KEY);
+}
+
 async function fetchApi<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  requiresAuth: boolean = false
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
   
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  // Add auth token if available
+  const token = getStoredToken();
+  if (token) {
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  } else if (requiresAuth) {
+    throw new ApiError('Authentication required', 401);
+  }
+  
   const response = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
   
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    
+    // Clear token if unauthorized
+    if (response.status === 401) {
+      clearStoredToken();
+    }
+    
     throw new ApiError(error.detail || 'Request failed', response.status);
   }
   
   return response.json();
+}
+
+// Authentication API
+export async function login(credentials: LoginCredentials): Promise<AuthToken> {
+  const token = await fetchApi<AuthToken>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+  setStoredToken(token.access_token);
+  return token;
+}
+
+export async function register(data: RegisterData): Promise<User> {
+  return fetchApi<User>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getCurrentUser(): Promise<User> {
+  return fetchApi<User>('/auth/me', {}, true);
+}
+
+export async function updateProfile(updates: { display_name?: string }): Promise<User> {
+  return fetchApi<User>('/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  }, true);
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await fetchApi('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  }, true);
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await fetchApi('/auth/logout', { method: 'POST' }, true);
+  } finally {
+    clearStoredToken();
+  }
 }
 
 // Health check
@@ -214,7 +300,7 @@ export async function toggleMarketplace(
   });
 }
 
-// Inventory API
+// Inventory API (requires authentication)
 export async function importInventory(
   content: string,
   options: {
@@ -233,7 +319,7 @@ export async function importInventory(
       default_condition: options.defaultCondition || 'NEAR_MINT',
       default_acquisition_source: options.defaultAcquisitionSource,
     }),
-  });
+  }, true);
 }
 
 export async function getInventory(options: {
@@ -261,15 +347,15 @@ export async function getInventory(options: {
   params.set('page', String(options.page || 1));
   params.set('page_size', String(options.pageSize || 20));
   
-  return fetchApi(`/inventory?${params}`);
+  return fetchApi(`/inventory?${params}`, {}, true);
 }
 
 export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
-  return fetchApi('/inventory/analytics');
+  return fetchApi('/inventory/analytics', {}, true);
 }
 
 export async function getInventoryItem(itemId: number): Promise<InventoryItem> {
-  return fetchApi(`/inventory/${itemId}`);
+  return fetchApi(`/inventory/${itemId}`, {}, true);
 }
 
 export async function createInventoryItem(item: {
@@ -287,7 +373,7 @@ export async function createInventoryItem(item: {
   return fetchApi('/inventory', {
     method: 'POST',
     body: JSON.stringify(item),
-  });
+  }, true);
 }
 
 export async function updateInventoryItem(
@@ -307,13 +393,13 @@ export async function updateInventoryItem(
   return fetchApi(`/inventory/${itemId}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
-  });
+  }, true);
 }
 
 export async function deleteInventoryItem(itemId: number): Promise<void> {
   return fetchApi(`/inventory/${itemId}`, {
     method: 'DELETE',
-  });
+  }, true);
 }
 
 export async function getInventoryRecommendations(options: {
@@ -333,7 +419,7 @@ export async function getInventoryRecommendations(options: {
   params.set('page', String(options.page || 1));
   params.set('page_size', String(options.pageSize || 20));
   
-  return fetchApi(`/inventory/recommendations/list?${params}`);
+  return fetchApi(`/inventory/recommendations/list?${params}`, {}, true);
 }
 
 export async function refreshInventoryValuations(): Promise<{
@@ -342,7 +428,7 @@ export async function refreshInventoryValuations(): Promise<{
 }> {
   return fetchApi('/inventory/refresh-valuations', {
     method: 'POST',
-  });
+  }, true);
 }
 
 export async function runInventoryRecommendations(itemIds?: number[]): Promise<{
@@ -358,7 +444,7 @@ export async function runInventoryRecommendations(itemIds?: number[]): Promise<{
   return fetchApi('/inventory/run-recommendations', {
     method: 'POST',
     body: JSON.stringify(itemIds ? { item_ids: itemIds } : {}),
-  });
+  }, true);
 }
 
 // Export error class for use in components
