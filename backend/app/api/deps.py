@@ -108,3 +108,4 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 OptionalUser = Annotated[Optional[User], Depends(get_current_user_optional)]
 AdminUser = Annotated[User, Depends(get_current_admin_user)]
 
+

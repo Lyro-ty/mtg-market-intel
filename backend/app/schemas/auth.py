@@ -101,3 +101,4 @@ class PasswordChange(BaseModel):
             raise ValueError("Password must contain at least one digit")
         return v
 
+

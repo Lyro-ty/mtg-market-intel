@@ -1,57 +1,24 @@
 'use client';
 
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, DollarSign, Package, ArrowRight, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Package, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingPage } from '@/components/ui/Loading';
 import { CardGrid } from '@/components/cards/CardGrid';
-import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
-import { VolumeByFormatChart } from '@/components/charts/VolumeByFormatChart';
-import { 
-  getDashboardSummary, 
-  getMarketOverview, 
-  getMarketIndex, 
-  getTopMovers, 
-  getVolumeByFormat 
-} from '@/lib/api';
+import { getDashboardSummary } from '@/lib/api';
 import { formatCurrency, formatPercent, formatNumber } from '@/lib/utils';
 
 export default function DashboardPage() {
-  const [marketIndexRange, setMarketIndexRange] = useState<'7d' | '30d' | '90d' | '1y'>('7d');
-
-  const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useQuery({
+  const { data: dashboard, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: getDashboardSummary,
   });
 
-  const { data: marketOverview, isLoading: overviewLoading } = useQuery({
-    queryKey: ['market-overview'],
-    queryFn: getMarketOverview,
-  });
-
-  const { data: marketIndex, isLoading: indexLoading } = useQuery({
-    queryKey: ['market-index', marketIndexRange],
-    queryFn: () => getMarketIndex(marketIndexRange),
-  });
-
-  const { data: topMovers, isLoading: moversLoading } = useQuery({
-    queryKey: ['top-movers', '24h'],
-    queryFn: () => getTopMovers('24h'),
-  });
-
-  const { data: volumeByFormat, isLoading: volumeLoading } = useQuery({
-    queryKey: ['volume-by-format', 30],
-    queryFn: () => getVolumeByFormat(30),
-  });
-
-  const isLoading = dashboardLoading || overviewLoading || indexLoading || moversLoading || volumeLoading;
-  
   if (isLoading) return <LoadingPage />;
   
-  if (dashboardError) {
+  if (error) {
     return (
       <div className="text-center py-12">
         <p className="text-red-500">Failed to load dashboard data</p>
@@ -71,57 +38,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Market Overview Stats Strip */}
-      {marketOverview && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MarketStatCard
-            title="Total Cards Tracked"
-            value={formatNumber(marketOverview.totalCardsTracked)}
-            subtitle={marketOverview.totalListings ? `${formatNumber(marketOverview.totalListings)} active listings` : 'Active listings'}
-            icon={Package}
-          />
-          <MarketStatCard
-            title="24h Trade Volume"
-            value={formatCurrency(marketOverview.volume24hUsd)}
-            subtitle="USD"
-            icon={DollarSign}
-          />
-          <MarketStatCard
-            title="24h Avg Price Change"
-            value={formatPercent(marketOverview.avgPriceChange24hPct)}
-            subtitle="Across all tracked cards"
-            icon={TrendingUp}
-            valueColor={
-              (marketOverview.avgPriceChange24hPct ?? 0) > 0
-                ? 'text-green-500'
-                : (marketOverview.avgPriceChange24hPct ?? 0) < 0
-                ? 'text-red-500'
-                : undefined
-            }
-            badge={
-              marketOverview.avgPriceChange24hPct !== null
-                ? formatPercent(marketOverview.avgPriceChange24hPct)
-                : undefined
-            }
-          />
-          <MarketStatCard
-            title="Active Formats Tracked"
-            value={formatNumber(marketOverview.activeFormatsTracked)}
-            subtitle="MTG formats"
-            icon={BarChart3}
-          />
-        </div>
-      )}
-
-      {/* Global MTG Market Index Chart */}
-      {marketIndex && (
-        <MarketIndexChart
-          data={marketIndex}
-          onRangeChange={setMarketIndexRange}
-        />
-      )}
-
-      {/* Stats Grid (Legacy - keep for backward compatibility) */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Cards"
@@ -156,73 +73,66 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Top Movers: Gainers & Losers (24h) */}
-      {topMovers && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Gainers */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-500" />
-                <CardTitle>Top Gainers (24h)</CardTitle>
+      {/* Top Movers */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top Gainers */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-green-500" />
+              <CardTitle>Top Gainers (7d)</CardTitle>
+            </div>
+            <Link
+              href="/cards?sort=gainers"
+              className="text-sm text-primary-500 hover:text-primary-400 flex items-center gap-1"
+            >
+              View all <ArrowRight className="w-4 h-4" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {dashboard.top_gainers.length > 0 ? (
+              <div className="space-y-3">
+                {dashboard.top_gainers.map((card) => (
+                  <MoverItem key={card.card_id} card={card} type="gain" />
+                ))}
               </div>
-              <Link
-                href="/cards?sort=gainers"
-                className="text-sm text-primary-500 hover:text-primary-400 flex items-center gap-1"
-              >
-                View all <ArrowRight className="w-4 h-4" />
-              </Link>
-            </CardHeader>
-            <CardContent>
-              {topMovers.gainers.length > 0 ? (
-                <div className="space-y-3">
-                  {topMovers.gainers.slice(0, 5).map((mover, index) => (
-                    <TopMoverItem key={index} mover={mover} type="gain" />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[rgb(var(--muted-foreground))] text-center py-4">
-                  {topMovers.isMockData ? 'Showing mock data' : 'No data available'}
-                </p>
-              )}
-            </CardContent>
-          </Card>
+            ) : (
+              <p className="text-[rgb(var(--muted-foreground))] text-center py-4">
+                No data available
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
-          {/* Top Losers */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="w-5 h-5 text-red-500" />
-                <CardTitle>Top Losers (24h)</CardTitle>
+        {/* Top Losers */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingDown className="w-5 h-5 text-red-500" />
+              <CardTitle>Top Losers (7d)</CardTitle>
+            </div>
+            <Link
+              href="/cards?sort=losers"
+              className="text-sm text-primary-500 hover:text-primary-400 flex items-center gap-1"
+            >
+              View all <ArrowRight className="w-4 h-4" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {dashboard.top_losers.length > 0 ? (
+              <div className="space-y-3">
+                {dashboard.top_losers.map((card) => (
+                  <MoverItem key={card.card_id} card={card} type="loss" />
+                ))}
               </div>
-              <Link
-                href="/cards?sort=losers"
-                className="text-sm text-primary-500 hover:text-primary-400 flex items-center gap-1"
-              >
-                View all <ArrowRight className="w-4 h-4" />
-              </Link>
-            </CardHeader>
-            <CardContent>
-              {topMovers.losers.length > 0 ? (
-                <div className="space-y-3">
-                  {topMovers.losers.slice(0, 5).map((mover, index) => (
-                    <TopMoverItem key={index} mover={mover} type="loss" />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[rgb(var(--muted-foreground))] text-center py-4">
-                  {topMovers.isMockData ? 'Showing mock data' : 'No data available'}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Volume by Format Chart */}
-      {volumeByFormat && (
-        <VolumeByFormatChart data={volumeByFormat} />
-      )}
+            ) : (
+              <p className="text-[rgb(var(--muted-foreground))] text-center py-4">
+                No data available
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Arbitrage Opportunities */}
       {dashboard.highest_spreads.length > 0 && (
@@ -357,48 +267,6 @@ function StatCard({
   );
 }
 
-function MarketStatCard({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  valueColor,
-  badge,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-  icon: React.ComponentType<{ className?: string }>;
-  valueColor?: string;
-  badge?: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <p className="text-sm text-[rgb(var(--muted-foreground))]">{title}</p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <p className={`text-2xl font-bold ${valueColor || 'text-[rgb(var(--foreground))]'}`}>
-                {value}
-              </p>
-              {badge && (
-                <Badge variant={valueColor?.includes('green') ? 'success' : valueColor?.includes('red') ? 'danger' : 'default'}>
-                  {badge}
-                </Badge>
-              )}
-            </div>
-            <p className="text-xs text-[rgb(var(--muted-foreground))] mt-1">{subtitle}</p>
-          </div>
-          <div className="p-3 rounded-lg bg-[rgb(var(--secondary))]">
-            <Icon className="w-6 h-6 text-[rgb(var(--muted-foreground))]" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function MoverItem({
   card,
   type,
@@ -424,41 +292,6 @@ function MoverItem({
         </p>
       </div>
     </Link>
-  );
-}
-
-function TopMoverItem({
-  mover,
-  type,
-}: {
-  mover: { cardName: string; setCode: string; format: string; currentPriceUsd: number; changePct: number; volume: number };
-  type: 'gain' | 'loss';
-}) {
-  return (
-    <div className="flex items-center justify-between py-2 hover:bg-[rgb(var(--secondary))]/50 rounded-lg px-2 -mx-2 transition-colors">
-      <div className="flex-1">
-        <p className="font-medium text-[rgb(var(--foreground))]">{mover.cardName}</p>
-        <div className="flex items-center gap-2 mt-1">
-          <p className="text-xs text-[rgb(var(--muted-foreground))]">{mover.setCode}</p>
-          <Badge variant="default" className="text-xs">
-            {mover.format}
-          </Badge>
-        </div>
-      </div>
-      <div className="text-right">
-        <p className="font-medium text-[rgb(var(--foreground))]">
-          {formatCurrency(mover.currentPriceUsd)}
-        </p>
-        <div className="flex items-center gap-2">
-          <p className={type === 'gain' ? 'text-green-500' : 'text-red-500'}>
-            {formatPercent(mover.changePct)}
-          </p>
-          <p className="text-xs text-[rgb(var(--muted-foreground))]">
-            {formatNumber(mover.volume)} vol
-          </p>
-        </div>
-      </div>
-    </div>
   );
 }
 

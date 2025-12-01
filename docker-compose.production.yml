@@ -156,17 +156,16 @@ services:
     container_name: dualcaster-frontend
     restart: always
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_API_URL=/api
+      - BACKEND_URL=http://backend:8000
       - NEXT_PUBLIC_APP_NAME=Dualcaster Deals
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - dualcaster-network
-
-  # Note: SSL/HTTPS is handled by Cloudflare Tunnel
-  # No nginx or certbot needed when using Cloudflare Tunnel
 
 volumes:
   postgres_data:

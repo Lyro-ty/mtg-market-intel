@@ -164,3 +164,4 @@ async def logout(
     logger.info("User logged out", user_id=current_user.id)
     return {"message": "Successfully logged out"}
 
+

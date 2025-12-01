@@ -15,28 +15,23 @@ import type {
   SettingsUpdate,
   Marketplace,
   Signal,
-  InventoryItem,
-  InventoryListResponse,
-  InventoryImportResponse,
-  InventoryAnalytics,
-  InventoryRecommendationList,
-  InventoryCondition,
-  InventoryUrgency,
-  ActionType,
-  User,
-  LoginCredentials,
-  RegisterData,
-  AuthToken,
   MarketOverview,
   MarketIndex,
   TopMovers,
   VolumeByFormat,
 } from '@/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Use /api proxy when in browser, or direct URL when server-side or in development
+const getApiBase = () => {
+  if (typeof window !== 'undefined') {
+    // Client-side: use Next.js rewrite proxy
+    return process.env.NEXT_PUBLIC_API_URL || '/api';
+  }
+  // Server-side: use full URL
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+};
 
-// Token storage key
-const TOKEN_KEY = 'auth_token';
+const API_BASE = getApiBase();
 
 class ApiError extends Error {
   status: number;
@@ -48,105 +43,26 @@ class ApiError extends Error {
   }
 }
 
-// Token management functions
-export function getStoredToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setStoredToken(token: string): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearStoredToken(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(TOKEN_KEY);
-}
-
 async function fetchApi<T>(
   endpoint: string,
-  options: RequestInit = {},
-  requiresAuth: boolean = false
+  options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
   
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
-  
-  // Add auth token if available
-  const token = getStoredToken();
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-  } else if (requiresAuth) {
-    throw new ApiError('Authentication required', 401);
-  }
-  
   const response = await fetch(url, {
     ...options,
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
   });
   
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    
-    // Clear token if unauthorized
-    if (response.status === 401) {
-      clearStoredToken();
-    }
-    
     throw new ApiError(error.detail || 'Request failed', response.status);
   }
   
   return response.json();
-}
-
-// Authentication API
-export async function login(credentials: LoginCredentials): Promise<AuthToken> {
-  const token = await fetchApi<AuthToken>('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify(credentials),
-  });
-  setStoredToken(token.access_token);
-  return token;
-}
-
-export async function register(data: RegisterData): Promise<User> {
-  return fetchApi<User>('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export async function getCurrentUser(): Promise<User> {
-  return fetchApi<User>('/auth/me', {}, true);
-}
-
-export async function updateProfile(updates: { display_name?: string }): Promise<User> {
-  return fetchApi<User>('/auth/me', {
-    method: 'PATCH',
-    body: JSON.stringify(updates),
-  }, true);
-}
-
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  await fetchApi('/auth/change-password', {
-    method: 'POST',
-    body: JSON.stringify({
-      current_password: currentPassword,
-      new_password: newPassword,
-    }),
-  }, true);
-}
-
-export async function logout(): Promise<void> {
-  try {
-    await fetchApi('/auth/logout', { method: 'POST' }, true);
-  } finally {
-    clearStoredToken();
-  }
 }
 
 // Health check
@@ -182,13 +98,9 @@ export async function getCard(cardId: number): Promise<CardDetail> {
 
 export async function refreshCard(
   cardId: number,
-  options: { marketplaces?: string[]; sync?: boolean } = {}
-): Promise<CardDetail> {
-  const { marketplaces, sync = true } = options;
-  const params = new URLSearchParams();
-  params.set('sync', String(sync));
-  
-  return fetchApi(`/cards/${cardId}/refresh?${params}`, {
+  marketplaces?: string[]
+): Promise<{ card_id: number; marketplaces: string[]; tasks: Record<string, unknown> }> {
+  return fetchApi(`/cards/${cardId}/refresh`, {
     method: 'POST',
     body: JSON.stringify({ marketplaces }),
   });
@@ -302,153 +214,6 @@ export async function toggleMarketplace(
   return fetchApi(`/marketplaces/${marketplaceId}/toggle`, {
     method: 'PATCH',
   });
-}
-
-// Inventory API (requires authentication)
-export async function importInventory(
-  content: string,
-  options: {
-    format?: 'csv' | 'plaintext' | 'auto';
-    hasHeader?: boolean;
-    defaultCondition?: InventoryCondition;
-    defaultAcquisitionSource?: string;
-  } = {}
-): Promise<InventoryImportResponse> {
-  return fetchApi('/inventory/import', {
-    method: 'POST',
-    body: JSON.stringify({
-      content,
-      format: options.format || 'auto',
-      has_header: options.hasHeader ?? true,
-      default_condition: options.defaultCondition || 'NEAR_MINT',
-      default_acquisition_source: options.defaultAcquisitionSource,
-    }),
-  }, true);
-}
-
-export async function getInventory(options: {
-  search?: string;
-  setCode?: string;
-  condition?: InventoryCondition;
-  isFoil?: boolean;
-  minValue?: number;
-  maxValue?: number;
-  sortBy?: 'created_at' | 'current_value' | 'value_change_pct' | 'card_name' | 'quantity';
-  sortOrder?: 'asc' | 'desc';
-  page?: number;
-  pageSize?: number;
-} = {}): Promise<InventoryListResponse> {
-  const params = new URLSearchParams();
-  
-  if (options.search) params.set('search', options.search);
-  if (options.setCode) params.set('set_code', options.setCode);
-  if (options.condition) params.set('condition', options.condition);
-  if (options.isFoil !== undefined) params.set('is_foil', String(options.isFoil));
-  if (options.minValue !== undefined) params.set('min_value', String(options.minValue));
-  if (options.maxValue !== undefined) params.set('max_value', String(options.maxValue));
-  if (options.sortBy) params.set('sort_by', options.sortBy);
-  if (options.sortOrder) params.set('sort_order', options.sortOrder);
-  params.set('page', String(options.page || 1));
-  params.set('page_size', String(options.pageSize || 20));
-  
-  return fetchApi(`/inventory?${params}`, {}, true);
-}
-
-export async function getInventoryAnalytics(): Promise<InventoryAnalytics> {
-  return fetchApi('/inventory/analytics', {}, true);
-}
-
-export async function getInventoryItem(itemId: number): Promise<InventoryItem> {
-  return fetchApi(`/inventory/${itemId}`, {}, true);
-}
-
-export async function createInventoryItem(item: {
-  card_id: number;
-  quantity?: number;
-  condition?: InventoryCondition;
-  is_foil?: boolean;
-  language?: string;
-  acquisition_price?: number;
-  acquisition_currency?: string;
-  acquisition_date?: string;
-  acquisition_source?: string;
-  notes?: string;
-}): Promise<InventoryItem> {
-  return fetchApi('/inventory', {
-    method: 'POST',
-    body: JSON.stringify(item),
-  }, true);
-}
-
-export async function updateInventoryItem(
-  itemId: number,
-  updates: Partial<{
-    quantity: number;
-    condition: InventoryCondition;
-    is_foil: boolean;
-    language: string;
-    acquisition_price: number;
-    acquisition_currency: string;
-    acquisition_date: string;
-    acquisition_source: string;
-    notes: string;
-  }>
-): Promise<InventoryItem> {
-  return fetchApi(`/inventory/${itemId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(updates),
-  }, true);
-}
-
-export async function deleteInventoryItem(itemId: number): Promise<void> {
-  return fetchApi(`/inventory/${itemId}`, {
-    method: 'DELETE',
-  }, true);
-}
-
-export async function getInventoryRecommendations(options: {
-  action?: ActionType;
-  urgency?: InventoryUrgency;
-  minConfidence?: number;
-  isActive?: boolean;
-  page?: number;
-  pageSize?: number;
-} = {}): Promise<InventoryRecommendationList> {
-  const params = new URLSearchParams();
-  
-  if (options.action) params.set('action', options.action);
-  if (options.urgency) params.set('urgency', options.urgency);
-  if (options.minConfidence !== undefined) params.set('min_confidence', String(options.minConfidence));
-  if (options.isActive !== undefined) params.set('is_active', String(options.isActive));
-  params.set('page', String(options.page || 1));
-  params.set('page_size', String(options.pageSize || 20));
-  
-  return fetchApi(`/inventory/recommendations/list?${params}`, {}, true);
-}
-
-export async function refreshInventoryValuations(): Promise<{
-  message: string;
-  updated_count: number;
-}> {
-  return fetchApi('/inventory/refresh-valuations', {
-    method: 'POST',
-  }, true);
-}
-
-export async function runInventoryRecommendations(itemIds?: number[]): Promise<{
-  date: string;
-  items_processed: number;
-  total_recommendations: number;
-  sell_recommendations: number;
-  hold_recommendations: number;
-  critical_alerts: number;
-  high_priority: number;
-  errors: number;
-}> {
-  return fetchApi('/inventory/run-recommendations', {
-    method: 'POST',
-    body: JSON.stringify(itemIds ? { item_ids: itemIds } : {}),
-  }, true);
 }
 
 // Market API
