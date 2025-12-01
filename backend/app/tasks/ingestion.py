@@ -18,6 +18,8 @@ from app.core.config import settings
 from app.models import Card, Marketplace, Listing, PriceSnapshot, InventoryItem
 from app.services.ingestion import get_adapter, get_all_adapters, ScryfallAdapter
 from app.services.agents.normalization import NormalizationService
+from app.services.vectorization.service import VectorizationService
+from app.services.vectorization.ingestion import vectorize_card, vectorize_listing
 
 logger = structlog.get_logger()
 
@@ -111,10 +113,12 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
                 "marketplaces": {},
                 "total_listings": 0,
                 "total_snapshots": 0,
+                "total_vectors": 0,
                 "errors": [],
             }
             
             normalizer = NormalizationService(db)
+            vectorizer = VectorizationService()
             
             try:
                 for marketplace in marketplaces:
@@ -122,7 +126,7 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
                     adapter = get_adapter(marketplace.slug, cached=False)
                     try:
                         mp_results = await _scrape_marketplace(
-                            db, adapter, marketplace, cards, normalizer
+                            db, adapter, marketplace, cards, normalizer, vectorizer
                         )
                         results["marketplaces"][marketplace.slug] = mp_results
                         results["total_listings"] += mp_results.get("listings", 0)
@@ -142,8 +146,9 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
                 logger.info("Marketplace scrape completed", results=results)
                 return results
             finally:
-                # Always close normalizer to release Scryfall HTTP client
+                # Always close normalizer and vectorizer to release resources
                 await normalizer.close()
+                vectorizer.close()
     finally:
         await engine.dispose()
 
@@ -154,10 +159,12 @@ async def _scrape_marketplace(
     marketplace: Marketplace,
     cards: list[Card],
     normalizer: NormalizationService,
+    vectorizer: VectorizationService | None = None,
 ) -> dict[str, Any]:
     """Scrape data from a single marketplace."""
     listings_created = 0
     snapshots_created = 0
+    vectors_created = 0
     
     for card in cards:
         try:
@@ -196,6 +203,14 @@ async def _scrape_marketplace(
                 limit=20,
             )
             
+            # Vectorize card if vectorizer is available (once per card)
+            card_vector_obj = None
+            if vectorizer:
+                card_vector_obj = await vectorize_card(db, card, vectorizer)
+                if card_vector_obj:
+                    vectors_created += 1
+                    await db.flush()
+            
             for listing_data in listings:
                 # Update or create listing
                 listing = Listing(
@@ -216,6 +231,12 @@ async def _scrape_marketplace(
                 db.add(listing)
                 listings_created += 1
                 
+                # Vectorize listing if vectorizer is available
+                if vectorizer:
+                    listing_vector = await vectorize_listing(db, listing, card_vector_obj, vectorizer)
+                    if listing_vector:
+                        vectors_created += 1
+                
         except Exception as e:
             logger.warning(
                 "Failed to scrape card",
@@ -228,6 +249,7 @@ async def _scrape_marketplace(
         "listings": listings_created,
         "snapshots": snapshots_created,
         "cards_processed": len(cards),
+        "vectors_created": vectors_created,
     }
 
 
@@ -347,17 +369,19 @@ async def _scrape_inventory_cards_async() -> dict[str, Any]:
             }
             
             normalizer = NormalizationService(db)
+            vectorizer = VectorizationService()
             
             try:
                 for marketplace in marketplaces:
                     adapter = get_adapter(marketplace.slug, cached=False)
                     try:
                         mp_results = await _scrape_marketplace(
-                            db, adapter, marketplace, cards, normalizer
+                            db, adapter, marketplace, cards, normalizer, vectorizer
                         )
                         results["marketplaces"][marketplace.slug] = mp_results
                         results["total_listings"] += mp_results.get("listings", 0)
                         results["total_snapshots"] += mp_results.get("snapshots", 0)
+                        results["total_vectors"] = results.get("total_vectors", 0) + mp_results.get("vectors_created", 0)
                     except Exception as e:
                         error_msg = f"{marketplace.slug}: {str(e)}"
                         results["errors"].append(error_msg)
@@ -373,6 +397,7 @@ async def _scrape_inventory_cards_async() -> dict[str, Any]:
                 return results
             finally:
                 await normalizer.close()
+                vectorizer.close()
     finally:
         await engine.dispose()
 

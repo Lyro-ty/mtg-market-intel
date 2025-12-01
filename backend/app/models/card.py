@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.models.signal import Signal
     from app.models.recommendation import Recommendation
     from app.models.inventory import InventoryItem
+    from app.models.feature_vector import CardFeatureVector
 
 
 class Card(Base):
@@ -89,6 +90,9 @@ class Card(Base):
     )
     inventory_items: Mapped[list["InventoryItem"]] = relationship(
         "InventoryItem", back_populates="card", cascade="all, delete-orphan"
+    )
+    feature_vector: Mapped["CardFeatureVector | None"] = relationship(
+        "CardFeatureVector", uselist=False, cascade="all, delete-orphan"
     )
     
     # Indexes for common queries
