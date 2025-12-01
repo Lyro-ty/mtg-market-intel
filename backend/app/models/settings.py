@@ -1,26 +1,36 @@
 """
-AppSettings model for storing application configuration.
+AppSettings model for storing per-user application configuration.
 """
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class AppSettings(Base):
     """
-    Key-value store for application settings.
+    Per-user key-value store for application settings.
     
     Used for user-configurable options like enabled marketplaces,
-    ROI thresholds, etc.
+    ROI thresholds, etc. Each user has their own settings.
     """
     
     __tablename__ = "app_settings"
     
+    # User relationship
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    
     # Key-value pair
-    key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     
     # Metadata
@@ -28,8 +38,16 @@ class AppSettings(Base):
     value_type: Mapped[str] = mapped_column(String(20), default="string", nullable=False)
     # Types: string, integer, float, boolean, json
     
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="settings")
+    
+    # Unique constraint: each user can only have one setting per key
+    __table_args__ = (
+        UniqueConstraint('user_id', 'key', name='uq_app_settings_user_key'),
+    )
+    
     def __repr__(self) -> str:
-        return f"<AppSettings {self.key}={self.value[:50]}>"
+        return f"<AppSettings user_id={self.user_id} {self.key}={self.value[:50]}>"
 
 
 # Default settings keys

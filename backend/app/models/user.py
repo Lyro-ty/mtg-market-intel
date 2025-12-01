@@ -11,6 +11,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.inventory import InventoryItem
+    from app.models.settings import AppSettings
 
 
 class User(Base):
@@ -56,6 +57,11 @@ class User(Base):
     # Relationships
     inventory_items: Mapped[list["InventoryItem"]] = relationship(
         "InventoryItem",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    settings: Mapped[list["AppSettings"]] = relationship(
+        "AppSettings",
         back_populates="user",
         cascade="all, delete-orphan"
     )

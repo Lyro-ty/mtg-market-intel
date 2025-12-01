@@ -109,16 +109,36 @@ async def seed_marketplaces(db: AsyncSession) -> int:
 
 
 async def seed_settings(db: AsyncSession) -> int:
-    """Seed default application settings."""
+    """
+    Seed default application settings for the system user.
+    
+    Note: Settings are now per-user. This seeds settings for the system user
+    which can be used as defaults for global operations like recommendations.
+    """
+    from app.models.user import User
+    
+    # Get or create system user
+    system_user_query = select(User).where(User.username == "system")
+    system_result = await db.execute(system_user_query)
+    system_user = system_result.scalar_one_or_none()
+    
+    if not system_user:
+        logger.warning("System user not found, skipping settings seed")
+        return 0
+    
     created = 0
     
     for key, data in DEFAULT_SETTINGS.items():
-        query = select(AppSettings).where(AppSettings.key == key)
+        query = select(AppSettings).where(
+            AppSettings.user_id == system_user.id,
+            AppSettings.key == key
+        )
         result = await db.execute(query)
         existing = result.scalar_one_or_none()
         
         if not existing:
             setting = AppSettings(
+                user_id=system_user.id,
                 key=key,
                 value=data["value"],
                 description=data["description"],

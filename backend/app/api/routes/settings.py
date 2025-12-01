@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import CurrentUser
 from app.db.session import get_db
 from app.models import AppSettings
 from app.models.settings import DEFAULT_SETTINGS
@@ -16,9 +17,12 @@ from app.schemas.settings import SettingsResponse, SettingsUpdate
 router = APIRouter()
 
 
-async def _get_setting_value(db: AsyncSession, key: str) -> Any:
-    """Get a setting value, returning default if not found."""
-    query = select(AppSettings).where(AppSettings.key == key)
+async def _get_setting_value(db: AsyncSession, user_id: int, key: str) -> Any:
+    """Get a setting value for a specific user, returning default if not found."""
+    query = select(AppSettings).where(
+        AppSettings.user_id == user_id,
+        AppSettings.key == key
+    )
     result = await db.execute(query)
     setting = result.scalar_one_or_none()
     
@@ -48,12 +52,13 @@ def _parse_setting_value(value: str, value_type: str) -> Any:
 
 async def _set_setting_value(
     db: AsyncSession,
+    user_id: int,
     key: str,
     value: Any,
     value_type: str,
     description: str | None = None,
 ) -> None:
-    """Set a setting value."""
+    """Set a setting value for a specific user."""
     # Convert value to string
     if value_type == "json":
         str_value = json.dumps(value)
@@ -62,7 +67,10 @@ async def _set_setting_value(
     else:
         str_value = str(value)
     
-    query = select(AppSettings).where(AppSettings.key == key)
+    query = select(AppSettings).where(
+        AppSettings.user_id == user_id,
+        AppSettings.key == key
+    )
     result = await db.execute(query)
     setting = result.scalar_one_or_none()
     
@@ -73,6 +81,7 @@ async def _set_setting_value(
             setting.description = description
     else:
         setting = AppSettings(
+            user_id=user_id,
             key=key,
             value=str_value,
             value_type=value_type,
@@ -83,13 +92,14 @@ async def _set_setting_value(
 
 @router.get("", response_model=SettingsResponse)
 async def get_settings(
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get all application settings.
+    Get all application settings for the current user.
     """
-    # Get all settings from database
-    query = select(AppSettings)
+    # Get all settings from database for this user
+    query = select(AppSettings).where(AppSettings.user_id == current_user.id)
     result = await db.execute(query)
     db_settings = result.scalars().all()
     
@@ -117,64 +127,66 @@ async def get_settings(
 @router.put("", response_model=SettingsResponse)
 async def update_settings(
     updates: SettingsUpdate,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Update application settings.
+    Update application settings for the current user.
     
     Only provided fields will be updated.
     """
     # Process each field that was provided
     if updates.enabled_marketplaces is not None:
         await _set_setting_value(
-            db, "enabled_marketplaces", updates.enabled_marketplaces, "json"
+            db, current_user.id, "enabled_marketplaces", updates.enabled_marketplaces, "json"
         )
     
     if updates.min_roi_threshold is not None:
         await _set_setting_value(
-            db, "min_roi_threshold", updates.min_roi_threshold, "float"
+            db, current_user.id, "min_roi_threshold", updates.min_roi_threshold, "float"
         )
     
     if updates.min_confidence_threshold is not None:
         await _set_setting_value(
-            db, "min_confidence_threshold", updates.min_confidence_threshold, "float"
+            db, current_user.id, "min_confidence_threshold", updates.min_confidence_threshold, "float"
         )
     
     if updates.recommendation_horizon_days is not None:
         await _set_setting_value(
-            db, "recommendation_horizon_days", updates.recommendation_horizon_days, "integer"
+            db, current_user.id, "recommendation_horizon_days", updates.recommendation_horizon_days, "integer"
         )
     
     if updates.price_history_days is not None:
         await _set_setting_value(
-            db, "price_history_days", updates.price_history_days, "integer"
+            db, current_user.id, "price_history_days", updates.price_history_days, "integer"
         )
     
     if updates.scraping_enabled is not None:
         await _set_setting_value(
-            db, "scraping_enabled", updates.scraping_enabled, "boolean"
+            db, current_user.id, "scraping_enabled", updates.scraping_enabled, "boolean"
         )
     
     if updates.analytics_enabled is not None:
         await _set_setting_value(
-            db, "analytics_enabled", updates.analytics_enabled, "boolean"
+            db, current_user.id, "analytics_enabled", updates.analytics_enabled, "boolean"
         )
     
     await db.commit()
     
     # Return updated settings
-    return await get_settings(db)
+    return await get_settings(current_user, db)
 
 
 @router.get("/{key}")
 async def get_setting(
     key: str,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get a specific setting by key.
+    Get a specific setting by key for the current user.
     """
-    value = await _get_setting_value(db, key)
+    value = await _get_setting_value(db, current_user.id, key)
     
     if value is None:
         raise HTTPException(status_code=404, detail=f"Setting not found: {key}")
