@@ -19,6 +19,7 @@ from app.models import Card, Marketplace, Listing, PriceSnapshot, InventoryItem
 from app.services.ingestion import get_adapter, get_all_adapters, ScryfallAdapter
 from app.services.agents.normalization import NormalizationService
 from app.services.vectorization import get_vectorization_service
+from app.services.vectorization.service import VectorizationService
 from app.services.vectorization.ingestion import vectorize_card, vectorize_listing
 
 logger = structlog.get_logger()
