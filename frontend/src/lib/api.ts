@@ -94,23 +94,65 @@ async function fetchApi<T>(
     throw new ApiError('Authentication required', 401);
   }
   
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-  
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
     
-    // Clear token if unauthorized
-    if (response.status === 401) {
-      clearStoredToken();
+    if (!response.ok) {
+      let errorDetail = 'Unknown error';
+      try {
+        const errorData = await response.json();
+        errorDetail = errorData.detail || errorData.message || JSON.stringify(errorData);
+      } catch {
+        // If response is not JSON, try to get text
+        try {
+          errorDetail = await response.text() || `HTTP ${response.status}`;
+        } catch {
+          errorDetail = `HTTP ${response.status} ${response.statusText}`;
+        }
+      }
+      
+      // Clear token if unauthorized
+      if (response.status === 401) {
+        clearStoredToken();
+      }
+      
+      throw new ApiError(errorDetail, response.status);
     }
     
-    throw new ApiError(error.detail || 'Request failed', response.status);
+    // Handle empty responses
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const text = await response.text();
+      if (!text) {
+        return {} as T;
+      }
+      return JSON.parse(text);
+    }
+    
+    return response.json();
+  } catch (error) {
+    // Handle network errors
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new ApiError(
+        `Network error: Unable to connect to API at ${url}. Please check if the backend is running.`,
+        0
+      );
+    }
+    
+    // Re-throw ApiError as-is
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    // Wrap other errors
+    throw new ApiError(
+      error instanceof Error ? error.message : 'Request failed',
+      0
+    );
   }
-  
-  return response.json();
 }
 
 // Authentication API

@@ -93,8 +93,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Include API routes
-app.include_router(api_router)
+# Include API routes with /api prefix
+app.include_router(api_router, prefix="/api")
 
 
 # Middleware for request logging

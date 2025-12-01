@@ -14,12 +14,15 @@ const nextConfig = {
     ],
   },
   async rewrites() {
-    // Use internal Docker service name for backend, or fallback to localhost for dev
-    const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    // For Docker production builds, always use the backend service name
+    // The BACKEND_URL build arg should be set, but we default to the service name
+    // This is evaluated at build time for standalone output
+    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
+    
     return [
       {
         source: '/api/:path*',
-        destination: `${backendUrl}/:path*`,
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },

@@ -19,9 +19,14 @@ export default function DashboardPage() {
   if (isLoading) return <LoadingPage />;
   
   if (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load dashboard data';
     return (
       <div className="text-center py-12">
-        <p className="text-red-500">Failed to load dashboard data</p>
+        <p className="text-red-500 mb-2">Failed to load dashboard data</p>
+        <p className="text-sm text-[rgb(var(--muted-foreground))]">{errorMessage}</p>
+        <p className="text-xs text-[rgb(var(--muted-foreground))] mt-2">
+          Check browser console for details
+        </p>
       </div>
     );
   }

@@ -67,11 +67,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (data: RegisterData) => {
-    await apiRegister(data);
-    // After registration, automatically log in
-    await apiLogin({ email: data.email, password: data.password });
-    await refreshUser();
-    router.push('/');
+    try {
+      await apiRegister(data);
+      // After registration, automatically log in
+      await apiLogin({ email: data.email, password: data.password });
+      await refreshUser();
+      router.push('/');
+    } catch (error) {
+      // Re-throw with better error message
+      const message = error instanceof Error ? error.message : 'Registration failed';
+      throw new Error(message);
+    }
   };
 
   const logout = async () => {
