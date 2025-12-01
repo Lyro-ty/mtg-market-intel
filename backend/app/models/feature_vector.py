@@ -45,7 +45,7 @@ class CardFeatureVector(Base):
     model_version: Mapped[str] = mapped_column(default="all-MiniLM-L6-v2", nullable=False)
     
     # Relationships
-    card: Mapped["Card"] = relationship("Card")
+    card: Mapped["Card"] = relationship("Card", overlaps="feature_vector")
     
     # Indexes
     __table_args__ = (
@@ -94,7 +94,7 @@ class ListingFeatureVector(Base):
     model_version: Mapped[str] = mapped_column(default="all-MiniLM-L6-v2", nullable=False)
     
     # Relationships
-    listing: Mapped["Listing"] = relationship("Listing")
+    listing: Mapped["Listing"] = relationship("Listing", overlaps="feature_vector")
     
     # Indexes
     __table_args__ = (
