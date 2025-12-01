@@ -666,6 +666,11 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             logger.info("Metrics computed", card_id=card.id)
     except Exception as e:
         logger.warning("Failed to compute metrics", card_id=card.id, error=str(e))
+        # Check if transaction needs rollback
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Already rolled back
         metrics = None
     
     # 4. Generate signals
@@ -678,6 +683,11 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             logger.info("Signals generated", card_id=card.id, count=len(signals))
     except Exception as e:
         logger.warning("Failed to generate signals", card_id=card.id, error=str(e))
+        # Check if transaction needs rollback
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Already rolled back
     
     # 5. Generate recommendations
     recommendations = []
@@ -689,8 +699,23 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             logger.info("Recommendations generated", card_id=card.id, count=len(recommendations))
     except Exception as e:
         logger.warning("Failed to generate recommendations", card_id=card.id, error=str(e))
+        # Rollback the transaction if there was a database error
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Already rolled back
+        # Don't re-raise - allow the refresh to complete even if recommendations fail
+        # The other data (listings, snapshots, metrics) is still valuable
     
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception as e:
+        logger.error("Failed to commit transaction", card_id=card.id, error=str(e))
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise
     
     # 6. Fetch and return updated card detail
     # Re-fetch metrics (might have been updated)

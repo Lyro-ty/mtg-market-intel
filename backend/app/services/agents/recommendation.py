@@ -188,6 +188,10 @@ class RecommendationAgent:
                     f"{potential_profit*100:.1f}% profit margin."
                 )
             
+            # Cap potential_profit_pct to reasonable maximum (9999.99%) to prevent overflow
+            profit_pct = potential_profit * 100
+            capped_profit_pct = min(profit_pct, 9999.99) if profit_pct else None
+            
             return Recommendation(
                 card_id=card.id,
                 action=ActionType.BUY.value,
@@ -195,7 +199,7 @@ class RecommendationAgent:
                 horizon_days=self.horizon_days,
                 current_price=float(metrics.min_price),
                 target_price=float(metrics.max_price),
-                potential_profit_pct=potential_profit * 100,
+                potential_profit_pct=capped_profit_pct,
                 rationale=rationale,
                 source_signals=json.dumps(["spread_high"]),
                 valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),

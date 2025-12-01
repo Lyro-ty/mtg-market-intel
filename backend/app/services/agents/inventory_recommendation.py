@@ -262,7 +262,7 @@ class InventoryRecommendationAgent:
             horizon_days=self.horizon_days,
             current_price=current_price,
             target_price=current_price,  # Sell at current price
-            potential_profit_pct=roi_from_acquisition,
+            potential_profit_pct=min(roi_from_acquisition, 9999.99) if roi_from_acquisition else None,
             roi_from_acquisition=roi_from_acquisition,
             rationale=rationale,
             suggested_listing_price=current_price * 0.98 if current_price else None,  # Slight discount for quick sale
@@ -313,7 +313,7 @@ class InventoryRecommendationAgent:
                 horizon_days=self.horizon_days,
                 current_price=float(metrics.avg_price) if metrics.avg_price else None,
                 target_price=float(metrics.max_price),
-                potential_profit_pct=potential_profit * 100,
+                potential_profit_pct=min(potential_profit * 100, 9999.99) if potential_profit else None,
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
                 suggested_listing_price=float(metrics.max_price) * 0.95,
@@ -397,7 +397,7 @@ class InventoryRecommendationAgent:
                 horizon_days=self.horizon_days,
                 current_price=current_price,
                 target_price=target_price,
-                potential_profit_pct=roi_from_acquisition,
+                potential_profit_pct=min(roi_from_acquisition, 9999.99) if roi_from_acquisition else None,
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
                 suggested_listing_price=current_price * 1.02 if current_price else None,
@@ -446,7 +446,7 @@ class InventoryRecommendationAgent:
                 confidence=confidence,
                 horizon_days=self.horizon_days,
                 current_price=current_price,
-                potential_profit_pct=roi_from_acquisition,
+                potential_profit_pct=min(roi_from_acquisition, 9999.99) if roi_from_acquisition else None,
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
                 suggested_listing_price=current_price * 0.92 if current_price else None,  # Aggressive pricing to sell quickly

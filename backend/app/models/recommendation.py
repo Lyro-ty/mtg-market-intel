@@ -53,7 +53,7 @@ class Recommendation(Base):
     # Price targets
     target_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     current_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
-    potential_profit_pct: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)
+    potential_profit_pct: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)  # Increased from (5,2) to handle large percentages
     
     # Rationale
     rationale: Mapped[str] = mapped_column(Text, nullable=False)
