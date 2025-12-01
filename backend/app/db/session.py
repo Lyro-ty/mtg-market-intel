@@ -10,8 +10,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy import event
-from sqlalchemy.pool import Pool
 
 from app.core.config import settings
 
@@ -34,14 +32,8 @@ engine = create_async_engine(
         "command_timeout": 25,  # asyncpg command timeout (in seconds)
     },
 )
-
-
-# Add connection pool event listeners for better monitoring
-@event.listens_for(Pool, "connect")
-def set_connection_timeout(dbapi_conn, connection_record):
-    """Set statement timeout on new connections."""
-    with dbapi_conn.cursor() as cursor:
-        cursor.execute("SET statement_timeout = '30s'")
+# Note: statement_timeout is set via connect_args.server_settings above
+# No need for a connection event listener since asyncpg doesn't support sync cursor context managers
 
 # Create async session factory
 async_session_maker = async_sessionmaker(
