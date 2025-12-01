@@ -9,6 +9,9 @@ from app.services.llm.base import LLMClient, LLMResponse
 
 logger = structlog.get_logger()
 
+# Track if we've already logged API key errors to avoid spam
+_api_key_error_logged = False
+
 
 class OpenAIClient(LLMClient):
     """OpenAI API client implementation."""
@@ -24,6 +27,7 @@ class OpenAIClient(LLMClient):
         self.api_key = api_key or settings.openai_api_key
         self.model = model or settings.openai_model
         self.client = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
+        self._api_key_invalid = False  # Track if API key is invalid
     
     @property
     def provider_name(self) -> str:
@@ -70,6 +74,24 @@ class OpenAIClient(LLMClient):
                 raw_response=response,
             )
         except Exception as e:
-            logger.error("OpenAI API error", error=str(e))
+            error_str = str(e)
+            # Check if it's an API key error
+            if "invalid_api_key" in error_str or "Incorrect API key" in error_str:
+                global _api_key_error_logged
+                if not _api_key_error_logged:
+                    logger.warning(
+                        "OpenAI API key is invalid, using fallback responses",
+                        error=error_str[:200] if len(error_str) > 200 else error_str
+                    )
+                    _api_key_error_logged = True
+                self._api_key_invalid = True
+                # Return a fallback response instead of raising
+                return LLMResponse(
+                    content="[LLM response unavailable - API key invalid]",
+                    model=self.model,
+                    provider=self.provider_name,
+                )
+            # For other errors, log and raise
+            logger.error("OpenAI API error", error=error_str[:200] if len(error_str) > 200 else error_str)
             raise
 

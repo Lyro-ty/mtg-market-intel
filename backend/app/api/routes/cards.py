@@ -627,7 +627,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     )
     
     # 2.5. Vectorize card and listings for ML training
-    vectorizer = VectorizationService()
+    from app.services.vectorization import get_vectorization_service
+    vectorizer = get_vectorization_service()  # Use cached instance
     vectors_created = 0
     try:
         # Vectorize the card
@@ -654,8 +655,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
         )
     except Exception as e:
         logger.warning("Failed to vectorize card data", card_id=card.id, error=str(e))
-    finally:
-        vectorizer.close()
+    # Don't close the cached vectorizer - it's shared across requests
     
     # 3. Compute metrics
     try:

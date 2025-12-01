@@ -18,7 +18,7 @@ from app.core.config import settings
 from app.models import Card, Marketplace, Listing, PriceSnapshot, InventoryItem
 from app.services.ingestion import get_adapter, get_all_adapters, ScryfallAdapter
 from app.services.agents.normalization import NormalizationService
-from app.services.vectorization.service import VectorizationService
+from app.services.vectorization import get_vectorization_service
 from app.services.vectorization.ingestion import vectorize_card, vectorize_listing
 
 logger = structlog.get_logger()
@@ -124,7 +124,7 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
             }
             
             normalizer = NormalizationService(db)
-            vectorizer = VectorizationService()
+            vectorizer = get_vectorization_service()  # Use cached instance
             
             try:
                 for marketplace in marketplaces:
@@ -172,9 +172,9 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
                 )
                 return results
             finally:
-                # Always close normalizer and vectorizer to release resources
+                # Always close normalizer to release resources
                 await normalizer.close()
-                vectorizer.close()
+                # Don't close cached vectorizer - it's shared across requests
     finally:
         await engine.dispose()
 
@@ -463,7 +463,7 @@ async def _scrape_inventory_cards_async() -> dict[str, Any]:
             }
             
             normalizer = NormalizationService(db)
-            vectorizer = VectorizationService()
+            vectorizer = get_vectorization_service()  # Use cached instance
             
             try:
                 for marketplace in marketplaces:
@@ -491,7 +491,7 @@ async def _scrape_inventory_cards_async() -> dict[str, Any]:
                 return results
             finally:
                 await normalizer.close()
-                vectorizer.close()
+                # Don't close cached vectorizer - it's shared across requests
     finally:
         await engine.dispose()
 
