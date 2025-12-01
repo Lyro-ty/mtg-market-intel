@@ -43,6 +43,34 @@ async def lifespan(app: FastAPI):
     # Celery workers should NOT enable this as they create new loops per task
     enable_adapter_caching(True)
     
+    # Trigger initial tasks on startup
+    try:
+        from app.tasks.ingestion import scrape_all_marketplaces
+        from app.tasks.analytics import run_analytics
+        from app.tasks.recommendations import generate_recommendations
+        
+        logger.info("Triggering startup tasks: scraping, analytics, recommendations")
+        
+        # Trigger scraping (runs in background)
+        scrape_task = scrape_all_marketplaces.delay()
+        logger.info("Scraping task queued", task_id=str(scrape_task.id))
+        
+        # Trigger analytics (runs after scraping completes, but we queue it anyway)
+        # It will process whatever data is available
+        analytics_task = run_analytics.delay()
+        logger.info("Analytics task queued", task_id=str(analytics_task.id))
+        
+        # Trigger recommendations (runs after analytics, but we queue it anyway)
+        rec_task = generate_recommendations.delay()
+        logger.info("Recommendations task queued", task_id=str(rec_task.id))
+        
+    except Exception as exc:
+        # Don't fail startup if Celery isn't available (e.g., in dev)
+        logger.warning(
+            "Failed to trigger startup tasks (Celery may not be ready)",
+            error=str(exc)
+        )
+    
     yield
     
     # Shutdown
