@@ -26,6 +26,8 @@ def upgrade() -> None:
         sa.Column('feature_vector', sa.LargeBinary(), nullable=False),
         sa.Column('feature_dim', sa.Integer(), nullable=False),
         sa.Column('model_version', sa.String(), nullable=False, server_default='all-MiniLM-L6-v2'),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['card_id'], ['cards.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('card_id')
     )
@@ -38,6 +40,8 @@ def upgrade() -> None:
         sa.Column('feature_vector', sa.LargeBinary(), nullable=False),
         sa.Column('feature_dim', sa.Integer(), nullable=False),
         sa.Column('model_version', sa.String(), nullable=False, server_default='all-MiniLM-L6-v2'),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['listing_id'], ['listings.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('listing_id')
     )

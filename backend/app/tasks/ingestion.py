@@ -91,8 +91,8 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
             
             logger.info("Scraping inventory cards first", count=len(inventory_cards))
             
-            # PRIORITY 2: Fill remaining slots with other cards (up to 500 total)
-            remaining_slots = max(0, 500 - len(inventory_cards))
+            # PRIORITY 2: Fill remaining slots with other cards (up to 2000 total - increased from 500)
+            remaining_slots = max(0, 2000 - len(inventory_cards))
             if remaining_slots > 0:
                 other_cards_query = (
                     select(Card)
@@ -106,7 +106,13 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
             
             # Combine: inventory cards first, then others
             cards = inventory_cards + other_cards
-            logger.info("Total cards to scrape", inventory=len(inventory_cards), other=len(other_cards), total=len(cards))
+            logger.info(
+                "Total cards to scrape",
+                inventory=len(inventory_cards),
+                other=len(other_cards),
+                total=len(cards),
+                marketplaces=len(marketplaces),
+            )
             
             results = {
                 "started_at": datetime.utcnow().isoformat(),
@@ -125,16 +131,30 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
                     # Create fresh adapter for each marketplace (don't cache across event loops)
                     adapter = get_adapter(marketplace.slug, cached=False)
                     try:
+                        logger.info(
+                            "Starting marketplace scrape",
+                            marketplace=marketplace.slug,
+                            cards_count=len(cards),
+                        )
                         mp_results = await _scrape_marketplace(
                             db, adapter, marketplace, cards, normalizer, vectorizer
                         )
                         results["marketplaces"][marketplace.slug] = mp_results
                         results["total_listings"] += mp_results.get("listings", 0)
                         results["total_snapshots"] += mp_results.get("snapshots", 0)
+                        results["total_vectors"] += mp_results.get("vectors_created", 0)
+                        
+                        logger.info(
+                            "Marketplace scrape completed",
+                            marketplace=marketplace.slug,
+                            listings=mp_results.get("listings", 0),
+                            snapshots=mp_results.get("snapshots", 0),
+                            cards_processed=mp_results.get("cards_processed", 0),
+                        )
                     except Exception as e:
                         error_msg = f"{marketplace.slug}: {str(e)}"
                         results["errors"].append(error_msg)
-                        logger.error("Marketplace scrape failed", marketplace=marketplace.slug, error=str(e))
+                        logger.error("Marketplace scrape failed", marketplace=marketplace.slug, error=str(e), exc_info=True)
                     finally:
                         # Always close adapter to release HTTP client resources
                         if hasattr(adapter, 'close'):
@@ -143,7 +163,13 @@ async def _scrape_all_marketplaces_async() -> dict[str, Any]:
                 await db.commit()
                 results["completed_at"] = datetime.utcnow().isoformat()
                 
-                logger.info("Marketplace scrape completed", results=results)
+                logger.info(
+                    "Marketplace scrape completed",
+                    total_listings=results["total_listings"],
+                    total_snapshots=results["total_snapshots"],
+                    total_vectors=results["total_vectors"],
+                    errors_count=len(results["errors"]),
+                )
                 return results
             finally:
                 # Always close normalizer and vectorizer to release resources
@@ -163,8 +189,11 @@ async def _scrape_marketplace(
 ) -> dict[str, Any]:
     """Scrape data from a single marketplace."""
     listings_created = 0
+    listings_updated = 0
     snapshots_created = 0
     vectors_created = 0
+    cards_with_listings = 0
+    cards_without_listings = 0
     
     for card in cards:
         try:
@@ -200,8 +229,20 @@ async def _scrape_marketplace(
                 card_name=card.name,
                 set_code=card.set_code,
                 scryfall_id=card.scryfall_id,
-                limit=20,
+                limit=100,  # Increased from 20 to get more listings
             )
+            
+            if len(listings) > 0:
+                cards_with_listings += 1
+                logger.debug(
+                    "Fetched listings from adapter",
+                    card_id=card.id,
+                    card_name=card.name,
+                    marketplace=marketplace.slug,
+                    listings_count=len(listings),
+                )
+            else:
+                cards_without_listings += 1
             
             # Vectorize card if vectorizer is available (once per card)
             card_vector_obj = None
@@ -212,30 +253,68 @@ async def _scrape_marketplace(
                     await db.flush()
             
             for listing_data in listings:
-                # Update or create listing
-                listing = Listing(
-                    card_id=card.id,
-                    marketplace_id=marketplace.id,
-                    condition=listing_data.condition,
-                    language=listing_data.language,
-                    is_foil=listing_data.is_foil,
-                    price=listing_data.price,
-                    currency=listing_data.currency,
-                    quantity=listing_data.quantity,
-                    seller_name=listing_data.seller_name,
-                    seller_rating=listing_data.seller_rating,
-                    external_id=listing_data.external_id,
-                    listing_url=listing_data.listing_url,
-                    last_seen_at=datetime.utcnow(),
-                )
-                db.add(listing)
-                listings_created += 1
+                try:
+                    # Check if listing already exists by external_id
+                    existing = None
+                    if listing_data.external_id:
+                        existing_query = select(Listing).where(
+                            Listing.external_id == listing_data.external_id,
+                            Listing.marketplace_id == marketplace.id,
+                        )
+                        existing_result = await db.execute(existing_query)
+                        existing = existing_result.scalar_one_or_none()
+                    
+                    if existing:
+                        # Update existing listing
+                        existing.condition = listing_data.condition
+                        existing.language = listing_data.language
+                        existing.is_foil = listing_data.is_foil
+                        existing.price = listing_data.price
+                        existing.currency = listing_data.currency
+                        existing.quantity = listing_data.quantity
+                        existing.seller_name = listing_data.seller_name
+                        existing.seller_rating = listing_data.seller_rating
+                        existing.listing_url = listing_data.listing_url
+                        existing.last_seen_at = datetime.utcnow()
+                        listings_updated += 1
+                        # Don't increment created count for updates
+                    else:
+                        # Create new listing
+                        listing = Listing(
+                            card_id=card.id,
+                            marketplace_id=marketplace.id,
+                            condition=listing_data.condition,
+                            language=listing_data.language,
+                            is_foil=listing_data.is_foil,
+                            price=listing_data.price,
+                            currency=listing_data.currency,
+                            quantity=listing_data.quantity,
+                            seller_name=listing_data.seller_name,
+                            seller_rating=listing_data.seller_rating,
+                            external_id=listing_data.external_id,
+                            listing_url=listing_data.listing_url,
+                            last_seen_at=datetime.utcnow(),
+                        )
+                        db.add(listing)
+                        listings_created += 1
+                        
+                        # Vectorize listing if vectorizer is available
+                        if vectorizer:
+                            listing_vector = await vectorize_listing(db, listing, card_vector_obj, vectorizer)
+                            if listing_vector:
+                                vectors_created += 1
                 
-                # Vectorize listing if vectorizer is available
-                if vectorizer:
-                    listing_vector = await vectorize_listing(db, listing, card_vector_obj, vectorizer)
-                    if listing_vector:
-                        vectors_created += 1
+                except Exception as listing_error:
+                    logger.warning(
+                        "Failed to save listing",
+                        card_id=card.id,
+                        card_name=card.name,
+                        marketplace=marketplace.slug,
+                        external_id=listing_data.external_id,
+                        error=str(listing_error),
+                    )
+                    # Don't increment count if listing creation failed
+                    continue
                 
         except Exception as e:
             logger.warning(
@@ -245,10 +324,25 @@ async def _scrape_marketplace(
                 error=str(e),
             )
     
+    logger.info(
+        "Marketplace scrape summary",
+        marketplace=marketplace.slug,
+        cards_processed=len(cards),
+        cards_with_listings=cards_with_listings,
+        cards_without_listings=cards_without_listings,
+        listings_created=listings_created,
+        listings_updated=listings_updated,
+        snapshots_created=snapshots_created,
+        vectors_created=vectors_created,
+    )
+    
     return {
         "listings": listings_created,
+        "listings_updated": listings_updated,
         "snapshots": snapshots_created,
         "cards_processed": len(cards),
+        "cards_with_listings": cards_with_listings,
+        "cards_without_listings": cards_without_listings,
         "vectors_created": vectors_created,
     }
 

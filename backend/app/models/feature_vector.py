@@ -25,6 +25,12 @@ class CardFeatureVector(Base):
     """
     
     __tablename__ = "card_feature_vectors"
+    __mapper_args__ = {
+        "include_properties": [
+            "card_id", "feature_vector", "feature_dim", "model_version",
+            "created_at", "updated_at"
+        ]
+    }
     
     # Foreign key
     card_id: Mapped[int] = mapped_column(
@@ -75,6 +81,12 @@ class ListingFeatureVector(Base):
     """
     
     __tablename__ = "listing_feature_vectors"
+    __mapper_args__ = {
+        "include_properties": [
+            "listing_id", "feature_vector", "feature_dim", "model_version",
+            "created_at", "updated_at"
+        ]
+    }
     
     # Foreign key
     listing_id: Mapped[int] = mapped_column(
