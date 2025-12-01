@@ -305,6 +305,12 @@ async def get_top_movers(
         # Get volume (number of listings)
         volume = metrics.total_listings or 0
         
+        # Get the actual change value from metrics object
+        if window == "24h":
+            change_value = metrics.price_change_pct_1d
+        else:
+            change_value = metrics.price_change_pct_7d
+        
         # Try to determine format from legalities
         format_name = "Standard"  # Default
         if card.legalities:
@@ -323,7 +329,7 @@ async def get_top_movers(
             "setCode": card.set_code,
             "format": format_name,
             "currentPriceUsd": float(metrics.avg_price) if metrics.avg_price else 0.0,
-            "changePct": float(change_field) if change_field else 0.0,
+            "changePct": float(change_value) if change_value is not None else 0.0,
             "volume": volume,
         })
     
@@ -332,6 +338,12 @@ async def get_top_movers(
     for metrics, card in losers_rows:
         # Get volume
         volume = metrics.total_listings or 0
+        
+        # Get the actual change value from metrics object
+        if window == "24h":
+            change_value = metrics.price_change_pct_1d
+        else:
+            change_value = metrics.price_change_pct_7d
         
         # Try to determine format
         format_name = "Standard"  # Default
@@ -350,7 +362,7 @@ async def get_top_movers(
             "setCode": card.set_code,
             "format": format_name,
             "currentPriceUsd": float(metrics.avg_price) if metrics.avg_price else 0.0,
-            "changePct": float(change_field) if change_field else 0.0,
+            "changePct": float(change_value) if change_value is not None else 0.0,
             "volume": volume,
         })
     
