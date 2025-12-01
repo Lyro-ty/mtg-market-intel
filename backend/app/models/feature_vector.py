@@ -10,12 +10,33 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
+# Create a base class without id for feature vectors
+# Use the same registry as Base so relationships work
+class FeatureVectorBase(DeclarativeBase):
+    """Base class for feature vector models that don't use the standard id column."""
+    
+    # Share the same registry as Base
+    registry = Base.registry
+    
+    # Only include created_at and updated_at, not id
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
+
 if TYPE_CHECKING:
     from app.models.card import Card
     from app.models.listing import Listing
 
 
-class CardFeatureVector(Base):
+class CardFeatureVector(FeatureVectorBase):
     """
     Stores pre-computed feature vectors for cards.
     
@@ -26,11 +47,8 @@ class CardFeatureVector(Base):
     """
     
     __tablename__ = "card_feature_vectors"
-    __mapper_args__ = {
-        "exclude_properties": ["id"]
-    }
     
-    # Primary key (overrides base id)
+    # Primary key
     card_id: Mapped[int] = mapped_column(
         ForeignKey("cards.id", ondelete="CASCADE"),
         primary_key=True,
@@ -47,19 +65,6 @@ class CardFeatureVector(Base):
     
     # Metadata
     model_version: Mapped[str] = mapped_column(String, default="all-MiniLM-L6-v2", nullable=False)
-    
-    # Timestamps (explicitly define since we're not using base id)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False
-    )
     
     # Relationships
     card: Mapped["Card"] = relationship("Card", overlaps="feature_vector")
@@ -82,7 +87,7 @@ class CardFeatureVector(Base):
         return f"<CardFeatureVector card_id={self.card_id} dim={self.feature_dim}>"
 
 
-class ListingFeatureVector(Base):
+class ListingFeatureVector(FeatureVectorBase):
     """
     Stores pre-computed feature vectors for listings.
     
@@ -92,11 +97,8 @@ class ListingFeatureVector(Base):
     """
     
     __tablename__ = "listing_feature_vectors"
-    __mapper_args__ = {
-        "exclude_properties": ["id"]
-    }
     
-    # Primary key (overrides base id)
+    # Primary key
     listing_id: Mapped[int] = mapped_column(
         ForeignKey("listings.id", ondelete="CASCADE"),
         primary_key=True,
@@ -112,19 +114,6 @@ class ListingFeatureVector(Base):
     
     # Metadata
     model_version: Mapped[str] = mapped_column(String, default="all-MiniLM-L6-v2", nullable=False)
-    
-    # Timestamps (explicitly define since we're not using base id)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False
-    )
     
     # Relationships
     listing: Mapped["Listing"] = relationship("Listing", overlaps="feature_vector")
