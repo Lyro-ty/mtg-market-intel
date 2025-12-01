@@ -19,6 +19,7 @@ import type {
   MarketIndex,
   TopMovers,
   VolumeByFormat,
+  ColorDistribution,
   User,
   LoginCredentials,
   RegisterData,
@@ -382,6 +383,12 @@ export async function getVolumeByFormat(
   days: number = 30
 ): Promise<VolumeByFormat> {
   return fetchApi(`/market/volume-by-format?days=${days}`);
+}
+
+export async function getColorDistribution(
+  window: '7d' | '30d' = '7d'
+): Promise<ColorDistribution> {
+  return fetchApi(`/market/color-distribution?window=${window}`);
 }
 
 // Inventory API (requires authentication)

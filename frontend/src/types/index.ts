@@ -439,3 +439,11 @@ export interface VolumeByFormat {
   isMockData?: boolean;
 }
 
+export interface ColorDistribution {
+  window: '7d' | '30d';
+  formats: string[];
+  colors: string[];
+  matrix: number[][]; // matrix[i][j] = share of format i's volume for color j
+  isMockData?: boolean;
+}
+

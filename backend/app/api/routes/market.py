@@ -509,3 +509,158 @@ def _get_mock_volume_by_format(days: int):
     
     return result
 
+
+@router.get("/color-distribution")
+async def get_color_distribution(
+    window: str = Query("7d", regex="^(7d|30d)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get color/archetype distribution by format.
+    
+    Returns a matrix showing the share of volume for each color identity
+    within each format.
+    """
+    # Determine time window
+    if window == "7d":
+        start_date = datetime.utcnow() - timedelta(days=7)
+    else:  # 30d
+        start_date = datetime.utcnow() - timedelta(days=30)
+    
+    # Get cards with color identity and their metrics
+    query = select(
+        Card.color_identity,
+        Card.legalities,
+        func.sum(MetricsCardsDaily.total_listings * MetricsCardsDaily.avg_price).label("volume"),
+    ).join(
+        MetricsCardsDaily, Card.id == MetricsCardsDaily.card_id
+    ).where(
+        MetricsCardsDaily.date >= start_date.date(),
+        MetricsCardsDaily.avg_price.isnot(None),
+        MetricsCardsDaily.total_listings.isnot(None),
+        Card.color_identity.isnot(None),
+        Card.color_identity != "",
+        Card.legalities.isnot(None),
+        Card.legalities != "",
+    ).group_by(
+        Card.color_identity,
+        Card.legalities
+    )
+    
+    result = await db.execute(query)
+    rows = result.all()
+    
+    if not rows:
+        # Return mock data
+        return {
+            "window": window,
+            "formats": ["Commander", "Modern", "Pioneer", "Standard", "Legacy"],
+            "colors": ["W", "U", "B", "R", "G", "Multicolor", "Colorless"],
+            "matrix": _get_mock_color_distribution(),
+            "isMockData": True,
+        }
+    
+    # Define color categories
+    COLOR_CATEGORIES = {
+        "W": ["W"],
+        "U": ["U"],
+        "B": ["B"],
+        "R": ["R"],
+        "G": ["G"],
+        "Multicolor": ["WU", "WB", "WR", "WG", "UB", "UR", "UG", "BR", "BG", "RG",
+                       "WUB", "WUR", "WUG", "WBR", "WBG", "WRG", "UBR", "UBG", "URG", "BRG",
+                       "WUBR", "WUBG", "WURG", "WBRG", "UBRG", "WUBRG"],
+        "Colorless": [""],
+    }
+    
+    # Common formats
+    FORMATS = ["Commander", "Modern", "Pioneer", "Standard", "Legacy", "Vintage", "Pauper"]
+    
+    # Aggregate volume by format and color
+    format_color_volume: dict[str, dict[str, float]] = {}
+    
+    for row in rows:
+        if not row.color_identity or not row.legalities:
+            continue
+        
+        try:
+            color_identity = json.loads(row.color_identity) if isinstance(row.color_identity, str) else row.color_identity
+            legalities = json.loads(row.legalities) if isinstance(row.legalities, str) else row.legalities
+            volume = float(row.volume) if row.volume else 0.0
+            
+            # Determine color category
+            color_str = "".join(sorted(color_identity)) if isinstance(color_identity, list) else str(color_identity)
+            color_category = "Colorless"
+            if not color_str or color_str == "[]":
+                color_category = "Colorless"
+            elif len(color_str) == 1:
+                color_category = color_str.upper()
+            else:
+                color_category = "Multicolor"
+            
+            # Distribute volume across formats where card is legal
+            legal_formats = [fmt for fmt, status in legalities.items() 
+                           if status == "legal" and fmt in FORMATS]
+            
+            if legal_formats:
+                volume_per_format = volume / len(legal_formats)
+                for fmt in legal_formats:
+                    if fmt not in format_color_volume:
+                        format_color_volume[fmt] = {}
+                    if color_category not in format_color_volume[fmt]:
+                        format_color_volume[fmt][color_category] = 0.0
+                    format_color_volume[fmt][color_category] += volume_per_format
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            continue
+    
+    # Build matrix: matrix[i][j] = share of format i's volume for color j
+    colors = ["W", "U", "B", "R", "G", "Multicolor", "Colorless"]
+    formats = [fmt for fmt in FORMATS if fmt in format_color_volume]
+    
+    if not formats:
+        formats = FORMATS[:5]  # Default formats
+    
+    matrix = []
+    for fmt in formats:
+        format_total = sum(format_color_volume.get(fmt, {}).values())
+        if format_total == 0:
+            # Equal distribution if no data
+            row = [1.0 / len(colors)] * len(colors)
+        else:
+            row = [
+                format_color_volume.get(fmt, {}).get(color, 0.0) / format_total
+                for color in colors
+            ]
+        matrix.append(row)
+    
+    # If no data, return mock
+    if not any(any(row) for row in matrix):
+        return {
+            "window": window,
+            "formats": formats,
+            "colors": colors,
+            "matrix": _get_mock_color_distribution(),
+            "isMockData": True,
+        }
+    
+    return {
+        "window": window,
+        "formats": formats,
+        "colors": colors,
+        "matrix": matrix,
+        "isMockData": False,
+    }
+
+
+def _get_mock_color_distribution():
+    """Generate mock color distribution matrix."""
+    # 5 formats x 7 colors
+    # Simulate realistic distribution
+    return [
+        [0.15, 0.18, 0.12, 0.20, 0.15, 0.15, 0.05],  # Commander
+        [0.12, 0.15, 0.18, 0.20, 0.12, 0.18, 0.05],  # Modern
+        [0.18, 0.15, 0.12, 0.18, 0.15, 0.15, 0.07],  # Pioneer
+        [0.20, 0.18, 0.15, 0.20, 0.15, 0.10, 0.02],  # Standard
+        [0.10, 0.12, 0.15, 0.18, 0.10, 0.30, 0.05],  # Legacy
+    ]
+
