@@ -1,7 +1,7 @@
 """Add user authentication tables and link inventory to users
 
 Revision ID: 003_add_user_auth
-Revises: 002_inventory_tables
+Revises: 002
 Create Date: 2024-12-01
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '003_add_user_auth'
-down_revision: Union[str, None] = '002_inventory_tables'
+down_revision: Union[str, None] = '002'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
