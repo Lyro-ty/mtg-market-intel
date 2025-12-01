@@ -192,11 +192,20 @@ export async function getCard(cardId: number): Promise<CardDetail> {
 
 export async function refreshCard(
   cardId: number,
-  marketplaces?: string[]
-): Promise<{ card_id: number; marketplaces: string[]; tasks: Record<string, unknown> }> {
-  return fetchApi(`/cards/${cardId}/refresh`, {
+  options: {
+    marketplaces?: string[];
+    sync?: boolean;
+  } = {}
+): Promise<CardDetail> {
+  const params = new URLSearchParams();
+  if (options.sync !== undefined) {
+    params.set('sync', String(options.sync));
+  }
+  
+  const queryString = params.toString();
+  return fetchApi(`/cards/${cardId}/refresh${queryString ? `?${queryString}` : ''}`, {
     method: 'POST',
-    body: JSON.stringify({ marketplaces }),
+    body: JSON.stringify({ marketplaces: options.marketplaces }),
   });
 }
 
