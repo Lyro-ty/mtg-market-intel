@@ -2,12 +2,15 @@
 Market API endpoints for market-wide analytics and charts.
 """
 import json
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+import structlog
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func, desc, and_, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError, PoolError
 
 from app.core.cache import get_dashboard_cache
 from app.core.config import get_settings
@@ -23,6 +26,10 @@ from app.schemas.dashboard import TopCard
 
 router = APIRouter()
 cache = get_dashboard_cache()
+logger = structlog.get_logger()
+
+# Query timeout in seconds
+QUERY_TIMEOUT = 25  # Slightly less than DB timeout to provide better error messages
 
 
 @router.get("/overview")
@@ -40,82 +47,163 @@ async def get_market_overview(
     if cached is not None:
         return cached
     
-    # Total cards tracked
-    total_cards = await db.scalar(select(func.count(Card.id))) or 0
+    try:
+        # Total cards tracked
+        total_cards = await asyncio.wait_for(
+            db.scalar(select(func.count(Card.id))),
+            timeout=QUERY_TIMEOUT
+        ) or 0
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+        logger.error(
+            "Database query timeout or pool exhaustion in market overview",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        # Return cached or default values instead of failing
+        return {
+            "totalCardsTracked": 0,
+            "totalListings": 0,
+            "volume24hUsd": 0.0,
+            "avgPriceChange24hPct": None,
+            "activeFormatsTracked": 10,
+        }
+    except Exception as e:
+        logger.error("Error fetching total cards", error=str(e), error_type=type(e).__name__)
+        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
+            return {
+                "totalCardsTracked": 0,
+                "totalListings": 0,
+                "volume24hUsd": 0.0,
+                "avgPriceChange24hPct": None,
+                "activeFormatsTracked": 10,
+            }
+        raise HTTPException(status_code=500, detail="Failed to fetch market overview")
     
     # Total listings (active listings from last 24h)
     day_ago = datetime.utcnow() - timedelta(days=1)
-    total_listings = await db.scalar(
-        select(func.sum(Listing.quantity)).where(
-            Listing.last_seen_at >= day_ago
-        )
-    ) or 0
-    
-    # 24h trade volume (USD) - estimate from price snapshots and listings
-    # This is an approximation: sum of (price * quantity) for recent listings
-    volume_24h = await db.scalar(
-        select(func.sum(Listing.price * Listing.quantity)).where(
-            Listing.last_seen_at >= day_ago,
-            Listing.currency == "USD"
-        )
-    ) or 0
-    
-    # If no USD listings, try to estimate from other currencies (rough conversion)
-    if volume_24h == 0:
-        volume_24h = await db.scalar(
-            select(func.sum(Listing.price * Listing.quantity)).where(
-                Listing.last_seen_at >= day_ago
-            )
+    try:
+        total_listings = await asyncio.wait_for(
+            db.scalar(
+                select(func.sum(Listing.quantity)).where(
+                    Listing.last_seen_at >= day_ago
+                )
+            ),
+            timeout=QUERY_TIMEOUT
         ) or 0
-    
-    # 24h average price change
-    latest_date = await db.scalar(select(func.max(MetricsCardsDaily.date)))
-    avg_price_change_24h = None
-    if latest_date:
-        result = await db.execute(
-            select(
-                func.avg(MetricsCardsDaily.price_change_pct_1d).label("avg_change")
-            ).where(
-                MetricsCardsDaily.date == latest_date,
-                MetricsCardsDaily.price_change_pct_1d.isnot(None),
-            )
+        
+        # 24h trade volume (USD) - estimate from price snapshots and listings
+        # This is an approximation: sum of (price * quantity) for recent listings
+        volume_24h = await asyncio.wait_for(
+            db.scalar(
+                select(func.sum(Listing.price * Listing.quantity)).where(
+                    Listing.last_seen_at >= day_ago,
+                    Listing.currency == "USD"
+                )
+            ),
+            timeout=QUERY_TIMEOUT
+        ) or 0
+        
+        # If no USD listings, try to estimate from other currencies (rough conversion)
+        if volume_24h == 0:
+            volume_24h = await asyncio.wait_for(
+                db.scalar(
+                    select(func.sum(Listing.price * Listing.quantity)).where(
+                        Listing.last_seen_at >= day_ago
+                    )
+                ),
+                timeout=QUERY_TIMEOUT
+            ) or 0
+        
+        # 24h average price change
+        latest_date = await asyncio.wait_for(
+            db.scalar(select(func.max(MetricsCardsDaily.date))),
+            timeout=QUERY_TIMEOUT
         )
-        row = result.first()
-        if row and row.avg_change:
-            avg_price_change_24h = float(row.avg_change)
+        avg_price_change_24h = None
+        if latest_date:
+            result = await asyncio.wait_for(
+                db.execute(
+                    select(
+                        func.avg(MetricsCardsDaily.price_change_pct_1d).label("avg_change")
+                    ).where(
+                        MetricsCardsDaily.date == latest_date,
+                        MetricsCardsDaily.price_change_pct_1d.isnot(None),
+                    )
+                ),
+                timeout=QUERY_TIMEOUT
+            )
+            row = result.first()
+            if row and row.avg_change:
+                avg_price_change_24h = float(row.avg_change)
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+        logger.error(
+            "Database query timeout or pool exhaustion in market overview",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        # Return default values instead of failing
+        return {
+            "totalCardsTracked": 0,
+            "totalListings": 0,
+            "volume24hUsd": 0.0,
+            "avgPriceChange24hPct": None,
+            "activeFormatsTracked": 10,
+        }
+    except Exception as e:
+        logger.error("Error fetching market overview data", error=str(e), error_type=type(e).__name__)
+        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
+            return {
+                "totalCardsTracked": 0,
+                "totalListings": 0,
+                "volume24hUsd": 0.0,
+                "avgPriceChange24hPct": None,
+                "activeFormatsTracked": 10,
+            }
+        raise HTTPException(status_code=500, detail="Failed to fetch market overview")
     
     # Active formats tracked - use a more efficient approach
     # Instead of parsing 1000 cards, use a smaller sample and cache the result
     # Common formats we track
     COMMON_FORMATS = ["Standard", "Modern", "Legacy", "Vintage", "Commander", "Pioneer", "Pauper", "Historic", "Brawl", "Alchemy"]
     
-    # Count formats by checking if any card is legal in each format
-    # Use a more efficient query that checks for format existence
-    sample_cards = await db.execute(
-        select(Card.legalities).where(
-            Card.legalities.isnot(None),
-            Card.legalities != ""
-        ).limit(100)  # Reduced from 1000 to 100 for faster parsing
-    )
-    
-    formats_set = set()
-    for row in sample_cards.all():
-        if row.legalities:
-            try:
-                legalities = json.loads(row.legalities)
-                # Count formats where card is legal (not banned/restricted)
-                for format_name, status in legalities.items():
-                    if status in ["legal", "restricted"]:
-                        formats_set.add(format_name)
-                        # Early exit if we've found all common formats
-                        if len(formats_set) >= len(COMMON_FORMATS):
-                            break
-            except (json.JSONDecodeError, TypeError):
-                continue
-        if len(formats_set) >= len(COMMON_FORMATS):
-            break
-    
-    active_formats_tracked = len(formats_set) if formats_set else len(COMMON_FORMATS)
+    try:
+        # Count formats by checking if any card is legal in each format
+        # Use a more efficient query that checks for format existence
+        sample_cards = await asyncio.wait_for(
+            db.execute(
+                select(Card.legalities).where(
+                    Card.legalities.isnot(None),
+                    Card.legalities != ""
+                ).limit(100)  # Reduced from 1000 to 100 for faster parsing
+            ),
+            timeout=QUERY_TIMEOUT
+        )
+        
+        formats_set = set()
+        for row in sample_cards.all():
+            if row.legalities:
+                try:
+                    legalities = json.loads(row.legalities)
+                    # Count formats where card is legal (not banned/restricted)
+                    for format_name, status in legalities.items():
+                        if status in ["legal", "restricted"]:
+                            formats_set.add(format_name)
+                            # Early exit if we've found all common formats
+                            if len(formats_set) >= len(COMMON_FORMATS):
+                                break
+                except (json.JSONDecodeError, TypeError):
+                    continue
+            if len(formats_set) >= len(COMMON_FORMATS):
+                break
+        
+        active_formats_tracked = len(formats_set) if formats_set else len(COMMON_FORMATS)
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
+        logger.error("Database query timeout in formats tracking", error=str(e))
+        # Use default value if query fails
+        active_formats_tracked = len(COMMON_FORMATS)
+    except Exception as e:
+        logger.error("Error fetching formats", error=str(e))
+        active_formats_tracked = len(COMMON_FORMATS)
     
     result = {
         "totalCardsTracked": total_cards,
@@ -126,7 +214,10 @@ async def get_market_overview(
     }
     
     # Cache result for 5 minutes
-    cache.set(cache_key, result, ttl=300)
+    try:
+        cache.set(cache_key, result, ttl=300)
+    except Exception as e:
+        logger.warning("Failed to cache market overview", error=str(e))
     
     return result
 
@@ -184,8 +275,70 @@ async def get_market_index(
         bucket_expr
     )
     
-    result = await db.execute(query)
-    rows = result.all()
+    try:
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=QUERY_TIMEOUT
+        )
+        rows = result.all()
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+        logger.error(
+            "Database query timeout or pool exhaustion in market index",
+            error=str(e),
+            error_type=type(e).__name__,
+            range=range
+        )
+        # Return mock data on timeout
+        points = []
+        base_value = 100.0
+        num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
+        if range == "7d":
+            num_points = 7 * 24 * 2
+        elif range == "30d":
+            num_points = 30 * 24
+        elif range == "90d":
+            num_points = 90 * 6
+        
+        for i in range(min(num_points, 1000)):
+            date = start_date + timedelta(minutes=i * bucket_minutes)
+            value = base_value + (i % 10 - 5) * 0.5
+            points.append({
+                "timestamp": date.isoformat(),
+                "indexValue": round(value, 2),
+            })
+        return {
+            "range": range,
+            "points": points,
+            "isMockData": True,
+        }
+    except Exception as e:
+        logger.error("Error fetching market index", error=str(e), error_type=type(e).__name__, range=range)
+        # Check if it's a connection pool error
+        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
+            # Return mock data on pool exhaustion
+            points = []
+            base_value = 100.0
+            num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
+            if range == "7d":
+                num_points = 7 * 24 * 2
+            elif range == "30d":
+                num_points = 30 * 24
+            elif range == "90d":
+                num_points = 90 * 6
+            
+            for i in range(min(num_points, 1000)):
+                date = start_date + timedelta(minutes=i * bucket_minutes)
+                value = base_value + (i % 10 - 5) * 0.5
+                points.append({
+                    "timestamp": date.isoformat(),
+                    "indexValue": round(value, 2),
+                })
+            return {
+                "range": range,
+                "points": points,
+                "isMockData": True,
+            }
+        raise HTTPException(status_code=500, detail="Failed to fetch market index")
     
     if not rows:
         # Return mock data if no real data available
@@ -261,43 +414,78 @@ async def get_top_movers(
         change_field = MetricsCardsDaily.price_change_pct_7d
         period = "7d"
     
-    latest_date = await db.scalar(select(func.max(MetricsCardsDaily.date)))
-    
-    if not latest_date:
+    try:
+        latest_date = await asyncio.wait_for(
+            db.scalar(select(func.max(MetricsCardsDaily.date))),
+            timeout=QUERY_TIMEOUT
+        )
+        
+        if not latest_date:
+            return {
+                "window": window,
+                "gainers": [],
+                "losers": [],
+                "isMockData": True,
+            }
+        
+        # Get top gainers
+        gainers_query = select(MetricsCardsDaily, Card).join(
+            Card, MetricsCardsDaily.card_id == Card.id
+        ).where(
+            MetricsCardsDaily.date == latest_date,
+            change_field.isnot(None),
+            change_field > 0,  # Only positive changes
+        ).order_by(
+            desc(change_field)
+        ).limit(10)
+        
+        gainers_result = await asyncio.wait_for(
+            db.execute(gainers_query),
+            timeout=QUERY_TIMEOUT
+        )
+        gainers_rows = gainers_result.all()
+        
+        # Get top losers
+        losers_query = select(MetricsCardsDaily, Card).join(
+            Card, MetricsCardsDaily.card_id == Card.id
+        ).where(
+            MetricsCardsDaily.date == latest_date,
+            change_field.isnot(None),
+            change_field < 0,  # Only negative changes
+        ).order_by(
+            change_field.asc()  # Most negative first
+        ).limit(10)
+        
+        losers_result = await asyncio.wait_for(
+            db.execute(losers_query),
+            timeout=QUERY_TIMEOUT
+        )
+        losers_rows = losers_result.all()
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+        logger.error(
+            "Database query timeout or pool exhaustion in top movers",
+            error=str(e),
+            error_type=type(e).__name__,
+            window=window
+        )
+        # Return mock data on timeout or pool exhaustion
         return {
             "window": window,
-            "gainers": [],
-            "losers": [],
+            "gainers": _get_mock_gainers(),
+            "losers": _get_mock_losers(),
             "isMockData": True,
         }
-    
-    # Get top gainers
-    gainers_query = select(MetricsCardsDaily, Card).join(
-        Card, MetricsCardsDaily.card_id == Card.id
-    ).where(
-        MetricsCardsDaily.date == latest_date,
-        change_field.isnot(None),
-        change_field > 0,  # Only positive changes
-    ).order_by(
-        desc(change_field)
-    ).limit(10)
-    
-    gainers_result = await db.execute(gainers_query)
-    gainers_rows = gainers_result.all()
-    
-    # Get top losers
-    losers_query = select(MetricsCardsDaily, Card).join(
-        Card, MetricsCardsDaily.card_id == Card.id
-    ).where(
-        MetricsCardsDaily.date == latest_date,
-        change_field.isnot(None),
-        change_field < 0,  # Only negative changes
-    ).order_by(
-        change_field.asc()  # Most negative first
-    ).limit(10)
-    
-    losers_result = await db.execute(losers_query)
-    losers_rows = losers_result.all()
+    except Exception as e:
+        logger.error("Error fetching top movers", error=str(e), error_type=type(e).__name__, window=window)
+        # Check if it's a connection pool error
+        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
+            return {
+                "window": window,
+                "gainers": _get_mock_gainers(),
+                "losers": _get_mock_losers(),
+                "isMockData": True,
+            }
+        raise HTTPException(status_code=500, detail="Failed to fetch top movers")
     
     # Format gainers
     gainers = []
@@ -431,8 +619,33 @@ async def get_volume_by_format(
         bucket_expr
     )
     
-    result = await db.execute(query)
-    rows = result.all()
+    try:
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=QUERY_TIMEOUT
+        )
+        rows = result.all()
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+        logger.error(
+            "Database query timeout or pool exhaustion in volume by format",
+            error=str(e),
+            error_type=type(e).__name__,
+            days=days
+        )
+        return {
+            "days": days,
+            "formats": _get_mock_volume_by_format(days),
+            "isMockData": True,
+        }
+    except Exception as e:
+        logger.error("Error fetching volume by format", error=str(e), error_type=type(e).__name__, days=days)
+        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
+            return {
+                "days": days,
+                "formats": _get_mock_volume_by_format(days),
+                "isMockData": True,
+            }
+        raise HTTPException(status_code=500, detail="Failed to fetch volume by format")
     
     if not rows:
         # Return mock data
@@ -628,8 +841,37 @@ async def get_color_distribution(
         Card.legalities
     )
     
-    result = await db.execute(query)
-    rows = result.all()
+    try:
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=QUERY_TIMEOUT
+        )
+        rows = result.all()
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+        logger.error(
+            "Database query timeout or pool exhaustion in color distribution",
+            error=str(e),
+            error_type=type(e).__name__,
+            window=window
+        )
+        return {
+            "window": window,
+            "formats": ["Commander", "Modern", "Pioneer", "Standard", "Legacy"],
+            "colors": ["W", "U", "B", "R", "G", "Multicolor", "Colorless"],
+            "matrix": _get_mock_color_distribution(),
+            "isMockData": True,
+        }
+    except Exception as e:
+        logger.error("Error fetching color distribution", error=str(e), error_type=type(e).__name__, window=window)
+        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
+            return {
+                "window": window,
+                "formats": ["Commander", "Modern", "Pioneer", "Standard", "Legacy"],
+                "colors": ["W", "U", "B", "R", "G", "Multicolor", "Colorless"],
+                "matrix": _get_mock_color_distribution(),
+                "isMockData": True,
+            }
+        raise HTTPException(status_code=500, detail="Failed to fetch color distribution")
     
     if not rows:
         # Return mock data

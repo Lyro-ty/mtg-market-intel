@@ -109,12 +109,38 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle unhandled exceptions."""
+    from sqlalchemy.exc import TimeoutError as SQLTimeoutError, PoolError
+    
+    error_type = type(exc).__name__
+    error_str = str(exc)
+    
+    # Check for connection pool exhaustion
+    is_pool_error = (
+        isinstance(exc, (SQLTimeoutError, PoolError)) or
+        "QueuePool" in error_str or
+        "connection timed out" in error_str.lower() or
+        "pool limit" in error_str.lower()
+    )
+    
     logger.error(
         "Unhandled exception",
         path=request.url.path,
         method=request.method,
-        error=str(exc),
+        error=error_str,
+        error_type=error_type,
+        is_pool_error=is_pool_error,
     )
+    
+    # Return a more helpful error for pool exhaustion
+    if is_pool_error:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Service temporarily unavailable due to high load. Please try again in a moment.",
+                "error_type": "connection_pool_exhausted"
+            },
+        )
+    
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
