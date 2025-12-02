@@ -7,10 +7,11 @@
 - **Fix:** Added `--default-timeout=1000` to pip install command in `backend/Dockerfile`
 - **Location:** `backend/Dockerfile` line 25
 
-### 2. **Frontend: Missing package-lock.json** ✅
-- **Problem:** Frontend Dockerfile wasn't using package-lock.json for reproducible builds
-- **Fix:** Updated to copy and use package-lock.json if available, fallback to npm install
-- **Location:** `frontend/Dockerfile.production` lines 7-10
+### 2. **Frontend: package-lock.json Out of Sync** ✅
+- **Problem:** `npm ci` fails when package-lock.json is out of sync with package.json (common with sharp package)
+- **Fix:** Changed to use `npm install` instead of `npm ci` to handle lock file mismatches gracefully
+- **Location:** `frontend/Dockerfile.production` line 12
+- **Note:** `npm install` will update the lock file if needed, which is acceptable for Docker builds
 
 ### 3. **Frontend: Standalone Build Verification** ✅
 - **Problem:** No verification that Next.js standalone build completed successfully
