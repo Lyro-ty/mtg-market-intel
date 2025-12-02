@@ -109,14 +109,15 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle unhandled exceptions."""
-    from sqlalchemy.exc import TimeoutError as SQLTimeoutError, PoolError
+    from sqlalchemy.exc import TimeoutError as SQLTimeoutError
     
     error_type = type(exc).__name__
     error_str = str(exc)
     
     # Check for connection pool exhaustion
+    # SQLAlchemy raises TimeoutError for pool exhaustion, not PoolError
     is_pool_error = (
-        isinstance(exc, (SQLTimeoutError, PoolError)) or
+        isinstance(exc, SQLTimeoutError) or
         "QueuePool" in error_str or
         "connection timed out" in error_str.lower() or
         "pool limit" in error_str.lower()

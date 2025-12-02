@@ -10,7 +10,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func, desc, and_, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError, PoolError
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 
 from app.core.cache import get_dashboard_cache
 from app.core.config import get_settings
@@ -53,7 +53,7 @@ async def get_market_overview(
             db.scalar(select(func.count(Card.id))),
             timeout=QUERY_TIMEOUT
         ) or 0
-    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
         logger.error(
             "Database query timeout or pool exhaustion in market overview",
             error=str(e),
@@ -135,7 +135,7 @@ async def get_market_overview(
             row = result.first()
             if row and row.avg_change:
                 avg_price_change_24h = float(row.avg_change)
-    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
         logger.error(
             "Database query timeout or pool exhaustion in market overview",
             error=str(e),
@@ -281,7 +281,7 @@ async def get_market_index(
             timeout=QUERY_TIMEOUT
         )
         rows = result.all()
-    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
         logger.error(
             "Database query timeout or pool exhaustion in market index",
             error=str(e),
@@ -461,7 +461,7 @@ async def get_top_movers(
             timeout=QUERY_TIMEOUT
         )
         losers_rows = losers_result.all()
-    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
         logger.error(
             "Database query timeout or pool exhaustion in top movers",
             error=str(e),
@@ -625,7 +625,7 @@ async def get_volume_by_format(
             timeout=QUERY_TIMEOUT
         )
         rows = result.all()
-    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
         logger.error(
             "Database query timeout or pool exhaustion in volume by format",
             error=str(e),
@@ -847,7 +847,7 @@ async def get_color_distribution(
             timeout=QUERY_TIMEOUT
         )
         rows = result.all()
-    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, PoolError) as e:
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
         logger.error(
             "Database query timeout or pool exhaustion in color distribution",
             error=str(e),
