@@ -73,6 +73,13 @@ export function PriceChart({
     return acc;
   }, [] as Record<string, string | number>[]);
 
+  // Sort chart data chronologically by fullDate to ensure proper line rendering
+  chartData.sort((a, b) => {
+    const dateA = new Date(a.fullDate as string).getTime();
+    const dateB = new Date(b.fullDate as string).getTime();
+    return dateA - dateB;
+  });
+
   // Get data freshness info
   const freshnessMinutes = history?.data_freshness_minutes;
   const latestSnapshot = history?.latest_snapshot_time;
@@ -165,6 +172,7 @@ export function PriceChart({
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
+                  connectNulls={true}
                 />
               ))}
             </LineChart>
