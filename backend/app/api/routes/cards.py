@@ -663,13 +663,13 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     
     # 3. Price data is already collected from Scryfall above
     # We no longer scrape individual listings - focus on aggregated price data
-    scryfall_snapshots_created = 1 if price_data and price_data.price > 0 else 0
+    # Note: scryfall_snapshots_created is already set above, use it directly
     total_snapshots_created = scryfall_snapshots_created + mtgjson_snapshots_created
     
     await db.flush()
     logger.info(
         "Price data refreshed",
-        card_id=card.id,
+        card_id=card_id,
         scryfall_snapshots=scryfall_snapshots_created,
         mtgjson_snapshots=mtgjson_snapshots_created,
         total_snapshots=total_snapshots_created,
@@ -687,22 +687,22 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             await db.flush()
             logger.info(
                 "Card vectorization completed",
-                card_id=card.id,
+                card_id=card_id,
                 vectors_created=vectors_created,
             )
     except Exception as e:
-        logger.warning("Failed to vectorize card data", card_id=card.id, error=str(e))
+        logger.warning("Failed to vectorize card data", card_id=card_id, error=str(e))
     # Don't close the cached vectorizer - it's shared across requests
     
     # 3. Compute metrics
     try:
         analytics = AnalyticsAgent(db)
-        metrics = await analytics.compute_daily_metrics(card.id)
+        metrics = await analytics.compute_daily_metrics(card_id)
         if metrics:
             await db.flush()
-            logger.info("Metrics computed", card_id=card.id)
+            logger.info("Metrics computed", card_id=card_id)
     except Exception as e:
-        logger.warning("Failed to compute metrics", card_id=card.id, error=str(e))
+        logger.warning("Failed to compute metrics", card_id=card_id, error=str(e))
         # Check if transaction needs rollback
         try:
             await db.rollback()
@@ -714,12 +714,12 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     signals = []
     try:
         analytics = AnalyticsAgent(db)
-        signals = await analytics.generate_signals(card.id)
+        signals = await analytics.generate_signals(card_id)
         if signals:
             await db.flush()
-            logger.info("Signals generated", card_id=card.id, count=len(signals))
+            logger.info("Signals generated", card_id=card_id, count=len(signals))
     except Exception as e:
-        logger.warning("Failed to generate signals", card_id=card.id, error=str(e))
+        logger.warning("Failed to generate signals", card_id=card_id, error=str(e))
         # Check if transaction needs rollback
         try:
             await db.rollback()
@@ -730,12 +730,12 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     recommendations = []
     try:
         rec_agent = RecommendationAgent(db)
-        recommendations = await rec_agent.generate_recommendations(card.id)
+        recommendations = await rec_agent.generate_recommendations(card_id)
         if recommendations:
             await db.flush()
-            logger.info("Recommendations generated", card_id=card.id, count=len(recommendations))
+            logger.info("Recommendations generated", card_id=card_id, count=len(recommendations))
     except Exception as e:
-        logger.warning("Failed to generate recommendations", card_id=card.id, error=str(e))
+        logger.warning("Failed to generate recommendations", card_id=card_id, error=str(e))
         # Rollback the transaction if there was a database error
         try:
             await db.rollback()
@@ -747,7 +747,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     try:
         await db.commit()
     except Exception as e:
-        logger.error("Failed to commit transaction", card_id=card.id, error=str(e))
+        logger.error("Failed to commit transaction", card_id=card_id, error=str(e))
         try:
             await db.rollback()
         except Exception:
@@ -755,35 +755,40 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
         raise
     
     # 6. Fetch and return updated card detail
+    # Re-fetch the card to ensure we have the latest data after commit
+    refreshed_card = await db.get(Card, card_id)
+    if not refreshed_card:
+        raise HTTPException(status_code=404, detail="Card not found after refresh")
+    
     # Re-fetch metrics (might have been updated)
     metrics_query = select(MetricsCardsDaily).where(
-        MetricsCardsDaily.card_id == card.id
+        MetricsCardsDaily.card_id == card_id
     ).order_by(MetricsCardsDaily.date.desc()).limit(1)
     result = await db.execute(metrics_query)
     latest_metrics = result.scalar_one_or_none()
     
     # Get current prices
-    current_prices = await _get_current_prices(db, card.id)
+    current_prices = await _get_current_prices(db, card_id)
     
     # Get recent signals
     signals_query = select(Signal).where(
-        Signal.card_id == card.id
+        Signal.card_id == card_id
     ).order_by(Signal.date.desc()).limit(5)
     result = await db.execute(signals_query)
     recent_signals = result.scalars().all()
     
     # Get active recommendations
     recs_query = select(Recommendation).where(
-        Recommendation.card_id == card.id,
+        Recommendation.card_id == card_id,
         Recommendation.is_active == True,
     ).order_by(Recommendation.created_at.desc()).limit(5)
     result = await db.execute(recs_query)
     active_recs = result.scalars().all()
     
     return CardDetailResponse(
-        card=CardResponse.model_validate(card),
+        card=CardResponse.model_validate(refreshed_card),
         metrics=CardMetricsResponse(
-            card_id=card.id,
+            card_id=card_id,
             date=str(latest_metrics.date) if latest_metrics else None,
             avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else None,
             min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else None,
