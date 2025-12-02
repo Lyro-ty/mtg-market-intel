@@ -21,7 +21,8 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Increase pip timeout for large packages like torch
+RUN pip install --no-cache-dir --default-timeout=1000 -r requirements.txt
 
 # Copy application code
 COPY . .
