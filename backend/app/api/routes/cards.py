@@ -191,7 +191,7 @@ async def get_card_prices(
         lowest_price=lowest,
         highest_price=highest,
         spread_pct=spread_pct,
-        updated_at=datetime.utcnow(),
+        updated_at=datetime.now(timezone.utc),
     )
 
 
@@ -211,7 +211,7 @@ async def get_card_history(
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
-    from_date = datetime.utcnow() - timedelta(days=days)
+    from_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     # Build query
     query = select(PriceSnapshot, Marketplace).join(
@@ -229,7 +229,16 @@ async def get_card_history(
     result = await db.execute(query)
     rows = result.all()
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
+    
+    # Helper function to ensure timezone-aware datetime
+    def ensure_timezone_aware(dt):
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+    
     history = [
         PricePoint(
             date=snapshot.snapshot_time,
@@ -240,13 +249,15 @@ async def get_card_history(
             max_price=float(snapshot.max_price) if snapshot.max_price else None,
             num_listings=snapshot.num_listings,
             snapshot_time=snapshot.snapshot_time,
-            data_age_minutes=int((now - snapshot.snapshot_time).total_seconds() / 60) if snapshot.snapshot_time else None,
+            data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
         )
         for snapshot, marketplace in rows
     ]
     
     # Find latest snapshot time
     latest_snapshot = max((snapshot.snapshot_time for snapshot, _ in rows), default=None) if rows else None
+    if latest_snapshot:
+        latest_snapshot = ensure_timezone_aware(latest_snapshot)
     data_freshness = int((now - latest_snapshot).total_seconds() / 60) if latest_snapshot else None
     
     return CardHistoryResponse(
@@ -274,7 +285,7 @@ async def get_card_signals(
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
-    from_date = datetime.utcnow().date() - timedelta(days=days)
+    from_date = datetime.now(timezone.utc).date() - timedelta(days=days)
     
     query = select(Signal).where(
         Signal.card_id == card_id,
@@ -476,7 +487,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             snapshot = PriceSnapshot(
                 card_id=card.id,
                 marketplace_id=scryfall_mp.id,
-                snapshot_time=datetime.utcnow(),
+                snapshot_time=datetime.now(timezone.utc),
                 price=price_data.price,
                 currency=price_data.currency,
                 price_foil=price_data.price_foil,
