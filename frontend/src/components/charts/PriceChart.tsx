@@ -55,7 +55,7 @@ export function PriceChart({
       // Store full timestamp for tooltip
       if (point.snapshot_time) {
         existing[`${point.marketplace}_time`] = point.snapshot_time;
-        existing[`${point.marketplace}_age`] = point.data_age_minutes;
+        existing[`${point.marketplace}_age`] = point.data_age_minutes ?? 0;
       }
     } else {
       const entry: Record<string, string | number> = {
@@ -65,7 +65,7 @@ export function PriceChart({
       };
       if (point.snapshot_time) {
         entry[`${point.marketplace}_time`] = point.snapshot_time;
-        entry[`${point.marketplace}_age`] = point.data_age_minutes || 0;
+        entry[`${point.marketplace}_age`] = point.data_age_minutes ?? 0;
       }
       acc.push(entry);
     }
