@@ -88,15 +88,7 @@ DEFAULT_MARKETPLACES = [
         "default_currency": "USD",
         "rate_limit_seconds": 2.0,
     },
-    {
-        "name": "Mock Market",
-        "slug": "mock",
-        "base_url": "https://mock-marketplace.example.com",
-        "is_enabled": True,  # Enable for testing listings
-        "supports_api": False,
-        "default_currency": "USD",
-        "rate_limit_seconds": 0.1,  # Fast for testing
-    },
+    # Note: Mock marketplace removed - use add_mock_marketplace.py if needed for testing
 ]
 
 # Popular sets to seed (recent Standard + popular older sets)
