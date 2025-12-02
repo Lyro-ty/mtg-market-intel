@@ -19,6 +19,8 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     
     Returns service status and database connectivity.
     """
+    from datetime import timezone
+    
     # Check database
     db_ok = False
     try:
@@ -29,7 +31,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     
     return {
         "status": "healthy" if db_ok else "degraded",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "services": {
             "api": "ok",
             "database": "ok" if db_ok else "error",
