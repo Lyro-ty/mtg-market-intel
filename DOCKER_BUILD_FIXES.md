@@ -16,7 +16,12 @@
 ### 3. **Frontend: Standalone Build Verification** ✅
 - **Problem:** No verification that Next.js standalone build completed successfully
 - **Fix:** Added check to verify server.js exists after copying standalone output
-- **Location:** `frontend/Dockerfile.production` line 42
+- **Location:** `frontend/Dockerfile.production` line 44
+
+### 4. **Frontend: Syntax Error in inventory/page.tsx** ⚠️
+- **Problem:** Build fails with "Unexpected token `div`. Expected jsx identifier" error
+- **Status:** File appears correct locally - likely a version mismatch on server
+- **Solution:** Ensure latest code is on server and rebuild
 
 ## Build Instructions
 
@@ -25,6 +30,42 @@ After these fixes, rebuild with:
 ```bash
 docker compose -f docker-compose.production.yml build --no-cache
 ```
+
+## Troubleshooting Frontend Build Errors
+
+### "Unexpected token `div`. Expected jsx identifier"
+
+This error usually means:
+1. **Version mismatch:** Server has different code than local
+2. **Syntax error:** Missing closing brace/parenthesis before return statement
+3. **Encoding issue:** File encoding problems
+
+**Solutions:**
+1. Ensure latest code is on server:
+   ```bash
+   git pull origin main
+   # or
+   git status  # check for uncommitted changes
+   ```
+
+2. Verify the file is correct:
+   ```bash
+   # On server, check the file around line 108-109
+   head -n 110 frontend/src/app/inventory/page.tsx | tail -n 5
+   ```
+
+3. If file is correct, try clearing Next.js cache:
+   ```bash
+   # In Dockerfile, add before npm run build:
+   RUN rm -rf .next
+   ```
+
+4. Check for TypeScript/ESLint errors locally:
+   ```bash
+   cd frontend
+   npm run lint
+   npx tsc --noEmit
+   ```
 
 ## Common Build Issues and Solutions
 
@@ -101,4 +142,4 @@ If builds still fail, check:
    - Node.js version mismatches
    - Missing system dependencies
    - Network issues downloading packages
-
+   - File encoding issues (should be UTF-8)

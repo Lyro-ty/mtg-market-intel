@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Package,
@@ -39,7 +39,7 @@ import { formatCurrency } from '@/lib/utils';
 
 type TabType = 'overview' | 'items' | 'recommendations';
 
-function InventoryPageContent() {
+function InventoryPageContent(): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [page, setPage] = useState(1);
