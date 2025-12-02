@@ -501,15 +501,90 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     finally:
         await scryfall.close()
     
-    # 2. Price data is already collected from Scryfall above
+    # 2. Fetch and aggregate MTGJSON 30-day historical data
+    mtgjson_snapshots_created = 0
+    from app.services.ingestion import get_adapter
+    mtgjson = get_adapter("mtgjson", cached=False)
+    try:
+        # Get or create MTGJSON marketplace
+        mtgjson_query = select(Marketplace).where(Marketplace.slug == "mtgjson")
+        result = await db.execute(mtgjson_query)
+        mtgjson_marketplace = result.scalar_one_or_none()
+        
+        if not mtgjson_marketplace:
+            mtgjson_marketplace = Marketplace(
+                name="MTGJSON",
+                slug="mtgjson",
+                base_url="https://mtgjson.com",
+                api_url="https://mtgjson.com/api/v5",
+                is_enabled=True,
+                supports_api=True,
+                default_currency="USD",
+                rate_limit_seconds=1.0,
+            )
+            db.add(mtgjson_marketplace)
+            await db.flush()
+        
+        # Fetch 30-day historical prices from MTGJSON
+        historical_prices = await mtgjson.fetch_price_history(
+            card_name=card.name,
+            set_code=card.set_code,
+            collector_number=card.collector_number,
+            scryfall_id=card.scryfall_id,
+            days=30,  # 30-day historical data
+        )
+        
+        if historical_prices:
+            # Create price snapshots for historical data (only if they don't exist)
+            for price_data in historical_prices:
+                # Check if snapshot already exists for this timestamp
+                existing_query = select(PriceSnapshot).where(
+                    PriceSnapshot.card_id == card.id,
+                    PriceSnapshot.marketplace_id == mtgjson_marketplace.id,
+                    PriceSnapshot.snapshot_time == price_data.snapshot_time,
+                )
+                existing_result = await db.execute(existing_query)
+                existing = existing_result.scalar_one_or_none()
+                
+                if not existing and price_data.price > 0:
+                    snapshot = PriceSnapshot(
+                        card_id=card.id,
+                        marketplace_id=mtgjson_marketplace.id,
+                        snapshot_time=price_data.snapshot_time,
+                        price=price_data.price,
+                        currency=price_data.currency,
+                        price_foil=price_data.price_foil,
+                    )
+                    db.add(snapshot)
+                    mtgjson_snapshots_created += 1
+            
+            logger.info(
+                "MTGJSON historical data aggregated",
+                card_id=card.id,
+                historical_points=len(historical_prices),
+                snapshots_created=mtgjson_snapshots_created,
+            )
+    except Exception as e:
+        logger.warning(
+            "Failed to fetch MTGJSON historical data",
+            card_id=card.id,
+            error=str(e),
+        )
+    finally:
+        await mtgjson.close()
+    
+    # 3. Price data is already collected from Scryfall above
     # We no longer scrape individual listings - focus on aggregated price data
-    snapshots_created = 1 if price_data and price_data.price > 0 else 0
+    scryfall_snapshots_created = 1 if price_data and price_data.price > 0 else 0
+    total_snapshots_created = scryfall_snapshots_created + mtgjson_snapshots_created
     
     await db.flush()
     logger.info(
         "Price data refreshed",
         card_id=card.id,
-        snapshots_created=snapshots_created,
+        scryfall_snapshots=scryfall_snapshots_created,
+        mtgjson_snapshots=mtgjson_snapshots_created,
+        total_snapshots=total_snapshots_created,
     )
     
     # 2.5. Vectorize card for ML training
