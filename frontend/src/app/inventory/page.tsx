@@ -389,64 +389,6 @@ function InventoryPageContent() {
               
               {/* Analytics Cards */}
               <div className="grid grid-cols-2 gap-6">
-              {/* Top Gainers */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <TrendingUp className="w-5 h-5 text-green-500" />
-                    <h3 className="font-semibold text-[rgb(var(--foreground))]">Top Gainers</h3>
-                  </div>
-                  <div className="space-y-3">
-                    {analytics.top_gainers.length > 0 ? (
-                      analytics.top_gainers.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between p-2 rounded-lg bg-[rgb(var(--secondary))]/50">
-                          <div>
-                            <p className="font-medium text-[rgb(var(--foreground))]">{item.card_name}</p>
-                            <p className="text-xs text-[rgb(var(--muted-foreground))]">{item.card_set}</p>
-                          </div>
-                          <Badge variant="success">
-                            +{item.value_change_pct?.toFixed(1)}%
-                          </Badge>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-[rgb(var(--muted-foreground))] text-center py-4">
-                        No gainers to show
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Top Losers */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <TrendingDown className="w-5 h-5 text-red-500" />
-                    <h3 className="font-semibold text-[rgb(var(--foreground))]">Top Losers</h3>
-                  </div>
-                  <div className="space-y-3">
-                    {analytics.top_losers.length > 0 ? (
-                      analytics.top_losers.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between p-2 rounded-lg bg-[rgb(var(--secondary))]/50">
-                          <div>
-                            <p className="font-medium text-[rgb(var(--foreground))]">{item.card_name}</p>
-                            <p className="text-xs text-[rgb(var(--muted-foreground))]">{item.card_set}</p>
-                          </div>
-                          <Badge variant="danger">
-                            {item.value_change_pct?.toFixed(1)}%
-                          </Badge>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-[rgb(var(--muted-foreground))] text-center py-4">
-                        No losers to show
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              
               {/* Value Distribution */}
               <Card>
                 <CardContent className="p-4">
