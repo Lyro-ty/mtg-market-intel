@@ -348,14 +348,15 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                         snapshot_date = now - timedelta(days=day_offset)
                                         
                                         # Check if data exists for this day
-                                        existing_query = select(PriceSnapshot).where(
+                                        # Use count to avoid MultipleResultsFound error if multiple snapshots exist
+                                        existing_query = select(func.count(PriceSnapshot.id)).where(
                                             PriceSnapshot.card_id == card.id,
                                             PriceSnapshot.marketplace_id == recent_snapshot.marketplace_id,
                                             PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
                                             PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
                                         )
-                                        existing_result = await db.execute(existing_query)
-                                        if existing_result.scalar_one_or_none():
+                                        existing_count = await db.scalar(existing_query) or 0
+                                        if existing_count > 0:
                                             continue
                                         
                                         # Generate deterministic price

@@ -721,14 +721,15 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
                     snapshot_date = now - timedelta(days=day_offset)
                     
                     # Check if we already have data for this date (within 12 hours)
-                    existing_backfill_query = select(PriceSnapshot).where(
+                    # Use count to avoid MultipleResultsFound error if multiple snapshots exist
+                    existing_backfill_query = select(func.count(PriceSnapshot.id)).where(
                         PriceSnapshot.card_id == card_id,
                         PriceSnapshot.marketplace_id == marketplace_id,
                         PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
                         PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
                     )
-                    existing_backfill = await db.execute(existing_backfill_query)
-                    if existing_backfill.scalar_one_or_none():
+                    existing_count = await db.scalar(existing_backfill_query) or 0
+                    if existing_count > 0:
                         continue  # Skip if we already have data for this day
                     
                     # Generate deterministic price variation based on card_id and day
