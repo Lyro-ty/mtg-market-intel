@@ -81,6 +81,8 @@ class MTGJSONAdapter(MarketplaceAdapter):
         """
         Download and cache a file from MTGJSON.
         
+        MTGJSON updates weekly, so we cache files for 7 days to avoid unnecessary downloads.
+        
         Args:
             url: URL to download from.
             cache_file: Local path to cache the file.
@@ -88,11 +90,11 @@ class MTGJSONAdapter(MarketplaceAdapter):
         Returns:
             Parsed JSON data or None if download fails.
         """
-        # Check cache first (if less than 24 hours old)
+        # Check cache first (if less than 7 days old, since MTGJSON updates weekly)
         if cache_file.exists():
             cache_age = datetime.utcnow() - datetime.fromtimestamp(cache_file.stat().st_mtime)
-            if cache_age < timedelta(hours=24):
-                logger.debug("Using cached MTGJSON file", file=str(cache_file))
+            if cache_age < timedelta(days=7):
+                logger.debug("Using cached MTGJSON file", file=str(cache_file), age_hours=cache_age.total_seconds() / 3600)
                 try:
                     with open(cache_file, "rb") as f:
                         if cache_file.suffix == ".gz":

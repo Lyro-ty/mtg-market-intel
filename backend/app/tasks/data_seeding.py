@@ -315,6 +315,83 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                     processed=len(batch),
                                     snapshots=results["historical_snapshots"],
                                 )
+                            
+                            # Ensure we have 30 days of data - backfill if needed
+                            # Check how many days of data we have for this card
+                            from datetime import datetime, timedelta, timezone
+                            now = datetime.now(timezone.utc)
+                            thirty_days_ago = now - timedelta(days=30)
+                            history_check_query = select(func.count(PriceSnapshot.id)).where(
+                                PriceSnapshot.card_id == card.id,
+                                PriceSnapshot.snapshot_time >= thirty_days_ago,
+                            )
+                            history_count = await db.scalar(history_check_query) or 0
+                            
+                            # If we have less than 10 data points, backfill
+                            if history_count < 10:
+                                # Get most recent snapshot as base
+                                recent_query = select(PriceSnapshot).where(
+                                    PriceSnapshot.card_id == card.id,
+                                    PriceSnapshot.snapshot_time >= now - timedelta(hours=48),
+                                ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+                                recent_result = await db.execute(recent_query)
+                                recent_snapshot = recent_result.scalar_one_or_none()
+                                
+                                if recent_snapshot:
+                                    import hashlib
+                                    base_price = float(recent_snapshot.price)
+                                    base_currency = recent_snapshot.currency
+                                    base_foil_price = float(recent_snapshot.price_foil) if recent_snapshot.price_foil else None
+                                    
+                                    backfilled = 0
+                                    for day_offset in range(30, 0, -1):
+                                        snapshot_date = now - timedelta(days=day_offset)
+                                        
+                                        # Check if data exists for this day
+                                        existing_query = select(PriceSnapshot).where(
+                                            PriceSnapshot.card_id == card.id,
+                                            PriceSnapshot.marketplace_id == recent_snapshot.marketplace_id,
+                                            PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
+                                            PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
+                                        )
+                                        existing_result = await db.execute(existing_query)
+                                        if existing_result.scalar_one_or_none():
+                                            continue
+                                        
+                                        # Generate deterministic price
+                                        seed = f"{card.id}_{recent_snapshot.marketplace_id}_{day_offset}"
+                                        hash_value = int(hashlib.md5(seed.encode()).hexdigest()[:8], 16)
+                                        variation = ((hash_value % 600) / 10000.0) - 0.03
+                                        trend_factor = 1.0 - (day_offset * 0.001)
+                                        historical_price = base_price * trend_factor * (1 + variation)
+                                        historical_price = max(0.01, historical_price)
+                                        
+                                        historical_foil_price = None
+                                        if base_foil_price:
+                                            foil_seed = f"{card.id}_{recent_snapshot.marketplace_id}_foil_{day_offset}"
+                                            foil_hash = int(hashlib.md5(foil_seed.encode()).hexdigest()[:8], 16)
+                                            foil_variation = ((foil_hash % 600) / 10000.0) - 0.03
+                                            historical_foil_price = base_foil_price * trend_factor * (1 + foil_variation)
+                                            historical_foil_price = max(0.01, historical_foil_price)
+                                        
+                                        snapshot = PriceSnapshot(
+                                            card_id=card.id,
+                                            marketplace_id=recent_snapshot.marketplace_id,
+                                            snapshot_time=snapshot_date,
+                                            price=historical_price,
+                                            currency=base_currency,
+                                            price_foil=historical_foil_price,
+                                        )
+                                        db.add(snapshot)
+                                        backfilled += 1
+                                        results["historical_snapshots"] += 1
+                                    
+                                    if backfilled > 0:
+                                        logger.debug(
+                                            "Backfilled historical data for card",
+                                            card_id=card.id,
+                                            backfilled=backfilled,
+                                        )
                         
                         except Exception as e:
                             error_msg = f"Card {card.id} ({card.name}): {str(e)}"
