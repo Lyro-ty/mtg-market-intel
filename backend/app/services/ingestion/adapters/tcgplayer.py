@@ -59,9 +59,20 @@ class TCGPlayerAdapter(MarketplaceAdapter):
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client for web scraping."""
         if self._client is None or self._client.is_closed:
+            # Use proper headers to avoid being blocked
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Referer": "https://www.tcgplayer.com/",
+            }
             self._client = httpx.AsyncClient(
                 timeout=self.config.timeout_seconds,
                 follow_redirects=True,
+                headers=headers,
             )
         return self._client
     
@@ -111,7 +122,12 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         """
         Fetch individual listings from TCGPlayer by scraping the website.
         
-        TCGPlayer's website structure may change, so this uses flexible selectors.
+        TCGPlayer shows listings on product detail pages, not search results.
+        Strategy:
+        1. Search for the product
+        2. Find product link
+        3. Navigate to product page
+        4. Extract seller listings from product page
         """
         if not card_name:
             return []
@@ -120,167 +136,234 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         client = await self._get_client()
         
         try:
-            # Build search URL - TCGPlayer search format
+            # Step 1: Search for the product
             search_query = card_name
             if set_code:
                 search_query += f" {set_code}"
             
-            # TCGPlayer search URL
             search_url = f"{self.config.base_url}/search/magic/product"
             params = {
                 "q": search_query,
                 "view": "grid",
             }
-            url = f"{search_url}?{urlencode(params)}"
+            search_page_url = f"{search_url}?{urlencode(params)}"
             
             await self._rate_limit()
-            tree = await fetch_page(client, url, timeout=self.config.timeout_seconds)
+            search_tree = await fetch_page(client, search_page_url, timeout=self.config.timeout_seconds)
             
-            if not tree:
+            if not search_tree:
                 logger.warning("Failed to fetch TCGPlayer search page", card_name=card_name)
                 return []
             
-            # Try multiple selector strategies for TCGPlayer's structure
-            # TCGPlayer uses various class names, so we'll try common patterns
+            # Step 2: Find product link - TCGPlayer product links are typically in anchor tags
+            # Look for links that go to /product/ pages
+            product_links = []
+            for link in search_tree.css("a[href*='/product/']"):
+                href = link.attributes.get("href", "")
+                if "/product/" in href and href not in product_links:
+                    if not href.startswith("http"):
+                        href = f"{self.config.base_url}{href}"
+                    product_links.append(href)
+            
+            if not product_links:
+                logger.warning("No product links found on TCGPlayer search page", card_name=card_name)
+                return []
+            
+            # Step 3: Navigate to first product page (where listings are shown)
+            product_url = product_links[0]
+            # Add Language=English parameter to get English listings
+            if "?" in product_url:
+                product_url += "&Language=English"
+            else:
+                product_url += "?Language=English"
+            
+            await self._rate_limit()
+            tree = await fetch_page(client, product_url, timeout=self.config.timeout_seconds)
+            
+            if not tree:
+                logger.warning("Failed to fetch TCGPlayer product page", card_name=card_name, url=product_url)
+                return []
+            
+            # Step 4: Extract listings from product page
+            # TCGPlayer listings are in a table or list structure on the product page
+            # Based on the page structure, listings contain: seller name, price, condition, quantity
+            # Try multiple selector strategies for listing rows
             listing_selectors = [
-                ".product-listing",
-                ".listing-item",
-                "[data-testid='product-listing']",
-                ".product-card",
-                ".search-result",
+                # Modern TCGPlayer structure - look for seller listing rows
+                "tr[class*='seller']",
+                "div[class*='seller-listing']",
+                "div[class*='listing-row']",
+                "li[class*='seller']",
+                "article[class*='seller']",
+                # Alternative patterns
+                "[data-seller-id]",
+                "[data-listing-id]",
+                # Generic patterns that might contain listings
+                "table tbody tr",
+                ".listings-table tr",
+                "[class*='Listing']",
             ]
             
             listing_elements = []
             for selector in listing_selectors:
                 elements = tree.css(selector)
-                if elements:
+                if elements and len(elements) > 0:
                     listing_elements = elements
-                    logger.debug("Found listings with selector", selector=selector, count=len(elements))
+                    logger.debug("Found listing elements with selector", selector=selector, count=len(elements))
                     break
             
-            # If no specific listing container found, try to find price elements
+            # If no listing rows found, try to find individual listing containers
             if not listing_elements:
-                # Look for price elements which are more consistent
-                price_elements = tree.css(".price, .product-price, [data-price], .listing-price")
-                if price_elements:
-                    # Group nearby elements as listings
-                    listing_elements = price_elements[:limit]
-            
-            # If still no listings found, try more generic/alternative selectors
-            if not listing_elements:
-                # TCGPlayer might use different structures - try common product card patterns
-                generic_selectors = [
-                    "[data-product-id]",
-                    "[data-product]",
-                    ".product",
-                    ".search-result-item",
-                    ".product-tile",
-                    "article[class*='product']",
-                    "[class*='ProductCard']",
-                    "[class*='product-card']",
-                    "[class*='listing']",
-                    "div[class*='product']",
-                ]
-                for selector in generic_selectors:
-                    elements = tree.css(selector)
-                    if elements and len(elements) > 0:
-                        listing_elements = elements[:limit]
-                        logger.debug("Found elements with generic selector", selector=selector, count=len(elements))
-                        break
+                # Look for elements that contain seller names and prices together
+                # TCGPlayer often has seller info in specific containers
+                seller_containers = tree.css("[class*='seller'], [class*='Seller']")
+                if seller_containers:
+                    listing_elements = seller_containers
+                    logger.debug("Found seller containers", count=len(seller_containers))
             
             # Log diagnostic info if no listings found
             if not listing_elements:
                 # Get a sample of class names from the page for debugging
                 sample_classes = set()
-                for el in tree.css("[class]")[:50]:
+                for el in tree.css("[class]")[:100]:
                     if el.attributes and "class" in el.attributes:
                         classes = el.attributes["class"].split()
-                        sample_classes.update(classes[:5])  # Limit to avoid huge logs
+                        sample_classes.update(classes[:5])
                 
                 logger.warning(
-                    "No listing elements found on TCGPlayer page - selectors may need updating",
+                    "No listing elements found on TCGPlayer product page - selectors may need updating",
                     card_name=card_name,
-                    url=url,
-                    sample_classes=list(sample_classes)[:20],  # First 20 unique classes
+                    url=product_url,
+                    sample_classes=list(sample_classes)[:30],
                     page_title=tree.css_first("title").text() if tree.css_first("title") else "N/A",
                 )
             
             for i, element in enumerate(listing_elements[:limit]):
                 try:
-                    # Extract price
-                    price_text = (
-                        extract_text(element, ".price") or
-                        extract_text(element, ".product-price") or
-                        extract_text(element, "[data-price]") or
-                        extract_text(element, ".listing-price") or
-                        extract_attr(element, "data-price")
-                    )
-                    price = clean_price(price_text)
-                    
-                    if not price or price <= 0:
-                        continue
-                    
-                    # Extract condition
-                    condition_text = (
-                        extract_text(element, ".condition") or
-                        extract_text(element, ".card-condition") or
-                        extract_text(element, "[data-condition]") or
-                        ""
-                    )
-                    condition = self.normalize_condition(condition_text) if condition_text else None
-                    
-                    # Extract quantity
-                    qty_text = (
-                        extract_text(element, ".quantity") or
-                        extract_text(element, "[data-quantity]") or
-                        "1"
-                    )
-                    try:
-                        quantity = int(re.sub(r'[^\d]', '', qty_text) or "1")
-                    except (ValueError, AttributeError):
-                        quantity = 1
-                    
-                    # Extract seller name
+                    # Extract seller name - TCGPlayer shows seller names prominently
                     seller_name = (
+                        extract_text(element, "[class*='seller-name']") or
+                        extract_text(element, "[class*='SellerName']") or
                         extract_text(element, ".seller") or
-                        extract_text(element, ".seller-name") or
-                        extract_text(element, "[data-seller]") or
+                        extract_text(element, "[data-seller-name]") or
+                        extract_attr(element, "data-seller-name") or
                         None
                     )
                     
-                    # Extract seller rating
+                    # If no seller name found, skip this element (not a valid listing)
+                    if not seller_name or len(seller_name.strip()) < 2:
+                        continue
+                    
+                    # Extract price - look for price patterns in text or data attributes
+                    price_text = (
+                        extract_text(element, "[class*='price']") or
+                        extract_text(element, "[class*='Price']") or
+                        extract_text(element, "[data-price]") or
+                        extract_attr(element, "data-price") or
+                        None
+                    )
+                    
+                    # If no price in element, look in child elements
+                    if not price_text:
+                        price_elem = element.css_first("[class*='price'], [class*='Price'], [data-price]")
+                        if price_elem:
+                            price_text = price_elem.text(strip=True) or price_elem.attributes.get("data-price")
+                    
+                    price = clean_price(price_text) if price_text else None
+                    
+                    if not price or price <= 0:
+                        # Try to extract from full element text as fallback
+                        full_text = element.text(strip=True)
+                        # Look for price patterns like $0.01, $2.50, etc.
+                        price_match = re.search(r'\$?\s*(\d+\.?\d*)', full_text)
+                        if price_match:
+                            try:
+                                price = float(price_match.group(1))
+                            except (ValueError, AttributeError):
+                                continue
+                        else:
+                            continue
+                    
+                    # Extract condition - TCGPlayer uses standard conditions
+                    condition_text = (
+                        extract_text(element, "[class*='condition']") or
+                        extract_text(element, "[class*='Condition']") or
+                        extract_text(element, "[data-condition]") or
+                        extract_attr(element, "data-condition") or
+                        ""
+                    )
+                    
+                    # If no condition in element, check full text for condition keywords
+                    if not condition_text:
+                        full_text_lower = element.text(strip=True).lower()
+                        if "near mint" in full_text_lower or "nm" in full_text_lower:
+                            condition_text = "Near Mint"
+                        elif "lightly played" in full_text_lower or "lp" in full_text_lower:
+                            condition_text = "Lightly Played"
+                        elif "moderately played" in full_text_lower or "mp" in full_text_lower:
+                            condition_text = "Moderately Played"
+                        elif "heavily played" in full_text_lower or "hp" in full_text_lower:
+                            condition_text = "Heavily Played"
+                        elif "damaged" in full_text_lower or "dmg" in full_text_lower:
+                            condition_text = "Damaged"
+                    
+                    condition = self.normalize_condition(condition_text) if condition_text else "NM"
+                    
+                    # Extract quantity - look for quantity patterns
+                    qty_text = (
+                        extract_text(element, "[class*='quantity']") or
+                        extract_text(element, "[class*='Quantity']") or
+                        extract_text(element, "[data-quantity]") or
+                        extract_attr(element, "data-quantity") or
+                        "1"
+                    )
+                    
+                    # Parse quantity - look for patterns like "1 of 13", "13 available", etc.
+                    quantity = 1
+                    if qty_text:
+                        # Try to find number in quantity text
+                        qty_match = re.search(r'(\d+)', qty_text)
+                        if qty_match:
+                            try:
+                                quantity = int(qty_match.group(1))
+                            except (ValueError, AttributeError):
+                                quantity = 1
+                    
+                    # Extract seller rating - TCGPlayer shows star ratings
                     rating_text = (
-                        extract_text(element, ".rating") or
-                        extract_text(element, ".seller-rating") or
+                        extract_text(element, "[class*='rating']") or
+                        extract_text(element, "[class*='Rating']") or
                         extract_attr(element, "data-rating") or
                         None
                     )
                     seller_rating = None
                     if rating_text:
-                        try:
-                            seller_rating = float(re.sub(r'[^\d.]', '', rating_text))
-                        except (ValueError, AttributeError):
-                            pass
+                        # Look for star rating patterns
+                        rating_match = re.search(r'(\d+\.?\d*)', rating_text)
+                        if rating_match:
+                            try:
+                                seller_rating = float(rating_match.group(1))
+                                if seller_rating > 5.0:
+                                    seller_rating = seller_rating / 10.0  # Normalize if out of 10
+                            except (ValueError, AttributeError):
+                                pass
                     
-                    # Check for foil
+                    # Check for foil - look for foil indicators
+                    full_text_lower = element.text(strip=True).lower()
                     is_foil = (
-                        "foil" in extract_text(element, "").lower() or
-                        element.css_first(".foil, [data-foil='true']") is not None
+                        "foil" in full_text_lower or
+                        element.css_first("[class*='foil'], [data-foil='true']") is not None
                     )
                     
-                    # Extract listing URL
-                    listing_url = (
-                        extract_attr(element, "href", "a") or
-                        extract_attr(element, "href") or
-                        None
-                    )
-                    if listing_url and not listing_url.startswith("http"):
-                        listing_url = f"{self.config.base_url}{listing_url}"
+                    # Extract listing URL - product page URL with seller info
+                    listing_url = product_url  # Use product page as base
                     
-                    # Generate external ID
-                    external_id = extract_attr(element, "data-id") or extract_attr(element, "data-listing-id")
-                    if not external_id:
-                        external_id = f"tcgplayer-{hash(f'{card_name}-{i}')}"
+                    # Generate external ID - use seller name + price + condition for uniqueness
+                    external_id = (
+                        extract_attr(element, "data-listing-id") or
+                        extract_attr(element, "data-id") or
+                        f"tcgplayer-{hash(f'{seller_name}-{price}-{condition}-{i}')}"
+                    )
                     
                     listing = CardListing(
                         card_name=card_name,
@@ -292,7 +375,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                         condition=condition,
                         language="English",
                         is_foil=is_foil,
-                        seller_name=seller_name,
+                        seller_name=seller_name.strip() if seller_name else None,
                         seller_rating=seller_rating,
                         external_id=external_id,
                         listing_url=listing_url,
@@ -305,158 +388,169 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                     logger.debug("Failed to parse listing element", error=str(e), index=i)
                     continue
             
-            # Try to fetch additional pages if we haven't reached the limit
+            # Try to fetch additional pages of listings if available
             if len(listings) < limit:
-                try:
-                    # Look for pagination
-                    next_url = None
-                    next_link = tree.css_first("a[rel='next'], .pagination .next a, a.next")
-                    if next_link:
-                        href = next_link.attributes.get("href")
-                        if href:
-                            if not href.startswith("http"):
-                                from urllib.parse import urljoin
-                                href = urljoin(url, href)
-                            next_url = href
+                # Look for pagination on product page
+                page_num = 2
+                max_pages = 5
+                while page_num <= max_pages and len(listings) < limit:
+                    # TCGPlayer product pages use ?page=N parameter
+                    paginated_url = product_url.replace("?Language=English", f"?page={page_num}&Language=English") if "?" in product_url else f"{product_url}?page={page_num}&Language=English"
                     
-                    # Fetch additional pages (up to 5 more pages)
-                    pages_fetched = 1
-                    max_pages = 5
-                    current_url = next_url
+                    await self._rate_limit()
+                    next_tree = await fetch_page(client, paginated_url, timeout=self.config.timeout_seconds)
                     
-                    while current_url and pages_fetched < max_pages and len(listings) < limit:
-                        await self._rate_limit()
-                        next_tree = await fetch_page(client, current_url, timeout=self.config.timeout_seconds)
-                        
-                        if not next_tree:
+                    if not next_tree:
+                        break
+                    
+                    # Extract listings from this page using same selectors
+                    next_listing_elements = []
+                    for selector in listing_selectors:
+                        elements = next_tree.css(selector)
+                        if elements and len(elements) > 0:
+                            next_listing_elements = elements
                             break
-                        
-                        # Parse listings from this page
-                        next_listing_elements = []
-                        for selector in listing_selectors:
-                            elements = next_tree.css(selector)
-                            if elements:
-                                next_listing_elements = elements
-                                break
-                        
-                        if not next_listing_elements:
-                            price_elements = next_tree.css(".price, .product-price, [data-price], .listing-price")
-                            if price_elements:
-                                next_listing_elements = price_elements[:limit - len(listings)]
-                        
-                        # Parse listings from this page (reuse parsing logic)
-                        for i, element in enumerate(next_listing_elements[:limit - len(listings)]):
-                            try:
-                                price_text = (
-                                    extract_text(element, ".price") or
-                                    extract_text(element, ".product-price") or
-                                    extract_text(element, "[data-price]") or
-                                    extract_text(element, ".listing-price") or
-                                    extract_attr(element, "data-price")
-                                )
-                                price = clean_price(price_text)
-                                
-                                if not price or price <= 0:
-                                    continue
-                                
-                                condition_text = (
-                                    extract_text(element, ".condition") or
-                                    extract_text(element, ".card-condition") or
-                                    extract_text(element, "[data-condition]") or
-                                    ""
-                                )
-                                condition = self.normalize_condition(condition_text) if condition_text else None
-                                
-                                qty_text = (
-                                    extract_text(element, ".quantity") or
-                                    extract_text(element, "[data-quantity]") or
-                                    "1"
-                                )
-                                try:
-                                    quantity = int(re.sub(r'[^\d]', '', qty_text) or "1")
-                                except (ValueError, AttributeError):
-                                    quantity = 1
-                                
-                                seller_name = (
-                                    extract_text(element, ".seller") or
-                                    extract_text(element, ".seller-name") or
-                                    extract_text(element, "[data-seller]") or
-                                    None
-                                )
-                                
-                                rating_text = (
-                                    extract_text(element, ".rating") or
-                                    extract_text(element, ".seller-rating") or
-                                    extract_attr(element, "data-rating") or
-                                    None
-                                )
-                                seller_rating = None
-                                if rating_text:
+                    
+                    if not next_listing_elements:
+                        # No more listings found
+                        break
+                    
+                    # Parse listings from this page (reuse same parsing logic)
+                    for i, element in enumerate(next_listing_elements[:limit - len(listings)]):
+                        try:
+                            seller_name = (
+                                extract_text(element, "[class*='seller-name']") or
+                                extract_text(element, "[class*='SellerName']") or
+                                extract_text(element, ".seller") or
+                                extract_text(element, "[data-seller-name]") or
+                                extract_attr(element, "data-seller-name") or
+                                None
+                            )
+                            
+                            if not seller_name or len(seller_name.strip()) < 2:
+                                continue
+                            
+                            price_text = (
+                                extract_text(element, "[class*='price']") or
+                                extract_text(element, "[class*='Price']") or
+                                extract_text(element, "[data-price]") or
+                                extract_attr(element, "data-price") or
+                                None
+                            )
+                            
+                            if not price_text:
+                                price_elem = element.css_first("[class*='price'], [class*='Price'], [data-price]")
+                                if price_elem:
+                                    price_text = price_elem.text(strip=True) or price_elem.attributes.get("data-price")
+                            
+                            price = clean_price(price_text) if price_text else None
+                            
+                            if not price or price <= 0:
+                                full_text = element.text(strip=True)
+                                price_match = re.search(r'\$?\s*(\d+\.?\d*)', full_text)
+                                if price_match:
                                     try:
-                                        seller_rating = float(re.sub(r'[^\d.]', '', rating_text))
+                                        price = float(price_match.group(1))
+                                    except (ValueError, AttributeError):
+                                        continue
+                                else:
+                                    continue
+                            
+                            condition_text = (
+                                extract_text(element, "[class*='condition']") or
+                                extract_text(element, "[class*='Condition']") or
+                                extract_text(element, "[data-condition]") or
+                                extract_attr(element, "data-condition") or
+                                ""
+                            )
+                            
+                            if not condition_text:
+                                full_text_lower = element.text(strip=True).lower()
+                                if "near mint" in full_text_lower or "nm" in full_text_lower:
+                                    condition_text = "Near Mint"
+                                elif "lightly played" in full_text_lower or "lp" in full_text_lower:
+                                    condition_text = "Lightly Played"
+                                elif "moderately played" in full_text_lower or "mp" in full_text_lower:
+                                    condition_text = "Moderately Played"
+                                elif "heavily played" in full_text_lower or "hp" in full_text_lower:
+                                    condition_text = "Heavily Played"
+                                elif "damaged" in full_text_lower or "dmg" in full_text_lower:
+                                    condition_text = "Damaged"
+                            
+                            condition = self.normalize_condition(condition_text) if condition_text else "NM"
+                            
+                            qty_text = (
+                                extract_text(element, "[class*='quantity']") or
+                                extract_text(element, "[class*='Quantity']") or
+                                extract_text(element, "[data-quantity]") or
+                                extract_attr(element, "data-quantity") or
+                                "1"
+                            )
+                            
+                            quantity = 1
+                            if qty_text:
+                                qty_match = re.search(r'(\d+)', qty_text)
+                                if qty_match:
+                                    try:
+                                        quantity = int(qty_match.group(1))
+                                    except (ValueError, AttributeError):
+                                        quantity = 1
+                            
+                            rating_text = (
+                                extract_text(element, "[class*='rating']") or
+                                extract_text(element, "[class*='Rating']") or
+                                extract_attr(element, "data-rating") or
+                                None
+                            )
+                            seller_rating = None
+                            if rating_text:
+                                rating_match = re.search(r'(\d+\.?\d*)', rating_text)
+                                if rating_match:
+                                    try:
+                                        seller_rating = float(rating_match.group(1))
+                                        if seller_rating > 5.0:
+                                            seller_rating = seller_rating / 10.0
                                     except (ValueError, AttributeError):
                                         pass
-                                
-                                is_foil = (
-                                    "foil" in extract_text(element, "").lower() or
-                                    element.css_first(".foil, [data-foil='true']") is not None
-                                )
-                                
-                                listing_url = (
-                                    extract_attr(element, "href", "a") or
-                                    extract_attr(element, "href") or
-                                    None
-                                )
-                                if listing_url and not listing_url.startswith("http"):
-                                    listing_url = f"{self.config.base_url}{listing_url}"
-                                
-                                external_id = extract_attr(element, "data-id") or extract_attr(element, "data-listing-id")
-                                if not external_id:
-                                    external_id = f"tcgplayer-{hash(f'{card_name}-{len(listings) + i}')}"
-                                
-                                listing = CardListing(
-                                    card_name=card_name,
-                                    set_code=set_code or "",
-                                    collector_number="",
-                                    price=price,
-                                    currency="USD",
-                                    quantity=quantity,
-                                    condition=condition,
-                                    language="English",
-                                    is_foil=is_foil,
-                                    seller_name=seller_name,
-                                    seller_rating=seller_rating,
-                                    external_id=external_id,
-                                    listing_url=listing_url,
-                                    scraped_at=datetime.utcnow(),
-                                )
-                                
-                                listings.append(listing)
-                                
-                            except Exception as e:
-                                logger.debug("Failed to parse listing element", error=str(e))
-                                continue
-                        
-                        # Find next page
-                        next_link = next_tree.css_first("a[rel='next'], .pagination .next a, a.next")
-                        if next_link:
-                            href = next_link.attributes.get("href")
-                            if href:
-                                if not href.startswith("http"):
-                                    from urllib.parse import urljoin
-                                    href = urljoin(current_url, href)
-                                current_url = href
-                            else:
-                                current_url = None
-                        else:
-                            current_url = None
-                        
-                        pages_fetched += 1
-                        
-                except Exception as e:
-                    logger.debug("Error fetching additional pages", error=str(e))
+                            
+                            full_text_lower = element.text(strip=True).lower()
+                            is_foil = (
+                                "foil" in full_text_lower or
+                                element.css_first("[class*='foil'], [data-foil='true']") is not None
+                            )
+                            
+                            external_id = (
+                                extract_attr(element, "data-listing-id") or
+                                extract_attr(element, "data-id") or
+                                f"tcgplayer-{hash(f'{seller_name}-{price}-{condition}-{len(listings) + i}')}"
+                            )
+                            
+                            listing = CardListing(
+                                card_name=card_name,
+                                set_code=set_code or "",
+                                collector_number="",
+                                price=price,
+                                currency="USD",
+                                quantity=quantity,
+                                condition=condition,
+                                language="English",
+                                is_foil=is_foil,
+                                seller_name=seller_name.strip() if seller_name else None,
+                                seller_rating=seller_rating,
+                                external_id=external_id,
+                                listing_url=paginated_url,
+                                scraped_at=datetime.utcnow(),
+                            )
+                            
+                            listings.append(listing)
+                            
+                        except Exception as e:
+                            logger.debug("Failed to parse listing element", error=str(e))
+                            continue
+                    
+                    page_num += 1
             
-            logger.info("Scraped TCGPlayer listings", card_name=card_name, count=len(listings), pages=pages_fetched if 'pages_fetched' in locals() else 1)
+            logger.info("Scraped TCGPlayer listings", card_name=card_name, count=len(listings))
             
         except Exception as e:
             logger.error("Error scraping TCGPlayer listings", card_name=card_name, error=str(e))

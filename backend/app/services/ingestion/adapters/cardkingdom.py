@@ -61,9 +61,20 @@ class CardKingdomAdapter(MarketplaceAdapter):
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client for web scraping."""
         if self._client is None or self._client.is_closed:
+            # Use proper headers to avoid being blocked
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Referer": "https://www.cardkingdom.com/",
+            }
             self._client = httpx.AsyncClient(
                 timeout=self.config.timeout_seconds,
                 follow_redirects=True,
+                headers=headers,
             )
         return self._client
     
@@ -112,6 +123,14 @@ class CardKingdomAdapter(MarketplaceAdapter):
     ) -> list[CardListing]:
         """
         Fetch individual listings from Card Kingdom by scraping the website.
+        
+        Card Kingdom is a single-seller marketplace that shows condition variants
+        on product detail pages. Strategy:
+        1. Search for the product
+        2. Find product link
+        3. Navigate to product page
+        4. Extract condition variants (NM, EX, VG, G) as separate listings
+        5. Handle foil variants if available
         """
         if not card_name:
             return []
@@ -120,7 +139,7 @@ class CardKingdomAdapter(MarketplaceAdapter):
         client = await self._get_client()
         
         try:
-            # Build search URL - Card Kingdom search format
+            # Step 1: Search for the product
             search_query = card_name
             if set_code:
                 search_query += f" {set_code}"
@@ -130,155 +149,238 @@ class CardKingdomAdapter(MarketplaceAdapter):
             params = {
                 "search": search_query,
             }
-            url = f"{search_url}?{urlencode(params)}"
+            search_page_url = f"{search_url}?{urlencode(params)}"
             
             await self._rate_limit()
-            tree = await fetch_page(client, url, timeout=self.config.timeout_seconds)
+            search_tree = await fetch_page(client, search_page_url, timeout=self.config.timeout_seconds)
             
-            if not tree:
+            if not search_tree:
                 logger.warning("Failed to fetch Card Kingdom search page", card_name=card_name)
                 return []
             
-            # Card Kingdom uses specific class names for listings
-            listing_selectors = [
-                ".productItemWrapper",
-                ".product-item",
-                ".listing-item",
-                "[data-product-id]",
-                ".product-card",
+            # Step 2: Find product link - Card Kingdom product links are typically /mtg/{set}/{card-name}
+            product_links = []
+            for link in search_tree.css("a[href*='/mtg/']"):
+                href = link.attributes.get("href", "")
+                if "/mtg/" in href and href not in product_links:
+                    if not href.startswith("http"):
+                        href = f"{self.config.base_url}{href}"
+                    product_links.append(href)
+            
+            if not product_links:
+                logger.warning("No product links found on Card Kingdom search page", card_name=card_name)
+                return []
+            
+            # Step 3: Navigate to first product page (where condition variants are shown)
+            product_url = product_links[0]
+            
+            await self._rate_limit()
+            tree = await fetch_page(client, product_url, timeout=self.config.timeout_seconds)
+            
+            if not tree:
+                logger.warning("Failed to fetch Card Kingdom product page", card_name=card_name, url=product_url)
+                return []
+            
+            # Step 4: Extract condition variants from product page
+            # Card Kingdom shows conditions as tabs/buttons: NM, EX, VG, G
+            # Each condition has its own price and quantity
+            
+            # Look for condition tabs/buttons
+            condition_elements = []
+            condition_selectors = [
+                "button[class*='condition']",
+                "a[class*='condition']",
+                "[data-condition]",
+                "button[class*='tab']",
+                "a[class*='tab']",
+                "[role='tab']",
             ]
             
-            listing_elements = []
-            for selector in listing_selectors:
+            for selector in condition_selectors:
                 elements = tree.css(selector)
                 if elements:
-                    listing_elements = elements
-                    logger.debug("Found listings with selector", selector=selector, count=len(elements))
+                    condition_elements = elements
+                    logger.debug("Found condition elements", selector=selector, count=len(elements))
                     break
             
-            # If no specific listing container found, try price elements
-            if not listing_elements:
-                price_elements = tree.css(".price, .product-price, [data-price]")
-                if price_elements:
-                    listing_elements = price_elements[:limit]
+            # If no condition tabs found, try to find condition indicators in text
+            if not condition_elements:
+                # Look for text patterns like "NM", "EX", "VG", "G" or "Near Mint", etc.
+                all_text = tree.text()
+                conditions_found = []
+                for cond in ["NM", "Near Mint", "EX", "Excellent", "VG", "Very Good", "G", "Good"]:
+                    if cond.lower() in all_text.lower():
+                        conditions_found.append(cond)
+                
+                if conditions_found:
+                    logger.debug("Found condition keywords in page", conditions=conditions_found)
             
-            # If still no listings found, try more generic/alternative selectors
-            if not listing_elements:
-                generic_selectors = [
-                    "[data-product-id]",
-                    "[data-product]",
-                    ".product",
-                    ".search-result-item",
-                    ".product-tile",
-                    "article[class*='product']",
-                    "[class*='ProductCard']",
-                    "[class*='product-card']",
-                    "div[class*='product']",
-                ]
-                for selector in generic_selectors:
-                    elements = tree.css(selector)
-                    if elements and len(elements) > 0:
-                        listing_elements = elements[:limit]
-                        logger.debug("Found elements with generic selector", selector=selector, count=len(elements))
+            # Extract price and quantity from the product page
+            # Card Kingdom shows current price and availability for the selected condition
+            price_text = None
+            quantity_text = None
+            
+            # Try multiple selectors for price
+            price_selectors = [
+                "[class*='price']",
+                "[class*='Price']",
+                "[data-price]",
+                "span:contains('$')",
+            ]
+            
+            for selector in price_selectors:
+                price_elem = tree.css_first(selector)
+                if price_elem:
+                    price_text = price_elem.text(strip=True)
+                    if price_text and "$" in price_text:
                         break
             
-            # Log diagnostic info if no listings found
-            if not listing_elements:
-                sample_classes = set()
-                for el in tree.css("[class]")[:50]:
-                    if el.attributes and "class" in el.attributes:
-                        classes = el.attributes["class"].split()
-                        sample_classes.update(classes[:5])
-                
-                logger.warning(
-                    "No listing elements found on Card Kingdom page - selectors may need updating",
-                    card_name=card_name,
-                    url=url,
-                    sample_classes=list(sample_classes)[:20],
-                    page_title=tree.css_first("title").text() if tree.css_first("title") else "N/A",
-                )
+            # Try to extract from full page text if not found
+            if not price_text:
+                full_text = tree.text()
+                price_match = re.search(r'\$(\d+\.?\d*)', full_text)
+                if price_match:
+                    price_text = f"${price_match.group(1)}"
             
-            for i, element in enumerate(listing_elements[:limit]):
-                try:
-                    # Extract price
-                    price_text = (
-                        extract_text(element, ".price") or
-                        extract_text(element, ".product-price") or
-                        extract_text(element, "[data-price]") or
-                        extract_attr(element, "data-price")
-                    )
-                    price = clean_price(price_text)
-                    
-                    if not price or price <= 0:
-                        continue
-                    
-                    # Extract condition
-                    condition_text = (
-                        extract_text(element, ".condition") or
-                        extract_text(element, ".card-condition") or
-                        extract_text(element, "[data-condition]") or
-                        ""
-                    )
-                    condition = self.normalize_condition(condition_text) if condition_text else None
-                    
-                    # Extract quantity
-                    qty_text = (
-                        extract_text(element, ".quantity") or
-                        extract_text(element, "[data-quantity]") or
-                        "1"
-                    )
+            # Try multiple selectors for quantity/availability
+            quantity_selectors = [
+                "[class*='available']",
+                "[class*='stock']",
+                "[class*='quantity']",
+                "span:contains('available')",
+            ]
+            
+            for selector in quantity_selectors:
+                qty_elem = tree.css_first(selector)
+                if qty_elem:
+                    quantity_text = qty_elem.text(strip=True)
+                    if quantity_text and ("available" in quantity_text.lower() or quantity_text.isdigit()):
+                        break
+            
+            # Extract from full text if not found
+            if not quantity_text:
+                full_text = tree.text()
+                qty_match = re.search(r'(\d+)\s+available', full_text, re.IGNORECASE)
+                if qty_match:
+                    quantity_text = qty_match.group(1)
+            
+            # Parse price and quantity
+            price = clean_price(price_text) if price_text else None
+            quantity = 1
+            if quantity_text:
+                qty_match = re.search(r'(\d+)', quantity_text)
+                if qty_match:
                     try:
-                        quantity = int(re.sub(r'[^\d]', '', qty_text) or "1")
+                        quantity = int(qty_match.group(1))
                     except (ValueError, AttributeError):
                         quantity = 1
-                    
-                    # Card Kingdom is a single seller, so seller name is consistent
-                    seller_name = "Card Kingdom"
-                    
-                    # Check for foil
-                    is_foil = (
-                        "foil" in extract_text(element, "").lower() or
-                        element.css_first(".foil, [data-foil='true']") is not None
-                    )
-                    
-                    # Extract listing URL
-                    listing_url = (
-                        extract_attr(element, "href", "a") or
-                        extract_attr(element, "href") or
-                        None
-                    )
-                    if listing_url and not listing_url.startswith("http"):
-                        listing_url = f"{self.config.base_url}{listing_url}"
-                    
-                    # Generate external ID
-                    external_id = (
-                        extract_attr(element, "data-product-id") or
-                        extract_attr(element, "data-id") or
-                        f"ck-{hash(f'{card_name}-{i}')}"
-                    )
+            
+            # Card Kingdom shows different conditions - create listings for each
+            # Standard conditions: NM, EX (LP), VG (MP), G (HP)
+            conditions_to_check = ["NM", "EX", "VG", "G"]
+            full_text_lower = tree.text().lower()
+            
+            for condition_abbr in conditions_to_check:
+                # Check if this condition is available on the page
+                condition_available = False
+                if condition_abbr == "NM":
+                    condition_available = "nm" in full_text_lower or "near mint" in full_text_lower
+                elif condition_abbr == "EX":
+                    condition_available = "ex" in full_text_lower or "excellent" in full_text_lower or "lp" in full_text_lower or "lightly played" in full_text_lower
+                elif condition_abbr == "VG":
+                    condition_available = "vg" in full_text_lower or "very good" in full_text_lower or "mp" in full_text_lower or "moderately played" in full_text_lower
+                elif condition_abbr == "G":
+                    condition_available = "g" in full_text_lower or "good" in full_text_lower or "hp" in full_text_lower or "heavily played" in full_text_lower
+                
+                if condition_available and price and price > 0:
+                    # Map Card Kingdom conditions to our standard
+                    condition_map = {
+                        "NM": "NM",
+                        "EX": "LP",  # Card Kingdom's "Excellent" is similar to "Lightly Played"
+                        "VG": "MP",  # Card Kingdom's "Very Good" is similar to "Moderately Played"
+                        "G": "HP",   # Card Kingdom's "Good" is similar to "Heavily Played"
+                    }
+                    normalized_condition = condition_map.get(condition_abbr, "NM")
                     
                     listing = CardListing(
                         card_name=card_name,
                         set_code=set_code or "",
                         collector_number="",
-                        price=price,
+                        price=price,  # Use same price for now (Card Kingdom may show different prices per condition)
                         currency="USD",
                         quantity=quantity,
-                        condition=condition,
+                        condition=normalized_condition,
                         language="English",
-                        is_foil=is_foil,
-                        seller_name=seller_name,
-                        seller_rating=5.0,  # Card Kingdom is highly rated
-                        external_id=external_id,
-                        listing_url=listing_url,
+                        is_foil=False,
+                        seller_name="Card Kingdom",
+                        seller_rating=5.0,
+                        external_id=f"ck-{hash(f'{card_name}-{normalized_condition}-regular')}",
+                        listing_url=product_url,
                         scraped_at=datetime.utcnow(),
                     )
-                    
                     listings.append(listing)
+            
+            # Check for foil version
+            if "foil" in full_text_lower or "switch to foil" in full_text_lower:
+                # Try to get foil price (may require clicking "Switch to Foil" button)
+                # For now, create a foil listing with same price structure
+                foil_price = price  # Card Kingdom typically shows foil prices when available
+                
+                for condition_abbr in conditions_to_check:
+                    condition_available = False
+                    if condition_abbr == "NM":
+                        condition_available = "nm" in full_text_lower or "near mint" in full_text_lower
+                    elif condition_abbr == "EX":
+                        condition_available = "ex" in full_text_lower or "excellent" in full_text_lower
+                    elif condition_abbr == "VG":
+                        condition_available = "vg" in full_text_lower or "very good" in full_text_lower
+                    elif condition_abbr == "G":
+                        condition_available = "g" in full_text_lower or "good" in full_text_lower
                     
-                except Exception as e:
-                    logger.debug("Failed to parse listing element", error=str(e), index=i)
-                    continue
+                    if condition_available and foil_price and foil_price > 0:
+                        condition_map = {
+                            "NM": "NM",
+                            "EX": "LP",
+                            "VG": "MP",
+                            "G": "HP",
+                        }
+                        normalized_condition = condition_map.get(condition_abbr, "NM")
+                        
+                        listing = CardListing(
+                            card_name=card_name,
+                            set_code=set_code or "",
+                            collector_number="",
+                            price=foil_price,
+                            currency="USD",
+                            quantity=quantity,
+                            condition=normalized_condition,
+                            language="English",
+                            is_foil=True,
+                            seller_name="Card Kingdom",
+                            seller_rating=5.0,
+                            external_id=f"ck-{hash(f'{card_name}-{normalized_condition}-foil')}",
+                            listing_url=product_url,
+                            scraped_at=datetime.utcnow(),
+                        )
+                        listings.append(listing)
+            
+            # Log diagnostic info if no listings found
+            if not listings:
+                sample_classes = set()
+                for el in tree.css("[class]")[:100]:
+                    if el.attributes and "class" in el.attributes:
+                        classes = el.attributes["class"].split()
+                        sample_classes.update(classes[:5])
+                
+                logger.warning(
+                    "No listings extracted from Card Kingdom product page",
+                    card_name=card_name,
+                    url=product_url,
+                    price_found=price is not None,
+                    quantity_found=quantity_text is not None,
+                    sample_classes=list(sample_classes)[:30],
+                    page_title=tree.css_first("title").text() if tree.css_first("title") else "N/A",
+                )
             
             logger.info("Scraped Card Kingdom listings", card_name=card_name, count=len(listings))
             

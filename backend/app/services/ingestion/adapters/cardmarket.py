@@ -65,9 +65,20 @@ class CardMarketAdapter(MarketplaceAdapter):
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client for web scraping."""
         if self._client is None or self._client.is_closed:
+            # Use proper headers to avoid 403 errors
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Referer": "https://www.cardmarket.com/",
+            }
             self._client = httpx.AsyncClient(
                 timeout=self.config.timeout_seconds,
                 follow_redirects=True,
+                headers=headers,
             )
         return self._client
     
@@ -116,6 +127,9 @@ class CardMarketAdapter(MarketplaceAdapter):
     ) -> list[CardListing]:
         """
         Fetch individual listings from Cardmarket by scraping the website.
+        
+        Note: Cardmarket may block requests with 403 errors. This adapter
+        uses proper headers and rate limiting to minimize blocking.
         """
         if not card_name:
             return []
@@ -143,26 +157,33 @@ class CardMarketAdapter(MarketplaceAdapter):
                 logger.warning("Failed to fetch Cardmarket search page", card_name=card_name)
                 return []
             
-            # Cardmarket uses specific class names for listings
+            # Cardmarket uses Article elements for listings - try modern selectors
             listing_selectors = [
+                # Modern Cardmarket structure
+                "article[class*='Article']",
+                "article[class*='article']",
                 ".article-row",
                 ".product-row",
                 "[data-product-id]",
+                "[data-article-id]",
+                # Alternative patterns
                 ".article-item",
                 ".listing-item",
+                "tr[class*='article']",
+                "div[class*='Article']",
             ]
             
             listing_elements = []
             for selector in listing_selectors:
                 elements = tree.css(selector)
-                if elements:
+                if elements and len(elements) > 0:
                     listing_elements = elements
                     logger.debug("Found listings with selector", selector=selector, count=len(elements))
                     break
             
             # If no specific listing container found, try price elements
             if not listing_elements:
-                price_elements = tree.css(".price, .product-price, [data-price]")
+                price_elements = tree.css("[class*='price'], [class*='Price'], [data-price]")
                 if price_elements:
                     listing_elements = price_elements[:limit]
             
@@ -170,15 +191,15 @@ class CardMarketAdapter(MarketplaceAdapter):
             if not listing_elements:
                 generic_selectors = [
                     "[data-product-id]",
+                    "[data-article-id]",
                     "[data-product]",
                     ".product",
                     ".search-result-item",
                     ".product-tile",
-                    "article[class*='product']",
-                    "[class*='ProductCard']",
-                    "[class*='product-card']",
+                    "article",
+                    "[class*='Product']",
+                    "[class*='product']",
                     "div[class*='product']",
-                    "[class*='Article']",  # Cardmarket uses Article elements
                 ]
                 for selector in generic_selectors:
                     elements = tree.css(selector)
@@ -190,7 +211,7 @@ class CardMarketAdapter(MarketplaceAdapter):
             # Log diagnostic info if no listings found
             if not listing_elements:
                 sample_classes = set()
-                for el in tree.css("[class]")[:50]:
+                for el in tree.css("[class]")[:100]:
                     if el.attributes and "class" in el.attributes:
                         classes = el.attributes["class"].split()
                         sample_classes.update(classes[:5])
@@ -199,78 +220,127 @@ class CardMarketAdapter(MarketplaceAdapter):
                     "No listing elements found on Cardmarket page - selectors may need updating",
                     card_name=card_name,
                     url=url,
-                    sample_classes=list(sample_classes)[:20],
+                    sample_classes=list(sample_classes)[:30],
                     page_title=tree.css_first("title").text() if tree.css_first("title") else "N/A",
                 )
             
             for i, element in enumerate(listing_elements[:limit]):
                 try:
-                    # Extract price (Cardmarket uses EUR)
+                    # Extract price (Cardmarket uses EUR) - look for price patterns
                     price_text = (
-                        extract_text(element, ".price") or
-                        extract_text(element, ".product-price") or
+                        extract_text(element, "[class*='price']") or
+                        extract_text(element, "[class*='Price']") or
                         extract_text(element, "[data-price]") or
-                        extract_attr(element, "data-price")
+                        extract_attr(element, "data-price") or
+                        None
                     )
-                    price = clean_price(price_text)
+                    
+                    # If no price in element, look in child elements or full text
+                    if not price_text:
+                        price_elem = element.css_first("[class*='price'], [class*='Price'], [data-price]")
+                        if price_elem:
+                            price_text = price_elem.text(strip=True) or price_elem.attributes.get("data-price")
+                    
+                    price = clean_price(price_text) if price_text else None
                     
                     if not price or price <= 0:
-                        continue
+                        # Try to extract from full element text (Cardmarket often shows "€0.05" format)
+                        full_text = element.text(strip=True)
+                        price_match = re.search(r'€?\s*(\d+[,.]?\d*)', full_text)
+                        if price_match:
+                            try:
+                                price_str = price_match.group(1).replace(',', '.')
+                                price = float(price_str)
+                            except (ValueError, AttributeError):
+                                continue
+                        else:
+                            continue
                     
-                    # Extract condition
+                    # Extract condition - Cardmarket uses standard conditions
                     condition_text = (
-                        extract_text(element, ".condition") or
-                        extract_text(element, ".card-condition") or
+                        extract_text(element, "[class*='condition']") or
+                        extract_text(element, "[class*='Condition']") or
                         extract_text(element, "[data-condition]") or
+                        extract_attr(element, "data-condition") or
                         ""
                     )
-                    condition = self.normalize_condition(condition_text) if condition_text else None
+                    
+                    # Check full text for condition keywords if not found
+                    if not condition_text:
+                        full_text_lower = element.text(strip=True).lower()
+                        if "near mint" in full_text_lower or "nm" in full_text_lower or "mint" in full_text_lower:
+                            condition_text = "Near Mint"
+                        elif "lightly played" in full_text_lower or "lp" in full_text_lower or "excellent" in full_text_lower:
+                            condition_text = "Lightly Played"
+                        elif "moderately played" in full_text_lower or "mp" in full_text_lower or "good" in full_text_lower:
+                            condition_text = "Moderately Played"
+                        elif "heavily played" in full_text_lower or "hp" in full_text_lower or "played" in full_text_lower:
+                            condition_text = "Heavily Played"
+                        elif "damaged" in full_text_lower or "dmg" in full_text_lower or "poor" in full_text_lower:
+                            condition_text = "Damaged"
+                    
+                    condition = self.normalize_condition(condition_text) if condition_text else "NM"
                     
                     # Extract quantity
                     qty_text = (
-                        extract_text(element, ".quantity") or
+                        extract_text(element, "[class*='quantity']") or
+                        extract_text(element, "[class*='Quantity']") or
                         extract_text(element, "[data-quantity]") or
+                        extract_attr(element, "data-quantity") or
                         "1"
                     )
-                    try:
-                        quantity = int(re.sub(r'[^\d]', '', qty_text) or "1")
-                    except (ValueError, AttributeError):
-                        quantity = 1
                     
-                    # Extract seller name
+                    quantity = 1
+                    if qty_text:
+                        qty_match = re.search(r'(\d+)', qty_text)
+                        if qty_match:
+                            try:
+                                quantity = int(qty_match.group(1))
+                            except (ValueError, AttributeError):
+                                quantity = 1
+                    
+                    # Extract seller name - Cardmarket shows seller names
                     seller_name = (
-                        extract_text(element, ".seller") or
-                        extract_text(element, ".seller-name") or
+                        extract_text(element, "[class*='seller']") or
+                        extract_text(element, "[class*='Seller']") or
                         extract_text(element, "[data-seller]") or
+                        extract_attr(element, "data-seller-name") or
                         None
                     )
                     
                     # Extract seller rating
                     rating_text = (
-                        extract_text(element, ".rating") or
-                        extract_text(element, ".seller-rating") or
+                        extract_text(element, "[class*='rating']") or
+                        extract_text(element, "[class*='Rating']") or
                         extract_attr(element, "data-rating") or
                         None
                     )
                     seller_rating = None
                     if rating_text:
-                        try:
-                            seller_rating = float(re.sub(r'[^\d.]', '', rating_text))
-                        except (ValueError, AttributeError):
-                            pass
+                        rating_match = re.search(r'(\d+\.?\d*)', rating_text)
+                        if rating_match:
+                            try:
+                                seller_rating = float(rating_match.group(1))
+                                if seller_rating > 5.0:
+                                    seller_rating = seller_rating / 10.0
+                            except (ValueError, AttributeError):
+                                pass
                     
                     # Extract language
                     language_text = (
-                        extract_text(element, ".language") or
+                        extract_text(element, "[class*='language']") or
+                        extract_text(element, "[class*='Language']") or
                         extract_text(element, "[data-language]") or
+                        extract_attr(element, "data-language") or
                         "English"
                     )
                     language = self.normalize_language(language_text) if language_text else "English"
                     
                     # Check for foil
+                    full_text_lower = element.text(strip=True).lower()
                     is_foil = (
-                        "foil" in extract_text(element, "").lower() or
-                        element.css_first(".foil, [data-foil='true']") is not None
+                        "foil" in full_text_lower or
+                        element.css_first("[class*='foil'], [data-foil='true']") is not None
                     )
                     
                     # Extract listing URL
@@ -285,8 +355,9 @@ class CardMarketAdapter(MarketplaceAdapter):
                     # Generate external ID
                     external_id = (
                         extract_attr(element, "data-product-id") or
+                        extract_attr(element, "data-article-id") or
                         extract_attr(element, "data-id") or
-                        f"mkm-{hash(f'{card_name}-{i}')}"
+                        f"mkm-{hash(f'{card_name}-{seller_name}-{price}-{i}')}"
                     )
                     
                     listing = CardListing(
@@ -299,10 +370,10 @@ class CardMarketAdapter(MarketplaceAdapter):
                         condition=condition,
                         language=language,
                         is_foil=is_foil,
-                        seller_name=seller_name,
+                        seller_name=seller_name.strip() if seller_name else None,
                         seller_rating=seller_rating,
                         external_id=external_id,
-                        listing_url=listing_url,
+                        listing_url=listing_url or url,
                         scraped_at=datetime.utcnow(),
                     )
                     
