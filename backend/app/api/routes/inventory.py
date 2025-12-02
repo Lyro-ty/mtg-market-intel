@@ -700,7 +700,7 @@ async def create_inventory_item(
 @router.get("/market-index")
 async def get_inventory_market_index(
     range: str = Query("7d", regex="^(7d|30d|90d|1y)$"),
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -869,7 +869,7 @@ async def get_inventory_market_index(
 @router.get("/top-movers")
 async def get_inventory_top_movers(
     window: str = Query("24h", regex="^(24h|7d)$"),
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
