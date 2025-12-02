@@ -536,11 +536,13 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
                 db, slug, name, base_url, price_data.currency
             )
             
-            # Check if we already have a recent snapshot (within last hour) for this marketplace
+            # Check if we already have a recent snapshot (within last 24 hours)
+            # Scryfall only updates prices once per day, so we cache for 24 hours
+            # to avoid unnecessary API calls and respect rate limits
             recent_snapshot_query = select(PriceSnapshot).where(
                 PriceSnapshot.card_id == card_id,
                 PriceSnapshot.marketplace_id == marketplace.id,
-                PriceSnapshot.snapshot_time >= now - timedelta(hours=1),
+                PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
             )
             recent_result = await db.execute(recent_snapshot_query)
             recent_snapshot = recent_result.scalar_one_or_none()

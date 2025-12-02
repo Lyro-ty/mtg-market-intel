@@ -172,12 +172,14 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                             # Get or create marketplace
                             marketplace = await get_or_create_marketplace(slug, name, base_url, price_data.currency)
                             
-                            # Check if we already have a recent snapshot (within last hour)
+                            # Check if we already have a recent snapshot (within last 24 hours)
+                            # Scryfall only updates prices once per day, so we cache for 24 hours
+                            # to avoid unnecessary API calls and respect rate limits
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
                                     PriceSnapshot.marketplace_id == marketplace.id,
-                                    PriceSnapshot.snapshot_time >= now - timedelta(hours=1),
+                                    PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
                                 )
                             )
                             recent_result = await db.execute(recent_snapshot_query)
@@ -207,8 +209,8 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                 snapshots=results["current_snapshots"],
                             )
                         
-                        # Rate limiting: Scryfall allows 50-100ms between requests
-                        await asyncio.sleep(0.1)
+                        # Rate limiting is handled by ScryfallAdapter (75ms default)
+                        # No need for manual sleep here
                     
                     except Exception as e:
                         error_msg = f"Card {card.id} ({card.name}): {str(e)}"

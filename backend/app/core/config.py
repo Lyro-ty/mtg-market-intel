@@ -57,8 +57,10 @@ class Settings(BaseSettings):
     local_llm_model: str = "llama2"
     
     # Scryfall API
+    # Rate limit: 50-100ms between requests (10 requests/second average)
+    # Using 75ms as a safe middle ground
     scryfall_base_url: str = "https://api.scryfall.com"
-    scryfall_rate_limit_ms: int = 100
+    scryfall_rate_limit_ms: int = 75
     
     # Marketplace API Keys
     tcgplayer_api_key: str = ""

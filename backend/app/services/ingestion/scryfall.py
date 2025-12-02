@@ -41,7 +41,9 @@ class ScryfallAdapter(MarketplaceAdapter):
             )
         super().__init__(config)
         self._client: httpx.AsyncClient | None = None
-        # Semaphore to limit concurrent requests (Scryfall recommends max 5-10 concurrent)
+        # Semaphore to limit concurrent requests
+        # With 75ms rate limit (13.3 req/sec), 5 concurrent = ~66 req/sec max theoretical
+        # Keeping at 5 to stay well within Scryfall's 10 req/sec average recommendation
         self._concurrent_limit = asyncio.Semaphore(5)
     
     @property

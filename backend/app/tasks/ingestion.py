@@ -146,14 +146,15 @@ async def _collect_price_data_async() -> dict[str, Any]:
                         )
                         
                         if price_data and price_data.price > 0:
-                            # Check if we already have a recent snapshot (within last hour)
-                            # Only create new snapshot if data is stale (>1 hour old)
+                            # Check if we already have a recent snapshot (within last 24 hours)
+                            # Scryfall only updates prices once per day, so we cache for 24 hours
+                            # to avoid unnecessary API calls and respect rate limits
                             from sqlalchemy import and_
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
                                     PriceSnapshot.marketplace_id == scryfall_mp.id,
-                                    PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(hours=1),
+                                    PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(hours=24),
                                 )
                             )
                             recent_result = await db.execute(recent_snapshot_query)
@@ -306,13 +307,15 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                         )
                         
                         if price_data and price_data.price > 0:
-                            # Check for recent snapshot (within last 15 minutes for inventory cards)
+                            # Check for recent snapshot (within last 24 hours)
+                            # Scryfall only updates prices once per day, so we cache for 24 hours
+                            # to avoid unnecessary API calls and respect rate limits
                             from sqlalchemy import and_
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
                                     PriceSnapshot.marketplace_id == scryfall_mp.id,
-                                    PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(minutes=15),
+                                    PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(hours=24),
                                 )
                             )
                             recent_result = await db.execute(recent_snapshot_query)
