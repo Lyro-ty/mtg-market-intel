@@ -121,7 +121,7 @@ class ListingFeatureVector(FeatureVectorBase):
     # Indexes
     __table_args__ = (
         Index("ix_listing_feature_vectors_listing_id", "listing_id"),
-        Index("ix_listing_feature_vectors_card_id", "listing_id"),  # For batch queries
+        # Note: listing_id is already indexed as primary key, so no additional index needed
     )
     
     def get_vector(self) -> np.ndarray:

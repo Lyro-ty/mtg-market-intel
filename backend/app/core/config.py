@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Dualcaster Deals"
     api_debug: bool = True
-    secret_key: str = "dev-secret-key-change-in-production"
+    secret_key: str = "dev-secret-key-change-in-production"  # SECURITY: Must be overridden in production via env var
     
     # JWT Settings
     jwt_algorithm: str = "HS256"
@@ -118,7 +118,18 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance."""
-    return Settings()
+    settings = Settings()
+    
+    # Security check: warn if using default secret key in production
+    if not settings.api_debug and settings.secret_key == "dev-secret-key-change-in-production":
+        import warnings
+        warnings.warn(
+            "SECURITY WARNING: Using default secret_key in production! "
+            "Set SECRET_KEY environment variable to a secure random value.",
+            UserWarning
+        )
+    
+    return settings
 
 
 settings = get_settings()

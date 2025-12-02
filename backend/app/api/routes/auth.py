@@ -116,10 +116,21 @@ async def update_current_user(
 ):
     """
     Update the current user's profile.
+    
+    Only allows updating whitelisted fields (display_name).
+    Security-sensitive fields (is_admin, is_active, email, etc.) cannot be updated via this endpoint.
     """
     update_data = updates.model_dump(exclude_unset=True)
     
+    # Whitelist of allowed fields for security
+    allowed_fields = {"display_name"}
+    
     for field, value in update_data.items():
+        if field not in allowed_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Field '{field}' is not allowed to be updated via this endpoint"
+            )
         setattr(current_user, field, value)
     
     await db.commit()
