@@ -3,8 +3,10 @@ Inventory management API endpoints.
 
 All inventory endpoints require authentication and filter data by the current user.
 """
+import asyncio
 import csv
 import io
+import json
 import re
 import uuid
 from datetime import datetime, timedelta
@@ -695,6 +697,331 @@ async def create_inventory_item(
 # IMPORTANT: These specific routes must come BEFORE the /{item_id} route
 # Otherwise FastAPI will try to match "top-movers" and "market-index" as item_id values
 
+@router.get("/market-index")
+async def get_inventory_market_index(
+    range: str = Query("7d", regex="^(7d|30d|90d|1y)$"),
+    current_user: CurrentUser = Depends(),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get market index data for the current user's inventory items.
+    
+    Calculates a weighted index based on the user's inventory items' price history.
+    """
+    # Determine date range and bucket size
+    now = datetime.utcnow()
+    if range == "7d":
+        start_date = now - timedelta(days=7)
+        bucket_minutes = 30
+    elif range == "30d":
+        start_date = now - timedelta(days=30)
+        bucket_minutes = 60
+    elif range == "90d":
+        start_date = now - timedelta(days=90)
+        bucket_minutes = 240
+    else:  # 1y
+        start_date = now - timedelta(days=365)
+        bucket_minutes = 1440
+    
+    try:
+        # Get user's inventory items with their card IDs
+        inventory_query = select(InventoryItem.card_id, InventoryItem.quantity).where(
+            InventoryItem.user_id == current_user.id
+        )
+        inventory_result = await db.execute(inventory_query)
+        inventory_items = inventory_result.all()
+        
+        if not inventory_items:
+            # Return empty data if no inventory
+            return {
+                "range": range,
+                "points": [],
+                "isMockData": False,
+            }
+        
+        # Get unique card IDs and create a quantity map
+        card_ids = [item.card_id for item in inventory_items]
+        quantity_map = {item.card_id: item.quantity for item in inventory_items}
+        
+        # Get time-bucketed average prices from price snapshots for inventory cards
+        bucket_seconds = bucket_minutes * 60
+        bucket_expr = func.to_timestamp(
+            func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
+        )
+        
+        query = select(
+            bucket_expr.label("bucket_time"),
+            PriceSnapshot.card_id,
+            func.avg(PriceSnapshot.price).label("avg_price"),
+        ).where(
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.card_id.in_(card_ids),
+            PriceSnapshot.price.isnot(None),
+            PriceSnapshot.price > 0,
+        ).group_by(
+            bucket_expr,
+            PriceSnapshot.card_id
+        ).order_by(
+            bucket_expr
+        )
+        
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=25
+        )
+        rows = result.all()
+        
+        # Group by time bucket and calculate weighted average
+        bucket_data = {}
+        for row in rows:
+            bucket_time = row.bucket_time
+            if isinstance(bucket_time, datetime):
+                timestamp_str = bucket_time.isoformat()
+            else:
+                timestamp_str = str(bucket_time)
+            
+            if timestamp_str not in bucket_data:
+                bucket_data[timestamp_str] = {"total_value": 0.0, "total_quantity": 0}
+            
+            quantity = quantity_map.get(row.card_id, 1)
+            value = float(row.avg_price) * quantity
+            bucket_data[timestamp_str]["total_value"] += value
+            bucket_data[timestamp_str]["total_quantity"] += quantity
+        
+        # Convert to points and normalize to base 100
+        points = []
+        base_value = None
+        
+        for timestamp_str in sorted(bucket_data.keys()):
+            data = bucket_data[timestamp_str]
+            if data["total_quantity"] > 0:
+                avg_value = data["total_value"] / data["total_quantity"]
+                
+                if base_value is None:
+                    base_value = avg_value
+                
+                # Normalize to base 100
+                index_value = (avg_value / base_value) * 100.0 if base_value > 0 else 100.0
+                
+                points.append({
+                    "timestamp": timestamp_str,
+                    "indexValue": round(index_value, 2),
+                })
+        
+        if not points:
+            # Return mock data if no points
+            points = []
+            base_value = 100.0
+            num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
+            if range == "7d":
+                num_points = 7 * 24 * 2
+            elif range == "30d":
+                num_points = 30 * 24
+            elif range == "90d":
+                num_points = 90 * 6
+            
+            for i in range(min(num_points, 1000)):
+                date = start_date + timedelta(minutes=i * bucket_minutes)
+                value = base_value + (i % 10 - 5) * 0.5
+                points.append({
+                    "timestamp": date.isoformat(),
+                    "indexValue": round(value, 2),
+                })
+            return {
+                "range": range,
+                "points": points,
+                "isMockData": True,
+            }
+        
+        return {
+            "range": range,
+            "points": points,
+            "isMockData": False,
+        }
+        
+    except Exception as e:
+        logger.error("Error fetching inventory market index", error=str(e), error_type=type(e).__name__, range=range)
+        # Return mock data on error
+        points = []
+        base_value = 100.0
+        num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
+        if range == "7d":
+            num_points = 7 * 24 * 2
+        elif range == "30d":
+            num_points = 30 * 24
+        elif range == "90d":
+            num_points = 90 * 6
+        
+        for i in range(min(num_points, 1000)):
+            date = start_date + timedelta(minutes=i * bucket_minutes)
+            value = base_value + (i % 10 - 5) * 0.5
+            points.append({
+                "timestamp": date.isoformat(),
+                "indexValue": round(value, 2),
+            })
+        return {
+            "range": range,
+            "points": points,
+            "isMockData": True,
+        }
+
+
+@router.get("/top-movers")
+async def get_inventory_top_movers(
+    window: str = Query("24h", regex="^(24h|7d)$"),
+    current_user: CurrentUser = Depends(),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get top gaining and losing cards from the current user's inventory.
+    """
+    # Determine time window
+    if window == "24h":
+        change_field = MetricsCardsDaily.price_change_pct_1d
+    else:  # 7d
+        change_field = MetricsCardsDaily.price_change_pct_7d
+    
+    try:
+        # Get user's inventory card IDs
+        inventory_query = select(InventoryItem.card_id).where(
+            InventoryItem.user_id == current_user.id
+        )
+        inventory_result = await db.execute(inventory_query)
+        inventory_card_ids = [row.card_id for row in inventory_result.all()]
+        
+        if not inventory_card_ids:
+            return {
+                "window": window,
+                "gainers": [],
+                "losers": [],
+                "isMockData": False,
+            }
+        
+        latest_date = await asyncio.wait_for(
+            db.scalar(select(func.max(MetricsCardsDaily.date))),
+            timeout=25
+        )
+        
+        if not latest_date:
+            return {
+                "window": window,
+                "gainers": [],
+                "losers": [],
+                "isMockData": False,
+            }
+        
+        # Get top gainers from inventory
+        gainers_query = select(MetricsCardsDaily, Card).join(
+            Card, MetricsCardsDaily.card_id == Card.id
+        ).where(
+            MetricsCardsDaily.date == latest_date,
+            MetricsCardsDaily.card_id.in_(inventory_card_ids),
+            change_field.isnot(None),
+            change_field > 0,
+        ).order_by(
+            desc(change_field)
+        ).limit(10)
+        
+        gainers_result = await asyncio.wait_for(
+            db.execute(gainers_query),
+            timeout=25
+        )
+        gainers_rows = gainers_result.all()
+        
+        # Get top losers from inventory
+        losers_query = select(MetricsCardsDaily, Card).join(
+            Card, MetricsCardsDaily.card_id == Card.id
+        ).where(
+            MetricsCardsDaily.date == latest_date,
+            MetricsCardsDaily.card_id.in_(inventory_card_ids),
+            change_field.isnot(None),
+            change_field < 0,
+        ).order_by(
+            change_field.asc()
+        ).limit(10)
+        
+        losers_result = await asyncio.wait_for(
+            db.execute(losers_query),
+            timeout=25
+        )
+        losers_rows = losers_result.all()
+        
+    except Exception as e:
+        logger.error("Error fetching inventory top movers", error=str(e), error_type=type(e).__name__, window=window)
+        return {
+            "window": window,
+            "gainers": [],
+            "losers": [],
+            "isMockData": False,
+        }
+    
+    # Format gainers
+    gainers = []
+    for metrics, card in gainers_rows:
+        volume = metrics.total_listings or 0
+        
+        if window == "24h":
+            change_value = metrics.price_change_pct_1d
+        else:
+            change_value = metrics.price_change_pct_7d
+        
+        # Try to determine format from legalities
+        format_name = "Standard"
+        if card.legalities:
+            try:
+                legalities = json.loads(card.legalities)
+                for fmt, status in legalities.items():
+                    if status == "legal":
+                        format_name = fmt
+                        break
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        gainers.append({
+            "cardName": card.name,
+            "setCode": card.set_code,
+            "format": format_name,
+            "currentPriceUsd": float(metrics.avg_price) if metrics.avg_price else 0.0,
+            "changePct": float(change_value) if change_value is not None else 0.0,
+            "volume": volume,
+        })
+    
+    # Format losers
+    losers = []
+    for metrics, card in losers_rows:
+        volume = metrics.total_listings or 0
+        
+        if window == "24h":
+            change_value = metrics.price_change_pct_1d
+        else:
+            change_value = metrics.price_change_pct_7d
+        
+        format_name = "Standard"
+        if card.legalities:
+            try:
+                legalities = json.loads(card.legalities)
+                for fmt, status in legalities.items():
+                    if status == "legal":
+                        format_name = fmt
+                        break
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        losers.append({
+            "cardName": card.name,
+            "setCode": card.set_code,
+            "format": format_name,
+            "currentPriceUsd": float(metrics.avg_price) if metrics.avg_price else 0.0,
+            "changePct": float(change_value) if change_value is not None else 0.0,
+            "volume": volume,
+        })
+    
+    return {
+        "window": window,
+        "gainers": gainers,
+        "losers": losers,
+        "isMockData": False,
+    }
 
 
 @router.get("/{item_id}", response_model=InventoryItemResponse)

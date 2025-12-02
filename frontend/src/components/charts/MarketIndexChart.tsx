@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -37,12 +37,35 @@ export function MarketIndexChart({
   height = 350,
   onRangeChange,
 }: MarketIndexChartProps) {
-  const [selectedRange, setSelectedRange] = useState<'7d' | '30d' | '90d' | '1y'>(data.range);
+  const [selectedRange, setSelectedRange] = useState<'7d' | '30d' | '90d' | '1y'>(data?.range || '7d');
+
+  // Sync selectedRange with data.range when data changes
+  useEffect(() => {
+    if (data?.range && data.range !== selectedRange) {
+      setSelectedRange(data.range);
+    }
+  }, [data?.range, selectedRange]);
 
   const handleRangeChange = (range: '7d' | '30d' | '90d' | '1y') => {
     setSelectedRange(range);
     onRangeChange?.(range);
   };
+
+  // Handle empty or missing data
+  if (!data || !data.points || data.points.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-64 text-[rgb(var(--muted-foreground))]">
+            No data available
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // Transform data for chart
   const chartData = data.points.map((point) => {
