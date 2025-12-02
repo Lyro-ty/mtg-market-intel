@@ -335,6 +335,7 @@ async def _scrape_marketplace(
         listings_updated=listings_updated,
         snapshots_created=snapshots_created,
         vectors_created=vectors_created,
+        success_rate=f"{(cards_with_listings / len(cards) * 100):.1f}%" if cards else "0%",
     )
     
     return {

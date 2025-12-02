@@ -166,6 +166,77 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                     # Group nearby elements as listings
                     listing_elements = price_elements[:limit]
             
+            # If still no listings found, try more generic/alternative selectors
+            if not listing_elements:
+                # TCGPlayer might use different structures - try common product card patterns
+                generic_selectors = [
+                    "[data-product-id]",
+                    "[data-product]",
+                    ".product",
+                    ".search-result-item",
+                    ".product-tile",
+                    "article[class*='product']",
+                    "[class*='ProductCard']",
+                    "[class*='product-card']",
+                    "[class*='listing']",
+                    "div[class*='product']",
+                ]
+                for selector in generic_selectors:
+                    elements = tree.css(selector)
+                    if elements and len(elements) > 0:
+                        listing_elements = elements[:limit]
+                        logger.debug("Found elements with generic selector", selector=selector, count=len(elements))
+                        break
+            
+            # Log diagnostic info if no listings found
+            if not listing_elements:
+                # Get a sample of class names from the page for debugging
+                sample_classes = set()
+                for el in tree.css("[class]")[:50]:
+                    if el.attributes and "class" in el.attributes:
+                        classes = el.attributes["class"].split()
+                        sample_classes.update(classes[:5])  # Limit to avoid huge logs
+                
+                logger.warning(
+                    "No listing elements found on TCGPlayer page - selectors may need updating",
+                    card_name=card_name,
+                    url=url,
+                    sample_classes=list(sample_classes)[:20],  # First 20 unique classes
+                    page_title=tree.css_first("title").text() if tree.css_first("title") else "N/A",
+                )
+            
+            # If still no listings found, try more generic selectors
+            if not listing_elements:
+                # TCGPlayer might use different structures - try common product card patterns
+                generic_selectors = [
+                    "[data-product-id]",
+                    ".product",
+                    ".search-result-item",
+                    ".product-tile",
+                    "article",
+                    "[class*='product']",
+                    "[class*='listing']",
+                    "[class*='card']",
+                ]
+                for selector in generic_selectors:
+                    elements = tree.css(selector)
+                    if elements and len(elements) > 0:
+                        listing_elements = elements[:limit]
+                        logger.debug("Found elements with generic selector", selector=selector, count=len(elements))
+                        break
+            
+            # Log if no listings found at all
+            if not listing_elements:
+                # Save a sample of the HTML for debugging (first 2000 chars)
+                page_text = tree.text()[:2000] if tree else "No tree"
+                logger.warning(
+                    "No listing elements found on TCGPlayer page",
+                    card_name=card_name,
+                    url=url,
+                    page_preview=page_text,
+                    all_classes=", ".join(set([cls for el in tree.css("[class]")[:20] for cls in (el.attributes.get("class", "").split() if el.attributes else [])])))[:20] if tree else "N/A"
+                )
+            
             for i, element in enumerate(listing_elements[:limit]):
                 try:
                     # Extract price

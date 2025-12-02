@@ -166,6 +166,43 @@ class CardMarketAdapter(MarketplaceAdapter):
                 if price_elements:
                     listing_elements = price_elements[:limit]
             
+            # If still no listings found, try more generic/alternative selectors
+            if not listing_elements:
+                generic_selectors = [
+                    "[data-product-id]",
+                    "[data-product]",
+                    ".product",
+                    ".search-result-item",
+                    ".product-tile",
+                    "article[class*='product']",
+                    "[class*='ProductCard']",
+                    "[class*='product-card']",
+                    "div[class*='product']",
+                    "[class*='Article']",  # Cardmarket uses Article elements
+                ]
+                for selector in generic_selectors:
+                    elements = tree.css(selector)
+                    if elements and len(elements) > 0:
+                        listing_elements = elements[:limit]
+                        logger.debug("Found elements with generic selector", selector=selector, count=len(elements))
+                        break
+            
+            # Log diagnostic info if no listings found
+            if not listing_elements:
+                sample_classes = set()
+                for el in tree.css("[class]")[:50]:
+                    if el.attributes and "class" in el.attributes:
+                        classes = el.attributes["class"].split()
+                        sample_classes.update(classes[:5])
+                
+                logger.warning(
+                    "No listing elements found on Cardmarket page - selectors may need updating",
+                    card_name=card_name,
+                    url=url,
+                    sample_classes=list(sample_classes)[:20],
+                    page_title=tree.css_first("title").text() if tree.css_first("title") else "N/A",
+                )
+            
             for i, element in enumerate(listing_elements[:limit]):
                 try:
                     # Extract price (Cardmarket uses EUR)
