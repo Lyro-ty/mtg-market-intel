@@ -162,6 +162,33 @@ class ScryfallAdapter(MarketplaceAdapter):
         """
         return []
     
+    async def fetch_all_marketplace_prices(
+        self,
+        card_name: str,
+        set_code: str,
+        collector_number: str | None = None,
+        scryfall_id: str | None = None,
+    ) -> list[CardPrice]:
+        """
+        Fetch prices from all marketplaces available in Scryfall data.
+        
+        Returns separate CardPrice objects for:
+        - TCGPlayer (USD)
+        - Cardmarket (EUR)
+        - MTGO (TIX, if available)
+        
+        This allows storing prices separately by marketplace for better charting.
+        """
+        if scryfall_id:
+            card_data = await self.fetch_card_by_id(scryfall_id)
+        else:
+            card_data = await self.fetch_card(card_name, set_code, collector_number)
+        
+        if not card_data:
+            return []
+        
+        return self._parse_all_price_data(card_data)
+    
     async def fetch_price(
         self,
         card_name: str,

@@ -89,11 +89,8 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
     session_maker, engine = create_task_session_maker()
     try:
         async with session_maker() as db:
-            # Get or create Scryfall marketplace
-            scryfall_mp = await _get_or_create_scryfall_marketplace(db)
-            
-            # Get or create MTGJSON marketplace
-            mtgjson_mp = await _get_or_create_mtgjson_marketplace(db)
+            # Note: We no longer use a single "Scryfall" or "MTGJSON" marketplace
+            # Instead, prices are stored by actual marketplace (TCGPlayer, Cardmarket, etc.)
             
             # Phase 1: Get ALL cards from database
             cards_query = select(Card)
@@ -120,28 +117,67 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                 "errors": [],
             }
             
-            # Phase 2: Pull current prices from Scryfall
+            # Phase 2: Pull current prices from Scryfall (broken down by marketplace)
             scryfall = ScryfallAdapter()
             try:
                 logger.info("Phase 2: Pulling current prices from Scryfall", cards=len(all_cards))
                 
+                # Helper to get or create marketplace
+                async def get_or_create_marketplace(slug: str, name: str, base_url: str, currency: str) -> Marketplace:
+                    query = select(Marketplace).where(Marketplace.slug == slug)
+                    result = await db.execute(query)
+                    mp = result.scalar_one_or_none()
+                    if not mp:
+                        mp = Marketplace(
+                            name=name,
+                            slug=slug,
+                            base_url=base_url,
+                            api_url=None,
+                            is_enabled=True,
+                            supports_api=False,
+                            default_currency=currency,
+                            rate_limit_seconds=1.0,
+                        )
+                        db.add(mp)
+                        await db.flush()
+                    return mp
+                
                 for i, card in enumerate(all_cards):
                     try:
-                        # Fetch current price from Scryfall
-                        price_data = await scryfall.fetch_price(
+                        # Fetch all marketplace prices from Scryfall (TCGPlayer, Cardmarket, etc.)
+                        all_prices = await scryfall.fetch_all_marketplace_prices(
                             card_name=card.name,
                             set_code=card.set_code,
                             collector_number=card.collector_number,
                             scryfall_id=card.scryfall_id,
                         )
                         
-                        if price_data and price_data.price > 0:
+                        now = datetime.utcnow()
+                        
+                        for price_data in all_prices:
+                            if not price_data or price_data.price <= 0:
+                                continue
+                            
+                            # Map currency to marketplace
+                            marketplace_map = {
+                                "USD": ("tcgplayer", "TCGPlayer", "https://www.tcgplayer.com"),
+                                "EUR": ("cardmarket", "Cardmarket", "https://www.cardmarket.com"),
+                                "TIX": ("mtgo", "MTGO", "https://www.mtgo.com"),
+                            }
+                            
+                            slug, name, base_url = marketplace_map.get(price_data.currency, (None, None, None))
+                            if not slug:
+                                continue
+                            
+                            # Get or create marketplace
+                            marketplace = await get_or_create_marketplace(slug, name, base_url, price_data.currency)
+                            
                             # Check if we already have a recent snapshot (within last hour)
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
-                                    PriceSnapshot.marketplace_id == scryfall_mp.id,
-                                    PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(hours=1),
+                                    PriceSnapshot.marketplace_id == marketplace.id,
+                                    PriceSnapshot.snapshot_time >= now - timedelta(hours=1),
                                 )
                             )
                             recent_result = await db.execute(recent_snapshot_query)
@@ -151,8 +187,8 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                 # Create new price snapshot
                                 snapshot = PriceSnapshot(
                                     card_id=card.id,
-                                    marketplace_id=scryfall_mp.id,
-                                    snapshot_time=datetime.utcnow(),
+                                    marketplace_id=marketplace.id,
+                                    snapshot_time=now,
                                     price=price_data.price,
                                     currency=price_data.currency,
                                     price_foil=price_data.price_foil,
@@ -186,10 +222,30 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
             finally:
                 await scryfall.close()
             
-            # Phase 3: Pull historical data from MTGJSON
+            # Phase 3: Pull historical data from MTGJSON (by marketplace)
             mtgjson = MTGJSONAdapter()
             try:
                 logger.info("Phase 3: Pulling historical prices from MTGJSON")
+                
+                # Helper to get or create marketplace (reuse from Phase 2)
+                async def get_or_create_marketplace(slug: str, name: str, base_url: str, currency: str) -> Marketplace:
+                    query = select(Marketplace).where(Marketplace.slug == slug)
+                    result = await db.execute(query)
+                    mp = result.scalar_one_or_none()
+                    if not mp:
+                        mp = Marketplace(
+                            name=name,
+                            slug=slug,
+                            base_url=base_url,
+                            api_url=None,
+                            is_enabled=True,
+                            supports_api=False,
+                            default_currency=currency,
+                            rate_limit_seconds=1.0,
+                        )
+                        db.add(mp)
+                        await db.flush()
+                    return mp
                 
                 # Process cards in batches to avoid memory issues
                 batch_size = 50
@@ -210,21 +266,37 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                             
                             if historical_prices:
                                 for price_data in historical_prices:
+                                    if not price_data or price_data.price <= 0:
+                                        continue
+                                    
+                                    # Map currency to marketplace (same as Scryfall)
+                                    marketplace_map = {
+                                        "USD": ("tcgplayer", "TCGPlayer", "https://www.tcgplayer.com"),
+                                        "EUR": ("cardmarket", "Cardmarket", "https://www.cardmarket.com"),
+                                    }
+                                    
+                                    slug, name, base_url = marketplace_map.get(price_data.currency, (None, None, None))
+                                    if not slug:
+                                        continue
+                                    
+                                    # Get or create marketplace
+                                    marketplace = await get_or_create_marketplace(slug, name, base_url, price_data.currency)
+                                    
                                     # Check if snapshot already exists
                                     existing_query = select(PriceSnapshot).where(
                                         and_(
                                             PriceSnapshot.card_id == card.id,
-                                            PriceSnapshot.marketplace_id == mtgjson_mp.id,
+                                            PriceSnapshot.marketplace_id == marketplace.id,
                                             PriceSnapshot.snapshot_time == price_data.snapshot_time,
                                         )
                                     )
                                     existing_result = await db.execute(existing_query)
                                     existing = existing_result.scalar_one_or_none()
                                     
-                                    if not existing and price_data.price > 0:
+                                    if not existing:
                                         snapshot = PriceSnapshot(
                                             card_id=card.id,
-                                            marketplace_id=mtgjson_mp.id,
+                                            marketplace_id=marketplace.id,
                                             snapshot_time=price_data.snapshot_time,
                                             price=price_data.price,
                                             currency=price_data.currency,
