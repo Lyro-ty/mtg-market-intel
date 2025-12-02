@@ -5,7 +5,7 @@ Scryfall is not a marketplace but provides canonical card data
 and basic price information from major marketplaces.
 """
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -36,9 +36,13 @@ class ScryfallAdapter(MarketplaceAdapter):
                 base_url=settings.scryfall_base_url,
                 api_url=settings.scryfall_base_url,
                 rate_limit_seconds=settings.scryfall_rate_limit_ms / 1000,
+                max_retries=settings.scraper_max_retries,
+                backoff_factor=settings.scraper_backoff_factor,
             )
         super().__init__(config)
         self._client: httpx.AsyncClient | None = None
+        # Semaphore to limit concurrent requests (Scryfall recommends max 5-10 concurrent)
+        self._concurrent_limit = asyncio.Semaphore(5)
     
     @property
     def marketplace_name(self) -> str:
@@ -59,30 +63,91 @@ class ScryfallAdapter(MarketplaceAdapter):
         return self._client
     
     async def _rate_limit(self) -> None:
-        """Enforce rate limiting."""
+        """Enforce rate limiting between requests."""
         if self._last_request_time is not None:
-            elapsed = (datetime.utcnow() - self._last_request_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self._last_request_time).total_seconds()
             if elapsed < self.config.rate_limit_seconds:
-                await asyncio.sleep(self.config.rate_limit_seconds - elapsed)
-        self._last_request_time = datetime.utcnow()
+                sleep_time = self.config.rate_limit_seconds - elapsed
+                await asyncio.sleep(sleep_time)
+        self._last_request_time = datetime.now(timezone.utc)
     
-    async def _request(self, endpoint: str, params: dict | None = None) -> dict | None:
-        """Make a rate-limited request to the API."""
-        await self._rate_limit()
-        client = await self._get_client()
+    async def _request(
+        self, 
+        endpoint: str, 
+        params: dict | None = None,
+        retry_count: int = 0
+    ) -> dict | None:
+        """
+        Make a rate-limited request to the API with retry logic.
         
-        try:
-            response = await client.get(endpoint, params=params)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            logger.error("Scryfall API error", endpoint=endpoint, status=e.response.status_code)
-            raise
-        except Exception as e:
-            logger.error("Scryfall request failed", endpoint=endpoint, error=str(e))
-            raise
+        Handles 429 (Too Many Requests) errors with exponential backoff.
+        Respects Retry-After headers when provided.
+        """
+        # Limit concurrent requests
+        async with self._concurrent_limit:
+            await self._rate_limit()
+            client = await self._get_client()
+            
+            try:
+                response = await client.get(endpoint, params=params)
+                
+                # Handle 429 Too Many Requests with retry
+                if response.status_code == 429:
+                    # Check for Retry-After header
+                    retry_after = response.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            wait_seconds = float(retry_after)
+                        except ValueError:
+                            # If Retry-After is not a number, use exponential backoff
+                            wait_seconds = self.config.backoff_factor ** retry_count
+                    else:
+                        # Exponential backoff: 2^retry_count seconds
+                        wait_seconds = self.config.backoff_factor ** retry_count
+                    
+                    # Cap maximum wait time at 60 seconds
+                    wait_seconds = min(wait_seconds, 60.0)
+                    
+                    if retry_count < self.config.max_retries:
+                        logger.warning(
+                            "Scryfall rate limit hit, retrying",
+                            endpoint=endpoint,
+                            retry_count=retry_count + 1,
+                            wait_seconds=wait_seconds,
+                            retry_after=retry_after,
+                        )
+                        await asyncio.sleep(wait_seconds)
+                        # Recursively retry
+                        return await self._request(endpoint, params, retry_count + 1)
+                    else:
+                        logger.error(
+                            "Scryfall rate limit exceeded, max retries reached",
+                            endpoint=endpoint,
+                            retry_count=retry_count,
+                        )
+                        response.raise_for_status()
+                
+                response.raise_for_status()
+                return response.json()
+                
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    return None
+                logger.error(
+                    "Scryfall API error",
+                    endpoint=endpoint,
+                    status=e.response.status_code,
+                    retry_count=retry_count,
+                )
+                raise
+            except Exception as e:
+                logger.error(
+                    "Scryfall request failed",
+                    endpoint=endpoint,
+                    error=str(e),
+                    retry_count=retry_count,
+                )
+                raise
     
     async def fetch_listings(
         self,
@@ -162,21 +227,73 @@ class ScryfallAdapter(MarketplaceAdapter):
         Returns:
             List of normalized card data.
         """
-        await self._rate_limit()
-        client = await self._get_client()
-        
-        try:
-            response = await client.post(
-                "/cards/collection",
-                json={"identifiers": identifiers},
-            )
-            response.raise_for_status()
-            data = response.json()
+        # Limit concurrent requests
+        async with self._concurrent_limit:
+            await self._rate_limit()
+            client = await self._get_client()
             
-            return [self._normalize_card_data(card) for card in data.get("data", [])]
-        except Exception as e:
-            logger.error("Scryfall bulk request failed", error=str(e))
-            raise
+            retry_count = 0
+            while retry_count <= self.config.max_retries:
+                try:
+                    response = await client.post(
+                        "/cards/collection",
+                        json={"identifiers": identifiers},
+                    )
+                    
+                    # Handle 429 with retry
+                    if response.status_code == 429:
+                        retry_after = response.headers.get("Retry-After")
+                        if retry_after:
+                            try:
+                                wait_seconds = float(retry_after)
+                            except ValueError:
+                                wait_seconds = self.config.backoff_factor ** retry_count
+                        else:
+                            wait_seconds = self.config.backoff_factor ** retry_count
+                        
+                        wait_seconds = min(wait_seconds, 60.0)
+                        
+                        if retry_count < self.config.max_retries:
+                            logger.warning(
+                                "Scryfall rate limit hit in bulk request, retrying",
+                                retry_count=retry_count + 1,
+                                wait_seconds=wait_seconds,
+                            )
+                            await asyncio.sleep(wait_seconds)
+                            retry_count += 1
+                            continue
+                        else:
+                            response.raise_for_status()
+                    
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    return [self._normalize_card_data(card) for card in data.get("data", [])]
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        return []
+                    if retry_count < self.config.max_retries and e.response.status_code == 429:
+                        retry_count += 1
+                        continue
+                    logger.error("Scryfall bulk request failed", error=str(e), retry_count=retry_count)
+                    raise
+                except Exception as e:
+                    if retry_count < self.config.max_retries:
+                        wait_seconds = self.config.backoff_factor ** retry_count
+                        logger.warning(
+                            "Scryfall bulk request error, retrying",
+                            error=str(e),
+                            retry_count=retry_count + 1,
+                            wait_seconds=wait_seconds,
+                        )
+                        await asyncio.sleep(wait_seconds)
+                        retry_count += 1
+                        continue
+                    logger.error("Scryfall bulk request failed", error=str(e), retry_count=retry_count)
+                    raise
+            
+            # Should not reach here, but just in case
+            raise Exception("Max retries exceeded for bulk request")
     
     async def fetch_set_cards(self, set_code: str) -> list[dict]:
         """Fetch all cards from a specific set."""
@@ -235,7 +352,7 @@ class ScryfallAdapter(MarketplaceAdapter):
             price=float(price_usd) if price_usd else 0.0,
             currency="USD",
             price_foil=float(price_foil) if price_foil else None,
-            snapshot_time=datetime.utcnow(),
+            snapshot_time=datetime.now(timezone.utc),
         )
     
     def _parse_all_price_data(self, card_data: dict) -> list[CardPrice]:
@@ -264,7 +381,7 @@ class ScryfallAdapter(MarketplaceAdapter):
                 price=float(price_usd),
                 currency="USD",
                 price_foil=float(price_usd_foil) if price_usd_foil else None,
-                snapshot_time=datetime.utcnow(),
+                snapshot_time=datetime.now(timezone.utc),
             ))
         
         # Cardmarket prices (EUR)
@@ -279,7 +396,7 @@ class ScryfallAdapter(MarketplaceAdapter):
                 price=float(price_eur),
                 currency="EUR",
                 price_foil=float(price_eur_foil) if price_eur_foil else None,
-                snapshot_time=datetime.utcnow(),
+                snapshot_time=datetime.now(timezone.utc),
             ))
         
         # MTGO prices (tix) - less common but useful
@@ -292,7 +409,7 @@ class ScryfallAdapter(MarketplaceAdapter):
                 scryfall_id=card_data.get("id"),
                 price=float(price_tix),
                 currency="TIX",
-                snapshot_time=datetime.utcnow(),
+                snapshot_time=datetime.now(timezone.utc),
             ))
         
         return price_list

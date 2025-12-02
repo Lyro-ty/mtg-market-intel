@@ -470,6 +470,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     logger.info("Sync refresh starting", card_id=card.id, card_name=card.name)
     
     # 1. Fetch price from Scryfall
+    price_data = None  # Initialize to avoid UnboundLocalError
     scryfall = ScryfallAdapter()
     try:
         price_data = await scryfall.fetch_price(
