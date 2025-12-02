@@ -5,9 +5,21 @@ This script populates the database with:
 - Default marketplace records
 - Default settings
 - Sample cards from popular sets (via Scryfall)
+- Optionally: Real scraped price data from marketplaces
+
+Usage:
+    # Seed with mock data (default)
+    python -m app.scripts.seed_data
+    
+    # Seed with real scraped data
+    python -m app.scripts.seed_data --scrape-prices
+    
+    # Seed with scraped data for specific marketplaces only
+    python -m app.scripts.seed_data --scrape-prices --marketplaces tcgplayer cardmarket
 """
 import asyncio
 import sys
+import argparse
 from datetime import datetime, timedelta
 import random
 
@@ -295,9 +307,162 @@ async def seed_sample_prices(db: AsyncSession) -> int:
     return created
 
 
+async def seed_with_scraped_data(
+    db: AsyncSession,
+    marketplace_slugs: list[str] | None = None,
+    card_limit: int = 100,
+) -> int:
+    """
+    Seed price data by scraping real marketplaces.
+    
+    Args:
+        db: Database session.
+        marketplace_slugs: List of marketplace slugs to scrape. If None, uses all enabled.
+        card_limit: Maximum number of cards to scrape prices for.
+        
+    Returns:
+        Number of price snapshots created.
+    """
+    from app.services.ingestion import get_adapter
+    from app.services.agents.normalization import NormalizationService
+    
+    # Get marketplaces to scrape
+    if marketplace_slugs:
+        query = select(Marketplace).where(
+            Marketplace.slug.in_(marketplace_slugs),
+            Marketplace.is_enabled == True
+        )
+    else:
+        query = select(Marketplace).where(Marketplace.is_enabled == True)
+    
+    result = await db.execute(query)
+    marketplaces = result.scalars().all()
+    
+    if not marketplaces:
+        logger.warning("No enabled marketplaces found for scraping")
+        return 0
+    
+    # Get cards to scrape (limit to recent cards)
+    cards_query = select(Card).order_by(Card.id.desc()).limit(card_limit)
+    result = await db.execute(cards_query)
+    cards = list(result.scalars().all())
+    
+    if not cards:
+        logger.warning("No cards found to scrape")
+        return 0
+    
+    logger.info(
+        "Starting price scraping",
+        marketplaces=[mp.slug for mp in marketplaces],
+        cards=len(cards)
+    )
+    
+    normalizer = NormalizationService(db)
+    total_snapshots = 0
+    
+    try:
+        for marketplace in marketplaces:
+            try:
+                adapter = get_adapter(marketplace.slug, cached=False)
+                logger.info("Scraping marketplace", marketplace=marketplace.slug)
+                
+                for card in cards:
+                    try:
+                        # Fetch price data
+                        price_data = await adapter.fetch_price(
+                            card_name=card.name,
+                            set_code=card.set_code,
+                            collector_number=card.collector_number,
+                            scryfall_id=card.scryfall_id,
+                        )
+                        
+                        if price_data and price_data.price > 0:
+                            # Create price snapshot
+                            snapshot = PriceSnapshot(
+                                card_id=card.id,
+                                marketplace_id=marketplace.id,
+                                snapshot_time=datetime.utcnow(),
+                                price=price_data.price,
+                                currency=price_data.currency,
+                                price_foil=price_data.price_foil,
+                                min_price=price_data.price_low,
+                                max_price=price_data.price_high,
+                                avg_price=price_data.price_mid,
+                                median_price=price_data.price_market,
+                                num_listings=price_data.num_listings,
+                                total_quantity=price_data.total_quantity,
+                            )
+                            db.add(snapshot)
+                            total_snapshots += 1
+                            
+                            # Flush periodically to avoid memory issues
+                            if total_snapshots % 50 == 0:
+                                await db.flush()
+                                logger.debug("Flushed snapshots", count=total_snapshots)
+                    
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to scrape card",
+                            card=card.name,
+                            marketplace=marketplace.slug,
+                            error=str(e)
+                        )
+                        continue
+                
+                # Close adapter
+                if hasattr(adapter, 'close'):
+                    await adapter.close()
+                
+                await db.flush()
+                logger.info(
+                    "Completed scraping marketplace",
+                    marketplace=marketplace.slug,
+                    snapshots=total_snapshots
+                )
+            
+            except Exception as e:
+                logger.error(
+                    "Failed to scrape marketplace",
+                    marketplace=marketplace.slug,
+                    error=str(e)
+                )
+                continue
+    
+    finally:
+        await normalizer.close()
+    
+    return total_snapshots
+
+
 async def main():
     """Main seed function."""
-    logger.info("Starting database seed")
+    parser = argparse.ArgumentParser(description="Seed database with initial data")
+    parser.add_argument(
+        "--scrape-prices",
+        action="store_true",
+        help="Scrape real price data from marketplaces instead of generating mock data"
+    )
+    parser.add_argument(
+        "--marketplaces",
+        nargs="+",
+        help="Specific marketplace slugs to scrape (only used with --scrape-prices)"
+    )
+    parser.add_argument(
+        "--card-limit",
+        type=int,
+        default=100,
+        help="Maximum number of cards to scrape prices for (default: 100)"
+    )
+    parser.add_argument(
+        "--cards-per-set",
+        type=int,
+        default=30,
+        help="Number of cards to fetch per set from Scryfall (default: 30)"
+    )
+    
+    args = parser.parse_args()
+    
+    logger.info("Starting database seed", scrape_prices=args.scrape_prices)
     
     async with async_session_maker() as db:
         try:
@@ -311,13 +476,23 @@ async def main():
             
             # Seed cards from Scryfall
             cards_count = await seed_cards_from_scryfall(
-                db, SEED_SETS, cards_per_set=30
+                db, SEED_SETS, cards_per_set=args.cards_per_set
             )
             logger.info("Seeded cards", count=cards_count)
             
-            # Seed sample prices
-            prices_count = await seed_sample_prices(db)
-            logger.info("Seeded price snapshots", count=prices_count)
+            # Seed prices (either scraped or mock)
+            if args.scrape_prices:
+                logger.info("Scraping real price data from marketplaces")
+                prices_count = await seed_with_scraped_data(
+                    db,
+                    marketplace_slugs=args.marketplaces,
+                    card_limit=args.card_limit
+                )
+                logger.info("Scraped price snapshots", count=prices_count)
+            else:
+                logger.info("Generating mock price data")
+                prices_count = await seed_sample_prices(db)
+                logger.info("Seeded mock price snapshots", count=prices_count)
             
             # Commit all changes
             await db.commit()
@@ -328,6 +503,7 @@ async def main():
                 settings=settings_count,
                 cards=cards_count,
                 prices=prices_count,
+                data_source="scraped" if args.scrape_prices else "mock",
             )
             
         except Exception as e:
