@@ -11,6 +11,7 @@ celery_app = Celery(
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
     include=[
+        "app.tasks.data_seeding",
         "app.tasks.ingestion",
         "app.tasks.analytics",
         "app.tasks.recommendations",
@@ -39,7 +40,15 @@ celery_app.conf.update(
     
     # Beat schedule for periodic tasks
     beat_schedule={
-        # Aggressively collect price data every 5 minutes (data older than 24h is stale)
+        # Comprehensive data seeding: Current + Historical (30d/90d/6m/1y)
+        # Runs on startup (via main.py) and every 6 hours to refresh historical data
+        "seed-comprehensive-data": {
+            "task": "app.tasks.data_seeding.seed_comprehensive_price_data",
+            "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
+            "options": {"queue": "ingestion"},
+        },
+        
+        # Aggressively collect current price data every 5 minutes (data older than 24h is stale)
         "collect-price-data": {
             "task": "app.tasks.ingestion.collect_price_data",
             "schedule": crontab(minute="*/5"),  # Every 5 minutes
@@ -53,7 +62,7 @@ celery_app.conf.update(
             "options": {"queue": "ingestion"},
         },
         
-        # Import MTGJSON historical prices daily at 3 AM
+        # Import MTGJSON historical prices daily at 3 AM (backup/refresh)
         "import-mtgjson-historical": {
             "task": "app.tasks.ingestion.import_mtgjson_historical_prices",
             "schedule": crontab(minute=0, hour=3),
@@ -84,6 +93,7 @@ celery_app.conf.update(
     
     # Task routing
     task_routes={
+        "app.tasks.data_seeding.*": {"queue": "ingestion"},
         "app.tasks.ingestion.*": {"queue": "ingestion"},
         "app.tasks.analytics.*": {"queue": "analytics"},
         "app.tasks.recommendations.*": {"queue": "recommendations"},

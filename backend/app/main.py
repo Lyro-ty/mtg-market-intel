@@ -45,22 +45,27 @@ async def lifespan(app: FastAPI):
     
     # Trigger initial tasks on startup
     try:
-        from app.tasks.ingestion import scrape_all_marketplaces
+        from app.tasks.data_seeding import seed_comprehensive_price_data
+        from app.tasks.ingestion import collect_price_data
         from app.tasks.analytics import run_analytics
         from app.tasks.recommendations import generate_recommendations
         
-        logger.info("Triggering startup tasks: scraping, analytics, recommendations")
+        logger.info("Triggering startup tasks: comprehensive seeding, price collection, analytics, recommendations")
         
-        # Trigger scraping (runs in background)
-        scrape_task = scrape_all_marketplaces.delay()
-        logger.info("Scraping task queued", task_id=str(scrape_task.id))
+        # Phase 1: Comprehensive data seeding (current + historical for all cards)
+        # This pulls current prices from Scryfall + historical from MTGJSON
+        seeding_task = seed_comprehensive_price_data.delay()
+        logger.info("Comprehensive data seeding task queued", task_id=str(seeding_task.id))
         
-        # Trigger analytics (runs after scraping completes, but we queue it anyway)
-        # It will process whatever data is available
+        # Phase 2: Regular price collection (runs in background, continues after seeding)
+        price_task = collect_price_data.delay()
+        logger.info("Price collection task queued", task_id=str(price_task.id))
+        
+        # Phase 3: Analytics (runs after data is available)
         analytics_task = run_analytics.delay()
         logger.info("Analytics task queued", task_id=str(analytics_task.id))
         
-        # Trigger recommendations (runs after analytics, but we queue it anyway)
+        # Phase 4: Recommendations (runs after analytics)
         rec_task = generate_recommendations.delay()
         logger.info("Recommendations task queued", task_id=str(rec_task.id))
         

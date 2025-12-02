@@ -25,39 +25,48 @@ export default function DashboardPage() {
   const [colorWindow, setColorWindow] = useState<'7d' | '30d'>('7d');
 
   // Market Overview Stats
-  // Refetch every 30 minutes to match scrape interval
+  // Refetch every 2 minutes for real-time data (matches price collection interval)
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ['market-overview'],
     queryFn: getMarketOverview,
-    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
+    refetchInterval: 2 * 60 * 1000, // 2 minutes in milliseconds
+    refetchIntervalInBackground: true,
   });
 
   // Market Index Chart
+  // Refetch every 2 minutes for real-time data
   const { data: marketIndex, isLoading: indexLoading } = useQuery({
     queryKey: ['market-index', marketIndexRange],
     queryFn: () => getMarketIndex(marketIndexRange),
-    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
+    refetchInterval: 2 * 60 * 1000, // 2 minutes in milliseconds
+    refetchIntervalInBackground: true,
   });
 
   // Top Movers (24h)
+  // Refetch every 2 minutes for real-time data
   const { data: topMovers, isLoading: moversLoading } = useQuery({
     queryKey: ['top-movers', '24h'],
     queryFn: () => getTopMovers('24h'),
-    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
+    refetchInterval: 2 * 60 * 1000, // 2 minutes in milliseconds
+    refetchIntervalInBackground: true,
   });
 
   // Volume by Format
+  // Refetch every 5 minutes (less frequent, format data changes slower)
   const { data: volumeByFormat, isLoading: volumeLoading } = useQuery({
     queryKey: ['volume-by-format', 30],
     queryFn: () => getVolumeByFormat(30),
-    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
+    refetchInterval: 5 * 60 * 1000, // 5 minutes in milliseconds
+    refetchIntervalInBackground: true,
   });
 
   // Color Distribution
+  // Refetch every 5 minutes (less frequent, format data changes slower)
   const { data: colorDistribution, isLoading: colorLoading } = useQuery({
     queryKey: ['color-distribution', colorWindow],
     queryFn: () => getColorDistribution(colorWindow),
-    refetchInterval: 30 * 60 * 1000, // 30 minutes in milliseconds
+    refetchInterval: 5 * 60 * 1000, // 5 minutes in milliseconds
+    refetchIntervalInBackground: true,
   });
 
   // Progressive loading - show content as it becomes available
