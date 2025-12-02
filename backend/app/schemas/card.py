@@ -72,6 +72,8 @@ class PricePoint(BaseModel):
     min_price: Optional[float] = None
     max_price: Optional[float] = None
     num_listings: Optional[int] = None
+    snapshot_time: Optional[datetime] = None  # When this price was collected
+    data_age_minutes: Optional[int] = None  # Minutes since collection
 
 
 class CardPriceResponse(BaseModel):
@@ -105,6 +107,8 @@ class CardHistoryResponse(BaseModel):
     from_date: datetime
     to_date: datetime
     data_points: int
+    latest_snapshot_time: Optional[datetime] = None  # Most recent data point timestamp
+    data_freshness_minutes: Optional[int] = None  # Minutes since latest snapshot
 
 
 class CardMetricsResponse(BaseModel):

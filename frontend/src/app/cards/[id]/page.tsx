@@ -59,12 +59,16 @@ export default function CardDetailPage() {
     queryKey: ['card', cardId],
     queryFn: () => getCard(cardId),
     enabled: !!cardId,
+    refetchInterval: 60000,  // Auto-refresh every 60 seconds for live data
+    refetchIntervalInBackground: true,  // Continue refreshing when tab is in background
   });
 
   const { data: history, refetch: refetchHistory } = useQuery({
     queryKey: ['card', cardId, 'history'],
     queryFn: () => getCardHistory(cardId, { days: 30 }),
     enabled: !!cardId,
+    refetchInterval: 60000,  // Auto-refresh every 60 seconds for live data
+    refetchIntervalInBackground: true,
   });
 
   if (isLoading) return <LoadingPage />;
@@ -223,7 +227,14 @@ export default function CardDetailPage() {
 
       {/* Price History */}
       {history && history.history.length > 0 && (
-        <PriceChart data={history.history} title="30-Day Price History" />
+        <PriceChart 
+          data={history.history} 
+          history={history}
+          title="30-Day Price History" 
+          showFreshness={true}
+          autoRefresh={true}
+          refreshInterval={60}
+        />
       )}
 
       {/* Add to Inventory Modal */}

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
-from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation, Listing
+from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation
 from app.schemas.card import (
     CardResponse,
     CardSearchResponse,
@@ -26,14 +26,13 @@ from app.schemas.card import (
     RecommendationSummary,
 )
 from app.schemas.signal import SignalResponse, SignalListResponse
-from app.tasks.ingestion import scrape_marketplace
 from app.tasks.analytics import compute_card_metrics
 from app.tasks.recommendations import generate_card_recommendations
 from app.services.ingestion import ScryfallAdapter
 from app.services.agents.analytics import AnalyticsAgent
 from app.services.agents.recommendation import RecommendationAgent
 from app.services.vectorization.service import VectorizationService
-from app.services.vectorization.ingestion import vectorize_card, vectorize_listing
+from app.services.vectorization.ingestion import vectorize_card
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
@@ -230,6 +229,7 @@ async def get_card_history(
     result = await db.execute(query)
     rows = result.all()
     
+    now = datetime.utcnow()
     history = [
         PricePoint(
             date=snapshot.snapshot_time,
@@ -239,17 +239,25 @@ async def get_card_history(
             min_price=float(snapshot.min_price) if snapshot.min_price else None,
             max_price=float(snapshot.max_price) if snapshot.max_price else None,
             num_listings=snapshot.num_listings,
+            snapshot_time=snapshot.snapshot_time,
+            data_age_minutes=int((now - snapshot.snapshot_time).total_seconds() / 60) if snapshot.snapshot_time else None,
         )
         for snapshot, marketplace in rows
     ]
+    
+    # Find latest snapshot time
+    latest_snapshot = max((snapshot.snapshot_time for snapshot, _ in rows), default=None) if rows else None
+    data_freshness = int((now - latest_snapshot).total_seconds() / 60) if latest_snapshot else None
     
     return CardHistoryResponse(
         card_id=card_id,
         card_name=card.name,
         history=history,
         from_date=from_date,
-        to_date=datetime.utcnow(),
+        to_date=now,
         data_points=len(history),
+        latest_snapshot_time=latest_snapshot,
+        data_freshness_minutes=data_freshness,
     )
 
 
@@ -319,16 +327,12 @@ async def refresh_card_data(
         return await _sync_refresh_card(db, card)
     
     # Async refresh - dispatch background tasks
-    marketplaces = payload.get("marketplaces") if payload else None
-    slugs = marketplaces or await _get_enabled_marketplace_slugs(db)
-    if not slugs:
-        raise HTTPException(status_code=400, detail="No enabled marketplaces to refresh")
-    
-    task_ids = _dispatch_refresh_tasks(card_id, slugs)
+    # Note: Price collection is handled by scheduled tasks, so we only dispatch analytics/recommendations
+    task_ids = _dispatch_refresh_tasks(card_id, [])
     return {
         "card_id": card_id,
-        "marketplaces": slugs,
         "tasks": task_ids,
+        "note": "Price collection is handled by scheduled tasks (collect_price_data, collect_inventory_prices)",
     }
 
 
@@ -400,12 +404,9 @@ async def _maybe_trigger_refresh(
     if not (metrics_stale or prices_stale):
         return False, None
     
-    slugs = await _get_enabled_marketplace_slugs(db)
-    if not slugs:
-        logger.info("Skipping refresh, no marketplaces enabled", card_id=card_id)
-        return False, None
-    
-    _dispatch_refresh_tasks(card_id, slugs)
+    # Dispatch analytics and recommendation tasks
+    # Note: Price collection is handled by scheduled tasks (collect_price_data, collect_inventory_prices)
+    _dispatch_refresh_tasks(card_id, [])
     reason = "missing_data" if latest_snapshot is None else "stale_data"
     return True, reason
 
@@ -418,17 +419,13 @@ async def _get_enabled_marketplace_slugs(db: AsyncSession) -> list[str]:
 
 
 def _dispatch_refresh_tasks(card_id: int, marketplace_slugs: list[str]) -> dict:
-    """Enqueue ingestion, analytics, and recommendation tasks."""
-    task_refs: dict[str, list[dict[str, Optional[str]]]] = {"marketplaces": []}
+    """
+    Enqueue analytics and recommendation tasks.
     
-    for slug in marketplace_slugs:
-        try:
-            result = scrape_marketplace.delay(slug, [card_id])
-            task_refs["marketplaces"].append(
-                {"slug": slug, "task_id": getattr(result, "id", None)}
-            )
-        except Exception as exc:  # pragma: no cover - celery misconfig
-            logger.warning("Failed to dispatch marketplace scrape", slug=slug, card_id=card_id, error=str(exc))
+    Note: Price collection is now handled by scheduled tasks (collect_price_data, collect_inventory_prices).
+    This function only dispatches analytics and recommendation tasks.
+    """
+    task_refs: dict[str, Optional[str]] = {}
     
     try:
         analytics_task = compute_card_metrics.delay(card_id)
@@ -503,33 +500,21 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
         snapshots_created=snapshots_created,
     )
     
-    # 2.5. Vectorize card and listings for ML training
+    # 2.5. Vectorize card for ML training
     from app.services.vectorization import get_vectorization_service
     vectorizer = get_vectorization_service()  # Use cached instance
     vectors_created = 0
     try:
-        # Vectorize the card
+        # Vectorize the card (used for training with price snapshots)
         card_vector_obj = await vectorize_card(db, card, vectorizer)
         if card_vector_obj:
             vectors_created += 1
             await db.flush()
-        
-        # Vectorize all listings for this card
-        listings_query = select(Listing).where(Listing.card_id == card.id)
-        listings_result = await db.execute(listings_query)
-        all_listings = listings_result.scalars().all()
-        
-        for listing in all_listings:
-            listing_vector = await vectorize_listing(db, listing, card_vector_obj, vectorizer)
-            if listing_vector:
-                vectors_created += 1
-        
-        await db.flush()
-        logger.info(
-            "Vectorization completed",
-            card_id=card.id,
-            vectors_created=vectors_created,
-        )
+            logger.info(
+                "Card vectorization completed",
+                card_id=card.id,
+                vectors_created=vectors_created,
+            )
     except Exception as e:
         logger.warning("Failed to vectorize card data", card_id=card.id, error=str(e))
     # Don't close the cached vectorizer - it's shared across requests

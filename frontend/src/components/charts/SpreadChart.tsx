@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
+import { formatDistanceToNow } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { formatCurrency } from '@/lib/utils';
 import type { MarketplacePrice } from '@/types';
@@ -18,16 +19,19 @@ interface SpreadChartProps {
   data: MarketplacePrice[];
   title?: string;
   height?: number;
+  showFreshness?: boolean;
 }
 
 export function SpreadChart({
   data,
   title = 'Price Comparison',
   height = 250,
+  showFreshness = true,
 }: SpreadChartProps) {
   const chartData = data.map((item) => ({
     marketplace: item.marketplace_name,
     price: item.price,
+    last_updated: item.last_updated,
   }));
 
   // Sort by price
@@ -35,11 +39,40 @@ export function SpreadChart({
 
   const minPrice = Math.min(...chartData.map((d) => d.price));
   const maxPrice = Math.max(...chartData.map((d) => d.price));
+  
+  // Get most recent update time
+  const latestUpdate = data.length > 0 
+    ? Math.max(...data.map(d => new Date(d.last_updated).getTime()))
+    : null;
+  const latestUpdateDate = latestUpdate ? new Date(latestUpdate) : null;
+  const freshnessMinutes = latestUpdateDate 
+    ? Math.floor((Date.now() - latestUpdateDate.getTime()) / 60000)
+    : null;
+  const isStale = freshnessMinutes !== null && freshnessMinutes > 60;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>{title}</CardTitle>
+          {showFreshness && latestUpdateDate && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className={`inline-flex items-center gap-1 ${
+                isStale ? 'text-amber-500' : 'text-green-500'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  isStale ? 'bg-amber-500' : 'bg-green-500'
+                } animate-pulse`} />
+                {freshnessMinutes !== null && freshnessMinutes < 1 
+                  ? 'Live' 
+                  : freshnessMinutes !== null && freshnessMinutes < 60
+                  ? `${freshnessMinutes}m ago`
+                  : formatDistanceToNow(latestUpdateDate, { addSuffix: true })
+                }
+              </span>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div style={{ height }}>
@@ -72,7 +105,13 @@ export function SpreadChart({
                   border: '1px solid rgb(var(--border))',
                   borderRadius: '8px',
                 }}
-                formatter={(value: number) => [formatCurrency(value), 'Price']}
+                formatter={(value: number, name: string, props: any) => {
+                  const lastUpdated = props.payload.last_updated;
+                  const updateText = lastUpdated 
+                    ? ` (${formatDistanceToNow(new Date(lastUpdated), { addSuffix: true })})`
+                    : '';
+                  return [formatCurrency(value) + updateText, 'Price'];
+                }}
               />
               <Bar dataKey="price" radius={[0, 4, 4, 0]}>
                 {chartData.map((entry, index) => (

@@ -60,6 +60,8 @@ export interface PricePoint {
   min_price?: number;
   max_price?: number;
   num_listings?: number;
+  snapshot_time?: string;  // When this price was collected
+  data_age_minutes?: number;  // Minutes since collection
 }
 
 export interface CardHistory {
@@ -69,6 +71,8 @@ export interface CardHistory {
   from_date: string;
   to_date: string;
   data_points: number;
+  latest_snapshot_time?: string;  // Most recent data point timestamp
+  data_freshness_minutes?: number;  // Minutes since latest snapshot
 }
 
 // Metrics types
