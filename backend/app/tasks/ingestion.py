@@ -595,3 +595,193 @@ async def _sync_single_card_async(scryfall_id: str) -> dict[str, Any]:
     finally:
         await engine.dispose()
 
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=600)
+def import_mtgjson_historical_prices(
+    self,
+    card_ids: list[int] | None = None,
+    days: int = 90,
+) -> dict[str, Any]:
+    """
+    Import historical price data from MTGJSON.
+    
+    This supplements our real-time scrapers with historical price trends.
+    MTGJSON provides weekly price intervals going back ~3 months.
+    
+    Args:
+        card_ids: Optional list of card IDs to import. None = all cards.
+        days: Number of days of history to import (max ~90 days).
+        
+    Returns:
+        Import results.
+    """
+    return run_async(_import_mtgjson_historical_prices_async(card_ids, days))
+
+
+async def _import_mtgjson_historical_prices_async(
+    card_ids: list[int] | None,
+    days: int,
+) -> dict[str, Any]:
+    """Async implementation of MTGJSON historical price import."""
+    logger.info("Starting MTGJSON historical price import", days=days)
+    
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            # Get or create MTGJSON marketplace
+            mtgjson_query = select(Marketplace).where(Marketplace.slug == "mtgjson")
+            result = await db.execute(mtgjson_query)
+            mtgjson_marketplace = result.scalar_one_or_none()
+            
+            if not mtgjson_marketplace:
+                # Create MTGJSON marketplace entry
+                mtgjson_marketplace = Marketplace(
+                    name="MTGJSON",
+                    slug="mtgjson",
+                    base_url="https://mtgjson.com",
+                    api_url="https://mtgjson.com/api/v5",
+                    is_enabled=True,
+                    supports_api=True,
+                    default_currency="USD",
+                    rate_limit_seconds=1.0,
+                )
+                db.add(mtgjson_marketplace)
+                await db.flush()
+                logger.info("Created MTGJSON marketplace entry")
+            
+            # Get cards to import
+            if card_ids:
+                cards_query = select(Card).where(Card.id.in_(card_ids))
+            else:
+                # Prioritize inventory cards, then limit to 1000 for efficiency
+                inventory_query = (
+                    select(Card)
+                    .join(InventoryItem, InventoryItem.card_id == Card.id)
+                    .distinct()
+                )
+                result = await db.execute(inventory_query)
+                inventory_cards = list(result.scalars().all())
+                inventory_ids = {c.id for c in inventory_cards}
+                
+                # Get additional cards up to 1000 total
+                remaining = max(0, 1000 - len(inventory_cards))
+                if remaining > 0:
+                    other_query = (
+                        select(Card)
+                        .where(Card.id.notin_(inventory_ids) if inventory_ids else True)
+                        .limit(remaining)
+                    )
+                    result = await db.execute(other_query)
+                    other_cards = list(result.scalars().all())
+                else:
+                    other_cards = []
+                
+                cards = inventory_cards + other_cards
+                cards_query = select(Card).where(Card.id.in_([c.id for c in cards]))
+            
+            result = await db.execute(cards_query)
+            cards = list(result.scalars().all())
+            
+            if not cards:
+                logger.warning("No cards found to import MTGJSON prices for")
+                return {"status": "no_cards", "imported": 0}
+            
+            logger.info("Importing MTGJSON prices", card_count=len(cards))
+            
+            # Get MTGJSON adapter
+            from app.services.ingestion import get_adapter
+            adapter = get_adapter("mtgjson", cached=False)
+            
+            results = {
+                "started_at": datetime.utcnow().isoformat(),
+                "cards_processed": 0,
+                "snapshots_created": 0,
+                "snapshots_skipped": 0,
+                "errors": [],
+            }
+            
+            try:
+                for card in cards:
+                    try:
+                        # Fetch historical prices
+                        historical_prices = await adapter.fetch_price_history(
+                            card_name=card.name,
+                            set_code=card.set_code,
+                            collector_number=card.collector_number,
+                            scryfall_id=card.scryfall_id,
+                            days=days,
+                        )
+                        
+                        if not historical_prices:
+                            continue
+                        
+                        # Create price snapshots for each historical price
+                        for price_data in historical_prices:
+                            # Check if snapshot already exists for this timestamp
+                            existing_query = select(PriceSnapshot).where(
+                                PriceSnapshot.card_id == card.id,
+                                PriceSnapshot.marketplace_id == mtgjson_marketplace.id,
+                                PriceSnapshot.snapshot_time == price_data.snapshot_time,
+                            )
+                            existing_result = await db.execute(existing_query)
+                            existing = existing_result.scalar_one_or_none()
+                            
+                            if existing:
+                                # Update existing snapshot
+                                existing.price = price_data.price
+                                existing.currency = price_data.currency
+                                existing.price_foil = price_data.price_foil
+                                results["snapshots_skipped"] += 1
+                            else:
+                                # Create new snapshot
+                                snapshot = PriceSnapshot(
+                                    card_id=card.id,
+                                    marketplace_id=mtgjson_marketplace.id,
+                                    snapshot_time=price_data.snapshot_time,
+                                    price=price_data.price,
+                                    currency=price_data.currency,
+                                    price_foil=price_data.price_foil,
+                                )
+                                db.add(snapshot)
+                                results["snapshots_created"] += 1
+                        
+                        results["cards_processed"] += 1
+                        
+                        # Flush periodically to avoid memory issues
+                        if results["cards_processed"] % 50 == 0:
+                            await db.flush()
+                            logger.debug(
+                                "MTGJSON import progress",
+                                processed=results["cards_processed"],
+                                snapshots=results["snapshots_created"],
+                            )
+                    
+                    except Exception as e:
+                        error_msg = f"Card {card.id} ({card.name}): {str(e)}"
+                        results["errors"].append(error_msg)
+                        logger.warning(
+                            "Failed to import MTGJSON prices for card",
+                            card_id=card.id,
+                            card_name=card.name,
+                            error=str(e),
+                        )
+                        continue
+                
+                await db.commit()
+                results["completed_at"] = datetime.utcnow().isoformat()
+                
+                logger.info(
+                    "MTGJSON historical price import completed",
+                    cards_processed=results["cards_processed"],
+                    snapshots_created=results["snapshots_created"],
+                    snapshots_skipped=results["snapshots_skipped"],
+                    errors_count=len(results["errors"]),
+                )
+                
+                return results
+            finally:
+                if hasattr(adapter, 'close'):
+                    await adapter.close()
+    finally:
+        await engine.dispose()
+

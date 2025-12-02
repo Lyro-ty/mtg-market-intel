@@ -26,6 +26,7 @@ from app.models import (
     CardFeatureVector,
     ListingFeatureVector,
     PriceSnapshot,
+    Marketplace,
 )
 
 logger = structlog.get_logger()
@@ -35,6 +36,7 @@ async def export_training_data(
     output_dir: Path,
     min_listings_per_card: int = 5,
     include_labels: bool = True,
+    include_historical_prices: bool = True,
 ) -> dict[str, Any]:
     """
     Export vectorized training data.
@@ -43,6 +45,7 @@ async def export_training_data(
         output_dir: Directory to save exported data.
         min_listings_per_card: Minimum listings per card to include.
         include_labels: Whether to include price labels for supervised learning.
+        include_historical_prices: Whether to include MTGJSON historical price data.
         
     Returns:
         Export statistics.
@@ -142,13 +145,25 @@ async def export_training_data(
             with open(output_dir / "metadata.json", "w") as f:
                 json.dump(metadata, f, indent=2, default=str)
             
+            # Export historical price data from MTGJSON if requested
+            historical_prices_data = None
+            if include_historical_prices:
+                historical_prices_data = await _export_historical_prices(db, output_dir)
+            
             # Save feature info
             feature_info = {
                 "card_feature_dim": len(card_vectors[0]) if card_vectors else 0,
                 "listing_feature_dim": len(listing_vectors[0]) if listing_vectors else 0,
                 "total_samples": len(card_vectors),
                 "exported_at": datetime.utcnow().isoformat(),
+                "includes_historical_prices": include_historical_prices,
             }
+            
+            if historical_prices_data:
+                feature_info["historical_prices"] = {
+                    "total_snapshots": historical_prices_data["total_snapshots"],
+                    "cards_with_history": historical_prices_data["cards_with_history"],
+                }
             
             with open(output_dir / "feature_info.json", "w") as f:
                 json.dump(feature_info, f, indent=2)
@@ -159,6 +174,7 @@ async def export_training_data(
                 samples=len(card_vectors),
                 card_dim=feature_info["card_feature_dim"],
                 listing_dim=feature_info["listing_feature_dim"],
+                historical_prices=historical_prices_data["total_snapshots"] if historical_prices_data else 0,
             )
             
             return {
@@ -166,10 +182,103 @@ async def export_training_data(
                 "card_feature_dim": feature_info["card_feature_dim"],
                 "listing_feature_dim": feature_info["listing_feature_dim"],
                 "output_dir": str(output_dir),
+                "historical_prices": historical_prices_data,
             }
             
     finally:
         await engine.dispose()
+
+
+async def _export_historical_prices(
+    db: AsyncSession,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """
+    Export historical price data from MTGJSON for training.
+    
+    This provides price trend data that can be used for time-series models
+    or as additional features for price prediction.
+    
+    Args:
+        db: Database session.
+        output_dir: Directory to save exported data.
+        
+    Returns:
+        Export statistics.
+    """
+    # Get MTGJSON marketplace
+    mtgjson_query = select(Marketplace).where(Marketplace.slug == "mtgjson")
+    result = await db.execute(mtgjson_query)
+    mtgjson_marketplace = result.scalar_one_or_none()
+    
+    if not mtgjson_marketplace:
+        logger.warning("MTGJSON marketplace not found - skipping historical price export")
+        return {"total_snapshots": 0, "cards_with_history": 0}
+    
+    # Get all price snapshots from MTGJSON
+    snapshots_query = (
+        select(PriceSnapshot, Card)
+        .join(Card, PriceSnapshot.card_id == Card.id)
+        .where(PriceSnapshot.marketplace_id == mtgjson_marketplace.id)
+        .order_by(Card.id, PriceSnapshot.snapshot_time)
+    )
+    result = await db.execute(snapshots_query)
+    snapshots = result.all()
+    
+    if not snapshots:
+        logger.info("No MTGJSON historical price data found")
+        return {"total_snapshots": 0, "cards_with_history": 0}
+    
+    # Organize by card
+    price_history = {}
+    for snapshot, card in snapshots:
+        if card.id not in price_history:
+            price_history[card.id] = {
+                "card_id": card.id,
+                "card_name": card.name,
+                "set_code": card.set_code,
+                "prices": [],
+            }
+        
+        price_history[card.id]["prices"].append({
+            "snapshot_time": snapshot.snapshot_time.isoformat(),
+            "price": float(snapshot.price),
+            "currency": snapshot.currency,
+            "price_foil": float(snapshot.price_foil) if snapshot.price_foil else None,
+        })
+    
+    # Save as JSON
+    history_file = output_dir / "historical_prices.json"
+    with open(history_file, "w") as f:
+        json.dump(list(price_history.values()), f, indent=2, default=str)
+    
+    # Also create a time-series format (card_id -> list of prices over time)
+    time_series_data = {}
+    for card_id, data in price_history.items():
+        time_series_data[card_id] = {
+            "timestamps": [p["snapshot_time"] for p in data["prices"]],
+            "prices": [p["price"] for p in data["prices"]],
+            "prices_foil": [p["price_foil"] for p in data["prices"] if p["price_foil"] is not None],
+        }
+    
+    time_series_file = output_dir / "historical_prices_timeseries.json"
+    with open(time_series_file, "w") as f:
+        json.dump(time_series_data, f, indent=2, default=str)
+    
+    logger.info(
+        "Historical price data exported",
+        total_snapshots=len(snapshots),
+        cards_with_history=len(price_history),
+    )
+    
+    return {
+        "total_snapshots": len(snapshots),
+        "cards_with_history": len(price_history),
+        "files": [
+            str(history_file),
+            str(time_series_file),
+        ],
+    }
 
 
 if __name__ == "__main__":
