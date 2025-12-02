@@ -491,7 +491,15 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     
     Note: Prices are now stored separately by marketplace for better charting.
     """
-    logger.info("Sync refresh starting", card_id=card.id, card_name=card.name)
+    # Store card attributes before any operations that might fail
+    # This prevents SQLAlchemy lazy-loading issues if the session gets rolled back
+    card_id = card.id
+    card_name = card.name
+    card_set_code = card.set_code
+    card_collector_number = card.collector_number
+    card_scryfall_id = card.scryfall_id
+    
+    logger.info("Sync refresh starting", card_id=card_id, card_name=card_name)
     
     # 1. Fetch prices from Scryfall broken down by marketplace
     scryfall = ScryfallAdapter()
@@ -499,10 +507,10 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     try:
         # Fetch all marketplace prices (TCGPlayer USD, Cardmarket EUR, etc.)
         all_prices = await scryfall.fetch_all_marketplace_prices(
-            card_name=card.name,
-            set_code=card.set_code,
-            collector_number=card.collector_number,
-            scryfall_id=card.scryfall_id,
+            card_name=card_name,
+            set_code=card_set_code,
+            collector_number=card_collector_number,
+            scryfall_id=card_scryfall_id,
         )
         
         now = datetime.now(timezone.utc)
@@ -530,7 +538,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             
             # Check if we already have a recent snapshot (within last hour) for this marketplace
             recent_snapshot_query = select(PriceSnapshot).where(
-                PriceSnapshot.card_id == card.id,
+                PriceSnapshot.card_id == card_id,
                 PriceSnapshot.marketplace_id == marketplace.id,
                 PriceSnapshot.snapshot_time >= now - timedelta(hours=1),
             )
@@ -540,7 +548,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             if not recent_snapshot:
                 # Create price snapshot for this marketplace
                 snapshot = PriceSnapshot(
-                    card_id=card.id,
+                    card_id=card_id,
                     marketplace_id=marketplace.id,
                     snapshot_time=now,
                     price=price_data.price,
@@ -551,7 +559,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
                 scryfall_snapshots_created += 1
                 logger.debug(
                     "Price snapshot created",
-                    card_id=card.id,
+                    card_id=card_id,
                     marketplace=name,
                     price=price_data.price,
                     currency=price_data.currency,
@@ -560,11 +568,16 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
         await db.flush()
         logger.info(
             "Scryfall price snapshots created",
-            card_id=card.id,
+            card_id=card_id,
             count=scryfall_snapshots_created,
         )
     except Exception as e:
-        logger.warning("Failed to fetch Scryfall prices", card_id=card.id, error=str(e))
+        # Rollback the session if there was an error during flush
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Ignore rollback errors
+        logger.warning("Failed to fetch Scryfall prices", card_id=card_id, error=str(e))
     finally:
         await scryfall.close()
     
@@ -576,10 +589,10 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
         # Fetch 30-day historical prices from MTGJSON
         # MTGJSON returns prices for both TCGPlayer (USD) and Cardmarket (EUR)
         historical_prices = await mtgjson.fetch_price_history(
-            card_name=card.name,
-            set_code=card.set_code,
-            collector_number=card.collector_number,
-            scryfall_id=card.scryfall_id,
+            card_name=card_name,
+            set_code=card_set_code,
+            collector_number=card_collector_number,
+            scryfall_id=card_scryfall_id,
             days=30,  # 30-day historical data
         )
         
@@ -606,7 +619,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
                 
                 # Check if snapshot already exists for this timestamp and marketplace
                 existing_query = select(PriceSnapshot).where(
-                    PriceSnapshot.card_id == card.id,
+                    PriceSnapshot.card_id == card_id,
                     PriceSnapshot.marketplace_id == marketplace.id,
                     PriceSnapshot.snapshot_time == price_data.snapshot_time,
                 )
@@ -615,7 +628,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
                 
                 if not existing:
                     snapshot = PriceSnapshot(
-                        card_id=card.id,
+                        card_id=card_id,
                         marketplace_id=marketplace.id,
                         snapshot_time=price_data.snapshot_time,
                         price=price_data.price,
@@ -628,14 +641,19 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             await db.flush()
             logger.info(
                 "MTGJSON historical data stored by marketplace",
-                card_id=card.id,
+                card_id=card_id,
                 historical_points=len(historical_prices),
                 snapshots_created=mtgjson_snapshots_created,
             )
     except Exception as e:
+        # Rollback the session if there was an error during flush
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Ignore rollback errors
         logger.warning(
             "Failed to fetch MTGJSON historical data",
-            card_id=card.id,
+            card_id=card_id,
             error=str(e),
         )
     finally:
