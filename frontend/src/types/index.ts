@@ -445,9 +445,8 @@ export interface VolumeByFormat {
 
 export interface ColorDistribution {
   window: '7d' | '30d';
-  formats: string[];
   colors: string[];
-  matrix: number[][]; // matrix[i][j] = share of format i's volume for color j
+  distribution: Record<string, number>; // color -> percentage
   isMockData?: boolean;
 }
 

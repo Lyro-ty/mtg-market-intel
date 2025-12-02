@@ -8,13 +8,11 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingPage } from '@/components/ui/Loading';
 import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
-import { VolumeByFormatChart } from '@/components/charts/VolumeByFormatChart';
 import { ColorDistributionChart } from '@/components/charts/ColorDistributionChart';
 import {
   getMarketOverview,
   getMarketIndex,
   getTopMovers,
-  getVolumeByFormat,
   getColorDistribution,
 } from '@/lib/api';
 import { formatCurrency, formatPercent, formatNumber } from '@/lib/utils';
@@ -22,7 +20,6 @@ import type { MarketIndex, VolumeByFormat, ColorDistribution } from '@/types';
 
 export default function DashboardPage() {
   const [marketIndexRange, setMarketIndexRange] = useState<'7d' | '30d' | '90d' | '1y'>('7d');
-  const [colorWindow, setColorWindow] = useState<'7d' | '30d'>('7d');
 
   // Market Overview Stats
   // Refetch every 2 minutes for real-time data (matches price collection interval)
@@ -51,20 +48,11 @@ export default function DashboardPage() {
     refetchIntervalInBackground: true,
   });
 
-  // Volume by Format
-  // Refetch every 5 minutes (less frequent, format data changes slower)
-  const { data: volumeByFormat, isLoading: volumeLoading } = useQuery({
-    queryKey: ['volume-by-format', 30],
-    queryFn: () => getVolumeByFormat(30),
-    refetchInterval: 5 * 60 * 1000, // 5 minutes in milliseconds
-    refetchIntervalInBackground: true,
-  });
-
   // Color Distribution
-  // Refetch every 5 minutes (less frequent, format data changes slower)
+  // Refetch every 5 minutes
   const { data: colorDistribution, isLoading: colorLoading } = useQuery({
-    queryKey: ['color-distribution', colorWindow],
-    queryFn: () => getColorDistribution(colorWindow),
+    queryKey: ['color-distribution', '7d'],
+    queryFn: () => getColorDistribution('7d'),
     refetchInterval: 5 * 60 * 1000, // 5 minutes in milliseconds
     refetchIntervalInBackground: true,
   });
@@ -73,7 +61,7 @@ export default function DashboardPage() {
   const hasCriticalError = !overview && !overviewLoading;
   
   // Show loading only if we have no data at all
-  if (overviewLoading && !overview && !marketIndex && !topMovers && !volumeByFormat && !colorDistribution) {
+  if (overviewLoading && !overview && !marketIndex && !topMovers && !colorDistribution) {
     return <LoadingPage />;
   }
   
@@ -261,20 +249,6 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      {/* Volume by Format */}
-      {volumeLoading && !volumeByFormat ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Volume by Format</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
-          </CardContent>
-        </Card>
-      ) : volumeByFormat ? (
-        <VolumeByFormatChart data={volumeByFormat} />
-      ) : null}
-
       {/* Color Distribution */}
       {colorLoading && !colorDistribution ? (
         <Card>
@@ -286,10 +260,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       ) : colorDistribution ? (
-        <ColorDistributionChart
-          data={colorDistribution}
-          onWindowChange={(window) => setColorWindow(window)}
-        />
+        <ColorDistributionChart data={colorDistribution} />
       ) : null}
     </div>
   );

@@ -209,3 +209,4 @@ curl -X POST "http://localhost:8000/api/cards/1/refresh?sync=true"
 4. **Review marketplace selectors** - they may need updating
 5. **Consider adding API support** if credentials are available
 
+

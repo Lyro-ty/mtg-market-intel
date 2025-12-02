@@ -85,3 +85,4 @@ echo "3. Verify frontend is accessible:"
 echo "   curl http://localhost:3000"
 echo ""
 
+

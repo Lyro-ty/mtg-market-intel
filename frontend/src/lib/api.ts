@@ -391,6 +391,33 @@ export async function getColorDistribution(
   return fetchApi(`/market/color-distribution?window=${window}`);
 }
 
+// Inventory dashboard API
+export async function getInventoryMarketIndex(
+  range: '7d' | '30d' | '90d' | '1y' = '7d'
+): Promise<MarketIndex> {
+  return fetchApi(`/inventory/market-index?range=${range}`);
+}
+
+export async function getInventoryTopMovers(
+  window: '24h' | '7d' = '24h'
+): Promise<{ window: string; gainers: Array<{
+  cardName: string;
+  setCode: string;
+  format: string;
+  currentPriceUsd: number;
+  changePct: number;
+  volume: number;
+}>; losers: Array<{
+  cardName: string;
+  setCode: string;
+  format: string;
+  currentPriceUsd: number;
+  changePct: number;
+  volume: number;
+}>; isMockData?: boolean }> {
+  return fetchApi(`/inventory/top-movers?window=${window}`);
+}
+
 // Inventory API (requires authentication)
 export async function importInventory(
   content: string,

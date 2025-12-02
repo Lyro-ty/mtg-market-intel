@@ -13,7 +13,13 @@ import {
   DollarSign,
   BarChart3,
   Filter,
+  Activity,
 } from 'lucide-react';
+import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
+import {
+  getInventoryMarketIndex,
+  getInventoryTopMovers,
+} from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -38,6 +44,7 @@ function InventoryPageContent() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [recPage, setRecPage] = useState(1);
+  const [marketIndexRange, setMarketIndexRange] = useState<'7d' | '30d' | '90d' | '1y'>('7d');
   
   const queryClient = useQueryClient();
   
@@ -61,6 +68,22 @@ function InventoryPageContent() {
     queryKey: ['inventory-recommendations', recPage],
     queryFn: () => getInventoryRecommendations({ page: recPage, pageSize: 20 }),
     refetchInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
+  });
+  
+  // Fetch inventory market index
+  const { data: inventoryMarketIndex, isLoading: indexLoading } = useQuery({
+    queryKey: ['inventory-market-index', marketIndexRange],
+    queryFn: () => getInventoryMarketIndex(marketIndexRange),
+    refetchInterval: 2 * 60 * 1000, // 2 minutes
+    refetchIntervalInBackground: true,
+  });
+  
+  // Fetch inventory top movers
+  const { data: inventoryTopMovers, isLoading: moversLoading } = useQuery({
+    queryKey: ['inventory-top-movers', '24h'],
+    queryFn: () => getInventoryTopMovers('24h'),
+    refetchInterval: 2 * 60 * 1000, // 2 minutes
+    refetchIntervalInBackground: true,
   });
   
   // Mutations
@@ -265,7 +288,107 @@ function InventoryPageContent() {
         <>
           {/* Overview Tab */}
           {activeTab === 'overview' && analytics && (
-            <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-6">
+              {/* Inventory Market Index Chart */}
+              {indexLoading && !inventoryMarketIndex ? (
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="h-64 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
+                  </CardContent>
+                </Card>
+              ) : inventoryMarketIndex ? (
+                <MarketIndexChart
+                  data={inventoryMarketIndex}
+                  title="Inventory Value Index"
+                  onRangeChange={(range) => setMarketIndexRange(range)}
+                />
+              ) : null}
+              
+              {/* Top Movers: Gainers & Losers */}
+              {moversLoading && !inventoryTopMovers ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {[1, 2].map((i) => (
+                    <Card key={i}>
+                      <CardContent className="p-4">
+                        <div className="h-64 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : inventoryTopMovers ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Top Gainers */}
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-4">
+                        <TrendingUp className="w-5 h-5 text-green-500" />
+                        <h3 className="font-semibold text-[rgb(var(--foreground))]">Top Gainers (24h)</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {inventoryTopMovers.gainers.length > 0 ? (
+                          inventoryTopMovers.gainers.map((mover, index) => (
+                            <div key={`gainer-${index}`} className="flex items-center justify-between p-2 rounded-lg bg-[rgb(var(--secondary))]/50">
+                              <div>
+                                <p className="font-medium text-[rgb(var(--foreground))]">{mover.cardName}</p>
+                                <p className="text-xs text-[rgb(var(--muted-foreground))]">{mover.setCode}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-medium text-[rgb(var(--foreground))]">
+                                  {formatCurrency(mover.currentPriceUsd)}
+                                </p>
+                                <p className="text-sm font-medium text-green-500">
+                                  +{mover.changePct.toFixed(1)}%
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-[rgb(var(--muted-foreground))] text-center py-4">
+                            No gainers to show
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  {/* Top Losers */}
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-4">
+                        <TrendingDown className="w-5 h-5 text-red-500" />
+                        <h3 className="font-semibold text-[rgb(var(--foreground))]">Top Losers (24h)</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {inventoryTopMovers.losers.length > 0 ? (
+                          inventoryTopMovers.losers.map((mover, index) => (
+                            <div key={`loser-${index}`} className="flex items-center justify-between p-2 rounded-lg bg-[rgb(var(--secondary))]/50">
+                              <div>
+                                <p className="font-medium text-[rgb(var(--foreground))]">{mover.cardName}</p>
+                                <p className="text-xs text-[rgb(var(--muted-foreground))]">{mover.setCode}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-medium text-[rgb(var(--foreground))]">
+                                  {formatCurrency(mover.currentPriceUsd)}
+                                </p>
+                                <p className="text-sm font-medium text-red-500">
+                                  {mover.changePct.toFixed(1)}%
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-[rgb(var(--muted-foreground))] text-center py-4">
+                            No losers to show
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : null}
+              
+              {/* Analytics Cards */}
+              <div className="grid grid-cols-2 gap-6">
               {/* Top Gainers */}
               <Card>
                 <CardContent className="p-4">

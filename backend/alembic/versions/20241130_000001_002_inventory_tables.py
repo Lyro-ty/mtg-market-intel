@@ -89,3 +89,4 @@ def downgrade() -> None:
     op.drop_table('inventory_items')
 
 
+

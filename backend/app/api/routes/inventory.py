@@ -7,17 +7,17 @@ import csv
 import io
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, and_, or_, case
+from sqlalchemy import select, func, and_, or_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
 from app.db.session import get_db
-from app.models import Card, InventoryItem, InventoryRecommendation, MetricsCardsDaily
+from app.models import Card, InventoryItem, InventoryRecommendation, MetricsCardsDaily, PriceSnapshot, Marketplace
 from pydantic import BaseModel
 from app.schemas.inventory import (
     InventoryImportRequest,
@@ -1035,3 +1035,187 @@ async def run_inventory_recommendations(
     result = await agent.run_inventory_recommendations(item_ids, user_id=current_user.id)
     
     return result
+
+
+@router.get("/market-index")
+async def get_inventory_market_index(
+    range: str = Query("7d", regex="^(7d|30d|90d|1y)$"),
+    current_user: CurrentUser = Depends(CurrentUser),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get market index data for inventory cards only.
+    
+    Calculates a normalized aggregate price index for all cards in the user's inventory.
+    """
+    from datetime import timedelta
+    from app.models import PriceSnapshot, Marketplace
+    
+    # Determine date range and bucket size
+    now = datetime.utcnow()
+    if range == "7d":
+        start_date = now - timedelta(days=7)
+        bucket_minutes = 30
+    elif range == "30d":
+        start_date = now - timedelta(days=30)
+        bucket_minutes = 60
+    elif range == "90d":
+        start_date = now - timedelta(days=90)
+        bucket_minutes = 240
+    else:  # 1y
+        start_date = now - timedelta(days=365)
+        bucket_minutes = 1440
+    
+    # Get inventory card IDs for current user
+    inventory_card_ids_query = select(InventoryItem.card_id).where(
+        InventoryItem.user_id == current_user.id
+    ).distinct()
+    inventory_result = await db.execute(inventory_card_ids_query)
+    inventory_card_ids = [row[0] for row in inventory_result.all()]
+    
+    if not inventory_card_ids:
+        # Return empty data
+        return {
+            "range": range,
+            "points": [],
+            "isMockData": False,
+        }
+    
+    # Get time-bucketed average prices from price snapshots for inventory cards
+    bucket_seconds = bucket_minutes * 60
+    bucket_expr = func.to_timestamp(
+        func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
+    )
+    
+    query = select(
+        bucket_expr.label("bucket_time"),
+        func.avg(PriceSnapshot.price).label("avg_price"),
+        func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
+    ).where(
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.card_id.in_(inventory_card_ids),
+        PriceSnapshot.price.isnot(None),
+        PriceSnapshot.price > 0,
+    ).group_by(
+        bucket_expr
+    ).order_by(
+        bucket_expr
+    )
+    
+    result = await db.execute(query)
+    rows = result.all()
+    
+    if not rows:
+        return {
+            "range": range,
+            "points": [],
+            "isMockData": False,
+        }
+    
+    # Calculate normalized index (base 100 at first point)
+    points = []
+    base_value = None
+    
+    for row in rows:
+        if row.avg_price and row.card_count:
+            if base_value is None:
+                base_value = float(row.avg_price)
+            
+            # Normalize to base 100
+            index_value = (float(row.avg_price) / base_value) * 100
+            
+            timestamp_str = row.bucket_time.isoformat() if isinstance(row.bucket_time, datetime) else str(row.bucket_time)
+            
+            points.append({
+                "timestamp": timestamp_str,
+                "indexValue": round(index_value, 2),
+            })
+    
+    return {
+        "range": range,
+        "points": points,
+        "isMockData": False,
+    }
+
+
+@router.get("/top-movers")
+async def get_inventory_top_movers(
+    window: str = Query("24h", regex="^(24h|7d)$"),
+    current_user: CurrentUser = Depends(CurrentUser),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get top gaining and losing cards in user's inventory.
+    """
+    from datetime import timedelta
+    from sqlalchemy import desc
+    
+    # Get inventory items with price changes
+    if window == "24h":
+        # Use value_change_pct from InventoryItem (calculated from recent price updates)
+        query = select(InventoryItem, Card).join(
+            Card, InventoryItem.card_id == Card.id
+        ).where(
+            and_(
+                InventoryItem.user_id == current_user.id,
+                InventoryItem.value_change_pct.isnot(None)
+            )
+        ).order_by(
+            desc(InventoryItem.value_change_pct)
+        ).limit(10)
+        
+        gainers_result = await db.execute(query)
+        gainers_rows = gainers_result.all()
+        
+        # Get losers (negative changes)
+        losers_query = select(InventoryItem, Card).join(
+            Card, InventoryItem.card_id == Card.id
+        ).where(
+            and_(
+                InventoryItem.user_id == current_user.id,
+                InventoryItem.value_change_pct.isnot(None),
+                InventoryItem.value_change_pct < 0
+            )
+        ).order_by(
+            InventoryItem.value_change_pct.asc()
+        ).limit(10)
+        
+        losers_result = await db.execute(losers_query)
+        losers_rows = losers_result.all()
+        
+        # Format gainers
+        gainers = []
+        for item, card in gainers_rows:
+            if item.value_change_pct and item.value_change_pct > 0:
+                gainers.append({
+                    "cardName": card.name,
+                    "setCode": card.set_code,
+                    "format": "N/A",  # Could derive from legalities if needed
+                    "currentPriceUsd": float(item.current_value) if item.current_value else 0.0,
+                    "changePct": float(item.value_change_pct),
+                    "volume": item.quantity or 0,
+                })
+        
+        # Format losers
+        losers = []
+        for item, card in losers_rows:
+            if item.value_change_pct and item.value_change_pct < 0:
+                losers.append({
+                    "cardName": card.name,
+                    "setCode": card.set_code,
+                    "format": "N/A",
+                    "currentPriceUsd": float(item.current_value) if item.current_value else 0.0,
+                    "changePct": float(item.value_change_pct),
+                    "volume": item.quantity or 0,
+                })
+    else:  # 7d - would need to calculate from price history
+        # For now, use same logic as 24h
+        gainers = []
+        losers = []
+    
+    return {
+        "window": window,
+        "gainers": gainers,
+        "losers": losers,
+        "isMockData": False,
+    }
