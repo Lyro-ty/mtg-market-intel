@@ -498,6 +498,13 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     card_set_code = card.set_code
     card_collector_number = card.collector_number
     card_scryfall_id = card.scryfall_id
+    # Store vectorization attributes early to avoid lazy loading
+    card_type_line = getattr(card, 'type_line', None)
+    card_oracle_text = getattr(card, 'oracle_text', None)
+    card_rarity = getattr(card, 'rarity', None)
+    card_cmc = getattr(card, 'cmc', None)
+    card_colors = getattr(card, 'colors', None)
+    card_mana_cost = getattr(card, 'mana_cost', None)
     
     logger.info("Sync refresh starting", card_id=card_id, card_name=card_name)
     
@@ -539,11 +546,12 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             # Check if we already have a recent snapshot (within last 24 hours)
             # Scryfall only updates prices once per day, so we cache for 24 hours
             # to avoid unnecessary API calls and respect rate limits
+            # Order by snapshot_time descending and limit to 1 to handle multiple snapshots
             recent_snapshot_query = select(PriceSnapshot).where(
                 PriceSnapshot.card_id == card_id,
                 PriceSnapshot.marketplace_id == marketplace.id,
                 PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
-            )
+            ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
             recent_result = await db.execute(recent_snapshot_query)
             recent_snapshot = recent_result.scalar_one_or_none()
             
@@ -676,12 +684,25 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     )
     
     # 2.5. Vectorize card for ML training
+    # Store card attributes before vectorization to avoid lazy loading issues
     from app.services.vectorization import get_vectorization_service
+    from app.services.vectorization.ingestion import vectorize_card_by_attrs
     vectorizer = get_vectorization_service()  # Use cached instance
     vectors_created = 0
     try:
+        # Use stored card attributes to avoid lazy loading after potential rollbacks
+        card_attrs = {
+            "name": card_name,
+            "type_line": card_type_line,
+            "oracle_text": card_oracle_text,
+            "rarity": card_rarity,
+            "cmc": card_cmc,
+            "colors": card_colors,
+            "mana_cost": card_mana_cost,
+        }
         # Vectorize the card (used for training with price snapshots)
-        card_vector_obj = await vectorize_card(db, card, vectorizer)
+        # Pass card_id and attributes instead of card object to avoid lazy loading
+        card_vector_obj = await vectorize_card_by_attrs(db, card_id, card_attrs, vectorizer)
         if card_vector_obj:
             vectors_created += 1
             await db.flush()

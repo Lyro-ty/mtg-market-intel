@@ -31,6 +31,9 @@ async def vectorize_card(
         CardFeatureVector if successful, None otherwise.
     """
     try:
+        # Store card_id to avoid lazy loading issues
+        card_id = card.id
+        
         # Prepare card data
         card_data = {
             "name": card.name,
@@ -46,7 +49,7 @@ async def vectorize_card(
         feature_vector = vectorizer.vectorize_card(card_data)
         
         # Check if vector already exists
-        existing_query = select(CardFeatureVector).where(CardFeatureVector.card_id == card.id)
+        existing_query = select(CardFeatureVector).where(CardFeatureVector.card_id == card_id)
         result = await db.execute(existing_query)
         existing = result.scalar_one_or_none()
         
@@ -58,7 +61,7 @@ async def vectorize_card(
         else:
             # Create new vector
             card_vector = CardFeatureVector(
-                card_id=card.id,
+                card_id=card_id,
                 model_version=vectorizer.embedding_model_name,
             )
             card_vector.set_vector(feature_vector)
@@ -66,7 +69,56 @@ async def vectorize_card(
             return card_vector
             
     except Exception as e:
-        logger.warning("Failed to vectorize card", card_id=card.id, error=str(e))
+        # Try to get card_id safely for logging
+        card_id = getattr(card, 'id', None)
+        logger.warning("Failed to vectorize card", card_id=card_id, error=str(e))
+        return None
+
+
+async def vectorize_card_by_attrs(
+    db: AsyncSession,
+    card_id: int,
+    card_attrs: dict[str, Any],
+    vectorizer: VectorizationService,
+) -> CardFeatureVector | None:
+    """
+    Vectorize a card by attributes (avoids lazy loading issues).
+    
+    Args:
+        db: Database session.
+        card_id: Card ID.
+        card_attrs: Dictionary with card attributes (name, type_line, oracle_text, etc.).
+        vectorizer: Vectorization service instance.
+        
+    Returns:
+        CardFeatureVector if successful, None otherwise.
+    """
+    try:
+        # Vectorize
+        feature_vector = vectorizer.vectorize_card(card_attrs)
+        
+        # Check if vector already exists
+        existing_query = select(CardFeatureVector).where(CardFeatureVector.card_id == card_id)
+        result = await db.execute(existing_query)
+        existing = result.scalar_one_or_none()
+        
+        if existing:
+            # Update existing vector
+            existing.set_vector(feature_vector)
+            existing.model_version = vectorizer.embedding_model_name
+            return existing
+        else:
+            # Create new vector
+            card_vector = CardFeatureVector(
+                card_id=card_id,
+                model_version=vectorizer.embedding_model_name,
+            )
+            card_vector.set_vector(feature_vector)
+            db.add(card_vector)
+            return card_vector
+            
+    except Exception as e:
+        logger.warning("Failed to vectorize card by attributes", card_id=card_id, error=str(e))
         return None
 
 
