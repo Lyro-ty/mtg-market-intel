@@ -13,7 +13,6 @@ import {
   DollarSign,
   BarChart3,
   Filter,
-  Activity,
 } from 'lucide-react';
 import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
 import {
@@ -22,7 +21,6 @@ import {
 } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { LoadingPage, Loading } from '@/components/ui/Loading';
 import { InventoryImportModal } from '@/components/inventory/InventoryImportModal';
 import { InventoryItemCard } from '@/components/inventory/InventoryItemCard';
@@ -48,45 +46,38 @@ function InventoryPageContent(): JSX.Element {
   
   const queryClient = useQueryClient();
   
-  // Fetch inventory data
-  // Refetch every 15 minutes to match inventory scrape interval
   const { data: inventoryData, isLoading: inventoryLoading } = useQuery({
     queryKey: ['inventory', page],
     queryFn: () => getInventory({ page, pageSize: 20 }),
-    refetchInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
+    refetchInterval: 15 * 60 * 1000,
   });
   
-  // Fetch analytics
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
     queryKey: ['inventory-analytics'],
     queryFn: getInventoryAnalytics,
-    refetchInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
+    refetchInterval: 15 * 60 * 1000,
   });
   
-  // Fetch recommendations
   const { data: recommendations, isLoading: recsLoading } = useQuery({
     queryKey: ['inventory-recommendations', recPage],
     queryFn: () => getInventoryRecommendations({ page: recPage, pageSize: 20 }),
-    refetchInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
+    refetchInterval: 15 * 60 * 1000,
   });
   
-  // Fetch inventory market index
   const { data: inventoryMarketIndex, isLoading: indexLoading } = useQuery({
     queryKey: ['inventory-market-index', marketIndexRange],
     queryFn: () => getInventoryMarketIndex(marketIndexRange),
-    refetchInterval: 2 * 60 * 1000, // 2 minutes
+    refetchInterval: 2 * 60 * 1000,
     refetchIntervalInBackground: true,
   });
   
-  // Fetch inventory top movers
   const { data: inventoryTopMovers, isLoading: moversLoading } = useQuery({
     queryKey: ['inventory-top-movers', '24h'],
     queryFn: () => getInventoryTopMovers('24h'),
-    refetchInterval: 2 * 60 * 1000, // 2 minutes
+    refetchInterval: 2 * 60 * 1000,
     refetchIntervalInBackground: true,
   });
   
-  // Mutations
   const refreshMutation = useMutation({
     mutationFn: refreshInventoryValuations,
     onSuccess: () => {
@@ -105,9 +96,23 @@ function InventoryPageContent(): JSX.Element {
   
   const isLoading = inventoryLoading || analyticsLoading;
   
+  const tabs = [
+    { id: 'overview' as const, label: 'Overview', icon: BarChart3 },
+    { id: 'items' as const, label: 'All Items', icon: Package },
+    { id: 'recommendations' as const, label: 'Recommendations', icon: Zap },
+  ];
+  
+  const conditionLabels: Record<string, string> = {
+    MINT: 'Mint',
+    NEAR_MINT: 'Near Mint',
+    LIGHTLY_PLAYED: 'Lightly Played',
+    MODERATELY_PLAYED: 'Mod. Played',
+    HEAVILY_PLAYED: 'Heavily Played',
+    DAMAGED: 'Damaged',
+  };
+  
   return (
-    <>
-      <div className="space-y-6 animate-in">
+    <div className="space-y-6 animate-in">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -193,11 +198,10 @@ function InventoryPageContent(): JSX.Element {
             </CardContent>
           </Card>
           
-          <Card className={`bg-gradient-to-br ${
-            analytics.total_profit_loss >= 0
-              ? 'from-emerald-500/10 to-emerald-600/5 border-emerald-500/20'
-              : 'from-red-500/10 to-red-600/5 border-red-500/20'
-          }`}>
+          <Card className={analytics.total_profit_loss >= 0
+            ? 'bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-500/20'
+            : 'bg-gradient-to-br from-red-500/10 to-red-600/5 border-red-500/20'
+          }>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
                 {analytics.total_profit_loss >= 0 ? (
@@ -237,11 +241,10 @@ function InventoryPageContent(): JSX.Element {
             </CardContent>
           </Card>
           
-          <Card className={`bg-gradient-to-br ${
-            analytics.critical_alerts > 0
-              ? 'from-red-500/10 to-red-600/5 border-red-500/20'
-              : 'from-gray-500/10 to-gray-600/5 border-gray-500/20'
-          }`}>
+          <Card className={analytics.critical_alerts > 0
+            ? 'bg-gradient-to-br from-red-500/10 to-red-600/5 border-red-500/20'
+            : 'bg-gradient-to-br from-gray-500/10 to-gray-600/5 border-gray-500/20'
+          }>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className={`w-5 h-5 ${analytics.critical_alerts > 0 ? 'text-red-500' : 'text-gray-500'}`} />
@@ -262,24 +265,23 @@ function InventoryPageContent(): JSX.Element {
       
       {/* Tabs */}
       <div className="flex gap-2 border-b border-[rgb(var(--border))]">
-        {([
-          { id: 'overview', label: 'Overview', icon: BarChart3 },
-          { id: 'items', label: 'All Items', icon: Package },
-          { id: 'recommendations', label: 'Recommendations', icon: Zap },
-        ] as const).map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-[2px] ${
-              activeTab === tab.id
-                ? 'text-amber-500 border-amber-500'
-                : 'text-[rgb(var(--muted-foreground))] border-transparent hover:text-[rgb(var(--foreground))]'
-            }`}
-          >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const TabIcon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-[2px] ${
+                activeTab === tab.id
+                  ? 'text-amber-500 border-amber-500'
+                  : 'text-[rgb(var(--muted-foreground))] border-transparent hover:text-[rgb(var(--foreground))]'
+              }`}
+            >
+              <TabIcon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
       
       {/* Tab Content */}
@@ -305,7 +307,7 @@ function InventoryPageContent(): JSX.Element {
                 />
               ) : null}
               
-              {/* Top Movers: Gainers & Losers */}
+              {/* Top Movers */}
               {moversLoading && !inventoryTopMovers ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {[1, 2].map((i) => (
@@ -390,66 +392,60 @@ function InventoryPageContent(): JSX.Element {
               
               {/* Analytics Cards */}
               <div className="grid grid-cols-2 gap-6">
-              {/* Value Distribution */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <BarChart3 className="w-5 h-5 text-amber-500" />
-                    <h3 className="font-semibold text-[rgb(var(--foreground))]">Value Distribution</h3>
-                  </div>
-                  <div className="space-y-3">
-                    {Object.entries(analytics.value_distribution).map(([range, count]) => (
-                      <div key={range} className="flex items-center gap-3">
-                        <span className="w-16 text-sm text-[rgb(var(--muted-foreground))]">{range}</span>
-                        <div className="flex-1 h-6 bg-[rgb(var(--secondary))] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-amber-500 to-orange-600 rounded-full"
-                            style={{
-                              width: `${Math.max(5, (count / Math.max(...Object.values(analytics.value_distribution), 1)) * 100)}%`,
-                            }}
-                          />
-                        </div>
-                        <span className="w-12 text-sm text-[rgb(var(--foreground))] text-right">{count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Condition Breakdown */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Filter className="w-5 h-5 text-blue-500" />
-                    <h3 className="font-semibold text-[rgb(var(--foreground))]">Condition Breakdown</h3>
-                  </div>
-                  <div className="space-y-3">
-                    {Object.entries(analytics.condition_breakdown).map(([condition, count]) => {
-                      const labels: Record<string, string> = {
-                        MINT: 'Mint',
-                        NEAR_MINT: 'Near Mint',
-                        LIGHTLY_PLAYED: 'Lightly Played',
-                        MODERATELY_PLAYED: 'Mod. Played',
-                        HEAVILY_PLAYED: 'Heavily Played',
-                        DAMAGED: 'Damaged',
-                      };
-                      return (
+                {/* Value Distribution */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <BarChart3 className="w-5 h-5 text-amber-500" />
+                      <h3 className="font-semibold text-[rgb(var(--foreground))]">Value Distribution</h3>
+                    </div>
+                    <div className="space-y-3">
+                      {Object.entries(analytics.value_distribution).map(([range, count]) => {
+                        const maxCount = Math.max(...Object.values(analytics.value_distribution), 1);
+                        const widthPercent = Math.max(5, (count / maxCount) * 100);
+                        return (
+                          <div key={range} className="flex items-center gap-3">
+                            <span className="w-16 text-sm text-[rgb(var(--muted-foreground))]">{range}</span>
+                            <div className="flex-1 h-6 bg-[rgb(var(--secondary))] rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-amber-500 to-orange-600 rounded-full"
+                                style={{ width: `${widthPercent}%` }}
+                              />
+                            </div>
+                            <span className="w-12 text-sm text-[rgb(var(--foreground))] text-right">{count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Condition Breakdown */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Filter className="w-5 h-5 text-blue-500" />
+                      <h3 className="font-semibold text-[rgb(var(--foreground))]">Condition Breakdown</h3>
+                    </div>
+                    <div className="space-y-3">
+                      {Object.entries(analytics.condition_breakdown).map(([condition, count]) => (
                         <div key={condition} className="flex items-center justify-between p-2 rounded-lg bg-[rgb(var(--secondary))]/50">
-                          <span className="text-sm text-[rgb(var(--foreground))]">{labels[condition] || condition}</span>
+                          <span className="text-sm text-[rgb(var(--foreground))]">
+                            {conditionLabels[condition] || condition}
+                          </span>
                           <span className="font-medium text-[rgb(var(--foreground))]">{count}</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           )}
           
           {/* Items Tab */}
           {activeTab === 'items' && inventoryData && (
             <div className="space-y-4">
-              {/* Summary */}
               <div className="text-sm text-[rgb(var(--muted-foreground))]">
                 Showing {inventoryData.items.length} of {inventoryData.total} items
               </div>
@@ -480,7 +476,6 @@ function InventoryPageContent(): JSX.Element {
                     ))}
                   </div>
                   
-                  {/* Pagination */}
                   {inventoryData.total > 20 && (
                     <div className="flex items-center justify-center gap-2">
                       <Button
@@ -512,7 +507,6 @@ function InventoryPageContent(): JSX.Element {
           {/* Recommendations Tab */}
           {activeTab === 'recommendations' && recommendations && (
             <div className="space-y-4">
-              {/* Summary */}
               <div className="grid grid-cols-4 gap-4">
                 <Card className={recommendations.critical_count > 0 ? 'border-red-500/50' : ''}>
                   <CardContent className="p-3 text-center">
@@ -540,7 +534,6 @@ function InventoryPageContent(): JSX.Element {
                 </Card>
               </div>
               
-              {/* Info Banner */}
               <Card className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30">
                 <CardContent className="p-4 flex items-center gap-3">
                   <Zap className="w-5 h-5 text-amber-500 shrink-0" />
@@ -567,7 +560,6 @@ function InventoryPageContent(): JSX.Element {
                     ))}
                   </div>
                   
-                  {/* Pagination */}
                   {recommendations.total > 20 && (
                     <div className="flex items-center justify-center gap-2">
                       <Button
@@ -600,12 +592,11 @@ function InventoryPageContent(): JSX.Element {
       
       {/* Import Modal */}
       <InventoryImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
-      </div>
-    </>
+    </div>
   );
 }
 
-export default function InventoryPage() {
+export default function InventoryPage(): JSX.Element {
   return (
     <ProtectedRoute>
       <InventoryPageContent />
