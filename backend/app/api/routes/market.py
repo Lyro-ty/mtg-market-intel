@@ -79,36 +79,48 @@ async def get_market_overview(
             }
         raise HTTPException(status_code=500, detail="Failed to fetch market overview")
     
-    # Total listings (active listings from last 24h)
+    # Total price snapshots (active price data from last 24h)
+    # Note: We no longer collect individual listings - using price snapshots from Scryfall/MTGJSON
     day_ago = datetime.utcnow() - timedelta(days=1)
     try:
-        total_listings = await asyncio.wait_for(
+        total_snapshots = await asyncio.wait_for(
             db.scalar(
-                select(func.sum(Listing.quantity)).where(
-                    Listing.last_seen_at >= day_ago
+                select(func.count(PriceSnapshot.id)).where(
+                    PriceSnapshot.snapshot_time >= day_ago
                 )
             ),
             timeout=QUERY_TIMEOUT
         ) or 0
         
-        # 24h trade volume (USD) - estimate from price snapshots and listings
-        # This is an approximation: sum of (price * quantity) for recent listings
+        # 24h trade volume (USD) - estimate from price snapshots
+        # Estimate: sum of prices * estimated quantity (using num_listings if available, else 1)
+        # This is a rough approximation since we don't have exact listing quantities
         volume_24h = await asyncio.wait_for(
             db.scalar(
-                select(func.sum(Listing.price * Listing.quantity)).where(
-                    Listing.last_seen_at >= day_ago,
-                    Listing.currency == "USD"
+                select(
+                    func.sum(
+                        PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)
+                    )
+                ).where(
+                    PriceSnapshot.snapshot_time >= day_ago,
+                    PriceSnapshot.currency == "USD",
+                    PriceSnapshot.price > 0
                 )
             ),
             timeout=QUERY_TIMEOUT
         ) or 0
         
-        # If no USD listings, try to estimate from other currencies (rough conversion)
+        # If no USD snapshots, try to estimate from other currencies
         if volume_24h == 0:
             volume_24h = await asyncio.wait_for(
                 db.scalar(
-                    select(func.sum(Listing.price * Listing.quantity)).where(
-                        Listing.last_seen_at >= day_ago
+                    select(
+                        func.sum(
+                            PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)
+                        )
+                    ).where(
+                        PriceSnapshot.snapshot_time >= day_ago,
+                        PriceSnapshot.price > 0
                     )
                 ),
                 timeout=QUERY_TIMEOUT
@@ -207,7 +219,7 @@ async def get_market_overview(
     
     result = {
         "totalCardsTracked": total_cards,
-        "totalListings": int(total_listings),
+        "totalSnapshots": int(total_snapshots),  # Price snapshots (replaces listings)
         "volume24hUsd": float(volume_24h),
         "avgPriceChange24hPct": avg_price_change_24h,
         "activeFormatsTracked": active_formats_tracked,

@@ -238,6 +238,65 @@ class ScryfallAdapter(MarketplaceAdapter):
             snapshot_time=datetime.utcnow(),
         )
     
+    def _parse_all_price_data(self, card_data: dict) -> list[CardPrice]:
+        """
+        Parse all marketplace prices from Scryfall card data.
+        
+        Scryfall provides prices from multiple marketplaces:
+        - usd/usd_foil: TCGPlayer (USD)
+        - eur/eur_foil: Cardmarket (EUR)
+        - tix: MTGO (tix)
+        
+        Returns a list of CardPrice objects, one per marketplace/currency.
+        """
+        prices = card_data.get("prices", {})
+        price_list = []
+        
+        # TCGPlayer prices (USD)
+        price_usd = prices.get("usd")
+        price_usd_foil = prices.get("usd_foil")
+        if price_usd:
+            price_list.append(CardPrice(
+                card_name=card_data.get("name", ""),
+                set_code=card_data.get("set", "").upper(),
+                collector_number=card_data.get("collector_number", ""),
+                scryfall_id=card_data.get("id"),
+                price=float(price_usd),
+                currency="USD",
+                price_foil=float(price_usd_foil) if price_usd_foil else None,
+                snapshot_time=datetime.utcnow(),
+            ))
+        
+        # Cardmarket prices (EUR)
+        price_eur = prices.get("eur")
+        price_eur_foil = prices.get("eur_foil")
+        if price_eur:
+            price_list.append(CardPrice(
+                card_name=card_data.get("name", ""),
+                set_code=card_data.get("set", "").upper(),
+                collector_number=card_data.get("collector_number", ""),
+                scryfall_id=card_data.get("id"),
+                price=float(price_eur),
+                currency="EUR",
+                price_foil=float(price_eur_foil) if price_eur_foil else None,
+                snapshot_time=datetime.utcnow(),
+            ))
+        
+        # MTGO prices (tix) - less common but useful
+        price_tix = prices.get("tix")
+        if price_tix:
+            price_list.append(CardPrice(
+                card_name=card_data.get("name", ""),
+                set_code=card_data.get("set", "").upper(),
+                collector_number=card_data.get("collector_number", ""),
+                scryfall_id=card_data.get("id"),
+                price=float(price_tix),
+                currency="TIX",
+                snapshot_time=datetime.utcnow(),
+            ))
+        
+        return price_list
+    
     def _normalize_card_data(self, card: dict) -> dict:
         """Normalize Scryfall card data to our schema."""
         # Handle double-faced cards

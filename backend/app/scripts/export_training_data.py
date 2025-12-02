@@ -22,9 +22,7 @@ from sqlalchemy.ext.asyncio import (
 from app.core.config import settings
 from app.models import (
     Card,
-    Listing,
     CardFeatureVector,
-    ListingFeatureVector,
     PriceSnapshot,
     Marketplace,
 )
@@ -34,16 +32,16 @@ logger = structlog.get_logger()
 
 async def export_training_data(
     output_dir: Path,
-    min_listings_per_card: int = 5,
+    min_snapshots_per_card: int = 5,
     include_labels: bool = True,
     include_historical_prices: bool = True,
 ) -> dict[str, Any]:
     """
-    Export vectorized training data.
+    Export vectorized training data from Scryfall and MTGJSON price snapshots.
     
     Args:
         output_dir: Directory to save exported data.
-        min_listings_per_card: Minimum listings per card to include.
+        min_snapshots_per_card: Minimum price snapshots per card to include.
         include_labels: Whether to include price labels for supervised learning.
         include_historical_prices: Whether to include MTGJSON historical price data.
         
@@ -69,9 +67,9 @@ async def export_training_data(
             
             logger.info("Found cards with vectors", count=len(cards))
             
-            # Collect training data
+            # Collect training data from price snapshots
             card_vectors = []
-            listing_vectors = []
+            snapshot_vectors = []
             labels = []
             metadata = []
             
@@ -88,55 +86,73 @@ async def export_training_data(
                 
                 card_vec = card_vector_obj.get_vector()
                 
-                # Get listings for this card
-                listings_query = select(Listing).where(Listing.card_id == card.id)
-                listings_result = await db.execute(listings_query)
-                card_listings = listings_result.scalars().all()
+                # Get price snapshots for this card (from Scryfall and MTGJSON)
+                snapshots_query = select(PriceSnapshot).where(
+                    PriceSnapshot.card_id == card.id,
+                    PriceSnapshot.price > 0
+                ).order_by(PriceSnapshot.snapshot_time.desc())
+                snapshots_result = await db.execute(snapshots_query)
+                card_snapshots = snapshots_result.scalars().all()
                 
-                if len(card_listings) < min_listings_per_card:
+                if len(card_snapshots) < min_snapshots_per_card:
                     continue
                 
-                # Get listing vectors
-                listing_ids = [listing.id for listing in card_listings]
-                listing_vectors_query = select(ListingFeatureVector).where(
-                    ListingFeatureVector.listing_id.in_(listing_ids)
-                )
-                listing_vectors_result = await db.execute(listing_vectors_query)
-                listing_vector_objs = {lv.listing_id: lv for lv in listing_vectors_result.scalars().all()}
-                
-                # Collect data for each listing
-                for listing in card_listings:
-                    listing_vector_obj = listing_vector_objs.get(listing.id)
-                    if not listing_vector_obj:
-                        continue
+                # Use price snapshots as training examples
+                # For each snapshot, combine card vector with snapshot metadata
+                for snapshot in card_snapshots:
+                    # Get marketplace info
+                    marketplace_query = select(Marketplace).where(Marketplace.id == snapshot.marketplace_id)
+                    marketplace_result = await db.execute(marketplace_query)
+                    marketplace = marketplace_result.scalar_one_or_none()
                     
-                    listing_vec = listing_vector_obj.get_vector()
+                    # Create snapshot feature vector by combining card vector with snapshot features
+                    # Features: card vector + timestamp features + marketplace features
+                    snapshot_features = np.concatenate([
+                        card_vec,
+                        np.array([
+                            snapshot.snapshot_time.timestamp() if snapshot.snapshot_time else 0,
+                            float(snapshot.price) if snapshot.price else 0,
+                            float(snapshot.price_foil) if snapshot.price_foil else 0,
+                            float(snapshot.min_price) if snapshot.min_price else 0,
+                            float(snapshot.max_price) if snapshot.max_price else 0,
+                            float(snapshot.avg_price) if snapshot.avg_price else 0,
+                            float(snapshot.median_price) if snapshot.median_price else 0,
+                            int(snapshot.num_listings) if snapshot.num_listings else 0,
+                            int(snapshot.total_quantity) if snapshot.total_quantity else 0,
+                            snapshot.marketplace_id or 0,
+                        ])
+                    ])
                     
                     card_vectors.append(card_vec)
-                    listing_vectors.append(listing_vec)
+                    snapshot_vectors.append(snapshot_features)
                     
                     if include_labels:
-                        labels.append(float(listing.price))
+                        # Use future price as label (if available)
+                        # For now, use current price as label
+                        labels.append(float(snapshot.price) if snapshot.price else 0.0)
                     
                     metadata.append({
                         "card_id": card.id,
                         "card_name": card.name,
                         "set_code": card.set_code,
-                        "listing_id": listing.id,
-                        "price": float(listing.price),
-                        "condition": listing.condition,
-                        "is_foil": listing.is_foil,
-                        "marketplace_id": listing.marketplace_id,
+                        "snapshot_id": snapshot.id,
+                        "price": float(snapshot.price) if snapshot.price else 0.0,
+                        "price_foil": float(snapshot.price_foil) if snapshot.price_foil else None,
+                        "marketplace_id": snapshot.marketplace_id,
+                        "marketplace_slug": marketplace.slug if marketplace else None,
+                        "snapshot_time": snapshot.snapshot_time.isoformat() if snapshot.snapshot_time else None,
+                        "currency": snapshot.currency,
                     })
             
             # Convert to numpy arrays
             card_vectors_array = np.array(card_vectors)
-            listing_vectors_array = np.array(listing_vectors)
+            snapshot_vectors_array = np.array(snapshot_vectors) if snapshot_vectors else None
             labels_array = np.array(labels) if labels else None
             
             # Save data
             np.save(output_dir / "card_vectors.npy", card_vectors_array)
-            np.save(output_dir / "listing_vectors.npy", listing_vectors_array)
+            if snapshot_vectors_array is not None:
+                np.save(output_dir / "snapshot_vectors.npy", snapshot_vectors_array)
             
             if labels_array is not None:
                 np.save(output_dir / "labels.npy", labels_array)
@@ -153,7 +169,7 @@ async def export_training_data(
             # Save feature info
             feature_info = {
                 "card_feature_dim": len(card_vectors[0]) if card_vectors else 0,
-                "listing_feature_dim": len(listing_vectors[0]) if listing_vectors else 0,
+                "snapshot_feature_dim": len(snapshot_vectors[0]) if snapshot_vectors else 0,
                 "total_samples": len(card_vectors),
                 "exported_at": datetime.utcnow().isoformat(),
                 "includes_historical_prices": include_historical_prices,
@@ -173,14 +189,14 @@ async def export_training_data(
                 output_dir=str(output_dir),
                 samples=len(card_vectors),
                 card_dim=feature_info["card_feature_dim"],
-                listing_dim=feature_info["listing_feature_dim"],
+                snapshot_dim=feature_info["snapshot_feature_dim"],
                 historical_prices=historical_prices_data["total_snapshots"] if historical_prices_data else 0,
             )
             
             return {
                 "samples": len(card_vectors),
                 "card_feature_dim": feature_info["card_feature_dim"],
-                "listing_feature_dim": feature_info["listing_feature_dim"],
+                "snapshot_feature_dim": feature_info["snapshot_feature_dim"],
                 "output_dir": str(output_dir),
                 "historical_prices": historical_prices_data,
             }

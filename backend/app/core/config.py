@@ -75,7 +75,8 @@ class Settings(BaseSettings):
     scraper_backoff_factor: float = 2.0
     
     # Scheduled Tasks
-    scrape_interval_minutes: int = 30
+    # Note: Price collection now runs every 5 minutes (configured in celery_app.py)
+    # Data older than 24 hours is considered stale
     analytics_interval_hours: int = 1
     recommendations_interval_hours: int = 6
     

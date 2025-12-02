@@ -39,17 +39,24 @@ celery_app.conf.update(
     
     # Beat schedule for periodic tasks
     beat_schedule={
-        # Scrape marketplace data every 30 minutes
-        "scrape-marketplaces": {
-            "task": "app.tasks.ingestion.scrape_all_marketplaces",
-            "schedule": crontab(minute=f"*/{settings.scrape_interval_minutes}"),
+        # Aggressively collect price data every 5 minutes (data older than 24h is stale)
+        "collect-price-data": {
+            "task": "app.tasks.ingestion.collect_price_data",
+            "schedule": crontab(minute="*/5"),  # Every 5 minutes
             "options": {"queue": "ingestion"},
         },
         
-        # Scrape INVENTORY cards every 15 minutes (higher priority)
-        "scrape-inventory": {
-            "task": "app.tasks.ingestion.scrape_inventory_cards",
-            "schedule": crontab(minute="*/15"),
+        # Collect INVENTORY card prices every 2 minutes (highest priority)
+        "collect-inventory-prices": {
+            "task": "app.tasks.ingestion.collect_inventory_prices",
+            "schedule": crontab(minute="*/2"),  # Every 2 minutes
+            "options": {"queue": "ingestion"},
+        },
+        
+        # Import MTGJSON historical prices daily at 3 AM
+        "import-mtgjson-historical": {
+            "task": "app.tasks.ingestion.import_mtgjson_historical_prices",
+            "schedule": crontab(minute=0, hour=3),
             "options": {"queue": "ingestion"},
         },
         

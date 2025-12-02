@@ -451,12 +451,13 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     """
     Synchronously refresh card data and return updated detail.
     
-    1. Fetches latest price from Scryfall (includes TCGPlayer prices)
-    2. Fetches real listings from enabled marketplaces (TCGPlayer, Card Kingdom, Cardmarket)
-    3. Creates price snapshots and listings
-    4. Computes metrics
-    5. Generates recommendations
-    6. Returns complete card detail
+    1. Fetches latest price from Scryfall (aggregated prices from TCGPlayer, Cardmarket, etc.)
+    2. Creates price snapshot
+    3. Computes metrics
+    4. Generates recommendations
+    5. Returns complete card detail
+    
+    Note: We no longer scrape individual listings. Focus on aggregated price data from Scryfall.
     """
     logger.info("Sync refresh starting", card_id=card.id, card_name=card.name)
     
@@ -491,138 +492,14 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     finally:
         await scryfall.close()
     
-    # 2. Fetch real listings from enabled marketplaces
-    enabled_marketplaces = await _get_enabled_marketplace_slugs(db)
-    # Filter out 'scryfall' and 'mock' - we want real marketplaces only
-    real_marketplaces = [slug for slug in enabled_marketplaces if slug not in ['scryfall', 'mock']]
-    
-    listings_created = 0
-    snapshots_created = 0
-    
-    for marketplace_slug in real_marketplaces:
-        try:
-            # Get marketplace record
-            mp_query = select(Marketplace).where(Marketplace.slug == marketplace_slug)
-            mp_result = await db.execute(mp_query)
-            marketplace = mp_result.scalar_one_or_none()
-            
-            if not marketplace:
-                continue
-            
-            # Get adapter for this marketplace
-            from app.services.ingestion import get_adapter
-            adapter = get_adapter(marketplace_slug, cached=False)
-            
-            try:
-                # Fetch price data from marketplace
-                price_data = await adapter.fetch_price(
-                    card_name=card.name,
-                    set_code=card.set_code,
-                    collector_number=card.collector_number,
-                    scryfall_id=card.scryfall_id,
-                )
-                
-                if price_data and price_data.price > 0:
-                    # Create price snapshot
-                    snapshot = PriceSnapshot(
-                        card_id=card.id,
-                        marketplace_id=marketplace.id,
-                        snapshot_time=datetime.utcnow(),
-                        price=price_data.price,
-                        currency=price_data.currency,
-                        price_foil=price_data.price_foil,
-                        min_price=price_data.price_low,
-                        max_price=price_data.price_high,
-                        avg_price=price_data.price_mid,
-                        median_price=price_data.price_market,
-                        num_listings=price_data.num_listings,
-                        total_quantity=price_data.total_quantity,
-                    )
-                    db.add(snapshot)
-                    snapshots_created += 1
-                
-                # Fetch individual listings (this is the key part - real scraping!)
-                listings = await adapter.fetch_listings(
-                    card_name=card.name,
-                    set_code=card.set_code,
-                    scryfall_id=card.scryfall_id,
-                    limit=100,  # Get as many listings as possible
-                )
-                
-                # Store listings in database
-                for listing_data in listings:
-                    # Check if listing already exists by external_id
-                    existing_query = select(Listing).where(
-                        Listing.external_id == listing_data.external_id,
-                        Listing.marketplace_id == marketplace.id,
-                    )
-                    existing_result = await db.execute(existing_query)
-                    existing = existing_result.scalar_one_or_none()
-                    
-                    if existing:
-                        # Update existing listing
-                        existing.condition = listing_data.condition
-                        existing.language = listing_data.language
-                        existing.is_foil = listing_data.is_foil
-                        existing.price = listing_data.price
-                        existing.currency = listing_data.currency
-                        existing.quantity = listing_data.quantity
-                        existing.seller_name = listing_data.seller_name
-                        existing.seller_rating = listing_data.seller_rating
-                        existing.listing_url = listing_data.listing_url
-                        existing.last_seen_at = datetime.utcnow()
-                    else:
-                        # Create new listing
-                        listing = Listing(
-                            card_id=card.id,
-                            marketplace_id=marketplace.id,
-                            condition=listing_data.condition,
-                            language=listing_data.language,
-                            is_foil=listing_data.is_foil,
-                            price=listing_data.price,
-                            currency=listing_data.currency,
-                            quantity=listing_data.quantity,
-                            seller_name=listing_data.seller_name,
-                            seller_rating=listing_data.seller_rating,
-                            external_id=listing_data.external_id,
-                            listing_url=listing_data.listing_url,
-                            last_seen_at=datetime.utcnow(),
-                        )
-                        db.add(listing)
-                        listings_created += 1
-                
-                logger.info(
-                    "Fetched listings from marketplace",
-                    marketplace=marketplace_slug,
-                    card_id=card.id,
-                    listings_count=len(listings),
-                )
-                
-            except Exception as e:
-                logger.warning(
-                    "Failed to fetch from marketplace",
-                    marketplace=marketplace_slug,
-                    card_id=card.id,
-                    error=str(e),
-                )
-            finally:
-                # Close adapter to release resources
-                if hasattr(adapter, 'close'):
-                    await adapter.close()
-                    
-        except Exception as e:
-            logger.warning(
-                "Error processing marketplace",
-                marketplace=marketplace_slug,
-                card_id=card.id,
-                error=str(e),
-            )
+    # 2. Price data is already collected from Scryfall above
+    # We no longer scrape individual listings - focus on aggregated price data
+    snapshots_created = 1 if price_data and price_data.price > 0 else 0
     
     await db.flush()
     logger.info(
-        "Marketplace listings fetched",
+        "Price data refreshed",
         card_id=card.id,
-        listings_created=listings_created,
         snapshots_created=snapshots_created,
     )
     
