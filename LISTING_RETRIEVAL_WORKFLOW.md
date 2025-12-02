@@ -210,3 +210,4 @@ curl -X POST "http://localhost:8000/api/cards/1/refresh?sync=true"
 5. **Consider adding API support** if credentials are available
 
 
+
