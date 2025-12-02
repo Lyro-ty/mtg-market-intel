@@ -89,6 +89,14 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=2),
             "options": {"queue": "ingestion"},
         },
+        
+        # Bulk vectorize all cards every evening at 11 PM
+        # This ensures all cards have pre-computed embeddings for faster recommendations
+        "bulk-vectorize-cards": {
+            "task": "app.tasks.ingestion.bulk_vectorize_cards",
+            "schedule": crontab(minute=0, hour=23),  # 11 PM UTC
+            "options": {"queue": "ingestion"},
+        },
     },
     
     # Task routing

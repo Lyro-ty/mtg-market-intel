@@ -5,7 +5,8 @@ Focus: Aggressive price data collection from Scryfall and MTGJSON.
 No web scraping - using free, reliable APIs only.
 """
 import asyncio
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import structlog
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import settings
-from app.models import Card, Marketplace, Listing, PriceSnapshot, InventoryItem
+from app.models import Card, Marketplace, Listing, PriceSnapshot, InventoryItem, CardFeatureVector
 from app.services.ingestion import get_adapter, get_all_adapters, ScryfallAdapter
 from app.services.agents.normalization import NormalizationService
 from app.services.vectorization import get_vectorization_service
@@ -643,6 +644,173 @@ async def _import_mtgjson_historical_prices_async(
             finally:
                 if hasattr(adapter, 'close'):
                     await adapter.close()
+    finally:
+        await engine.dispose()
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+def bulk_vectorize_cards(
+    self,
+    card_ids: list[int] | None = None,
+    batch_size: int = 100,
+    prioritize_missing: bool = True,
+) -> dict[str, Any]:
+    """
+    Bulk vectorize cards from Scryfall default card data.
+    
+    This task:
+    1. Gets all cards (or specified cards)
+    2. Prioritizes cards without vectors if prioritize_missing=True
+    3. Vectorizes cards in batches
+    4. Updates existing vectors if card data changed
+    
+    Args:
+        card_ids: Optional list of card IDs to vectorize. None = all cards.
+        batch_size: Number of cards to process per batch.
+        prioritize_missing: If True, prioritize cards without vectors.
+        
+    Returns:
+        Vectorization results.
+    """
+    return run_async(_bulk_vectorize_cards_async(card_ids, batch_size, prioritize_missing))
+
+
+async def _bulk_vectorize_cards_async(
+    card_ids: list[int] | None,
+    batch_size: int,
+    prioritize_missing: bool,
+) -> dict[str, Any]:
+    """Async implementation of bulk card vectorization."""
+    logger.info(
+        "Starting bulk card vectorization",
+        batch_size=batch_size,
+        prioritize_missing=prioritize_missing,
+    )
+    
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            # Get vectorization service (cached instance)
+            vectorizer = get_vectorization_service()
+            
+            # Build query
+            if card_ids:
+                cards_query = select(Card).where(Card.id.in_(card_ids))
+                result = await db.execute(cards_query)
+                cards = list(result.scalars().all())
+            elif prioritize_missing:
+                # Get cards without vectors first, then all others
+                from sqlalchemy import and_
+                cards_without_vectors_query = (
+                    select(Card)
+                    .outerjoin(CardFeatureVector, Card.id == CardFeatureVector.card_id)
+                    .where(CardFeatureVector.card_id.is_(None))
+                )
+                result = await db.execute(cards_without_vectors_query)
+                cards_without_vectors = list(result.scalars().all())
+                
+                # Get cards with vectors (for potential updates)
+                cards_with_vectors_query = (
+                    select(Card)
+                    .join(CardFeatureVector, Card.id == CardFeatureVector.card_id)
+                )
+                result = await db.execute(cards_with_vectors_query)
+                cards_with_vectors = list(result.scalars().all())
+                
+                # Prioritize cards without vectors
+                cards = cards_without_vectors + cards_with_vectors
+            else:
+                cards_query = select(Card)
+                result = await db.execute(cards_query)
+                cards = list(result.scalars().all())
+            
+            if not cards:
+                logger.warning("No cards found to vectorize")
+                return {
+                    "status": "no_cards",
+                    "vectors_created": 0,
+                    "vectors_updated": 0,
+                    "vectors_skipped": 0,
+                }
+            
+            logger.info("Vectorizing cards", total_cards=len(cards))
+            
+            results = {
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "total_cards": len(cards),
+                "vectors_created": 0,
+                "vectors_updated": 0,
+                "vectors_skipped": 0,
+                "errors": [],
+            }
+            
+            # Process in batches
+            for batch_start in range(0, len(cards), batch_size):
+                batch = cards[batch_start:batch_start + batch_size]
+                
+                for card in batch:
+                    try:
+                        # Check if vector exists
+                        existing_query = select(CardFeatureVector).where(
+                            CardFeatureVector.card_id == card.id
+                        )
+                        result = await db.execute(existing_query)
+                        existing_vector = result.scalar_one_or_none()
+                        
+                        # Prepare card data for vectorization
+                        card_data = {
+                            "name": card.name,
+                            "type_line": card.type_line,
+                            "oracle_text": card.oracle_text,
+                            "rarity": card.rarity,
+                            "cmc": card.cmc,
+                            "colors": json.loads(card.colors) if card.colors else None,
+                            "mana_cost": card.mana_cost,
+                        }
+                        
+                        # Vectorize
+                        card_vector_obj = await vectorize_card(db, card, vectorizer)
+                        
+                        if card_vector_obj:
+                            if existing_vector:
+                                results["vectors_updated"] += 1
+                            else:
+                                results["vectors_created"] += 1
+                        else:
+                            results["vectors_skipped"] += 1
+                        
+                        # Commit every 10 batches to avoid long transactions
+                        if (batch_start // batch_size + 1) % 10 == 0:
+                            await db.commit()
+                            logger.info(
+                                "Vectorization progress",
+                                processed=batch_start + len(batch),
+                                total=len(cards),
+                                created=results["vectors_created"],
+                                updated=results["vectors_updated"],
+                            )
+                    
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to vectorize card",
+                            card_id=card.id,
+                            error=str(e),
+                        )
+                        results["errors"].append({"card_id": card.id, "error": str(e)})
+                
+                # Commit batch
+                await db.commit()
+            
+            results["completed_at"] = datetime.now(timezone.utc).isoformat()
+            logger.info(
+                "Bulk vectorization complete",
+                vectors_created=results["vectors_created"],
+                vectors_updated=results["vectors_updated"],
+                vectors_skipped=results["vectors_skipped"],
+                errors=len(results["errors"]),
+            )
+            
+            return results
     finally:
         await engine.dispose()
 
