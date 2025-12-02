@@ -106,7 +106,8 @@ function InventoryPageContent(): JSX.Element {
   const isLoading = inventoryLoading || analyticsLoading;
   
   return (
-    <div className="space-y-6 animate-in">
+    <>
+      <div className="space-y-6 animate-in">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -599,7 +600,8 @@ function InventoryPageContent(): JSX.Element {
       
       {/* Import Modal */}
       <InventoryImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
-    </div>
+      </div>
+    </>
   );
 }
 
