@@ -96,9 +96,31 @@ class LLMClient(ABC):
         
         # Add total_listings if not present
         if "total_listings" not in context:
-            context["total_listings"] = context.get("num_listings", "N/A")
+            context["total_listings"] = context.get("num_listings", 0)
         
-        prompt = prompt_template.format(**context)
+        # Ensure all required keys are present with defaults
+        # Enhanced prompts expect numeric values, but we may have strings from analytics
+        required_keys = {
+            "card_name": "Unknown Card",
+            "avg_price": "N/A",
+            "price_change_pct_7d": "N/A",
+            "price_change_pct_30d": "N/A",
+            "spread_pct": "N/A",
+            "volatility_7d": "N/A",
+            "total_listings": 0,
+            "signals_context": "",
+        }
+        for key, default_value in required_keys.items():
+            if key not in context:
+                context[key] = default_value
+        
+        try:
+            prompt = prompt_template.format(**context)
+        except (KeyError, ValueError) as e:
+            logger.error("Error formatting prompt", error=str(e), available_keys=list(context.keys()))
+            # Fallback to default prompt if enhanced prompt fails
+            prompt_template = self._default_explanation_prompt()
+            prompt = prompt_template.format(**context)
         system_prompt = "You are an expert MTG market analyst. Provide concise, actionable insights based on data."
         
         # Check cache first
@@ -146,18 +168,27 @@ class LLMClient(ABC):
             Human-readable rationale string.
         """
         if use_enhanced:
-            # Build enhanced prompt context
+            # Build enhanced prompt context with proper type conversion
+            def safe_float(value, default=0.0):
+                """Safely convert value to float."""
+                if value is None:
+                    return default
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return default
+            
             prompt_context = {
                 "card_name": card_name,
                 "action": action,
-                "confidence": confidence or metrics.get("confidence", 0.7),
-                "current_price": metrics.get("current_price", 0),
-                "price_change_pct_7d": metrics.get("price_change_pct_7d", 0),
-                "price_change_pct_30d": metrics.get("price_change_pct_30d", 0),
-                "spread_pct": metrics.get("spread_pct", 0),
-                "volatility_7d": metrics.get("volatility_7d", 0),
-                "momentum": metrics.get("momentum", "neutral"),
-                "total_listings": metrics.get("total_listings", metrics.get("num_listings", 0)),
+                "confidence": safe_float(confidence or metrics.get("confidence"), 0.7),
+                "current_price": safe_float(metrics.get("current_price"), 0.0),
+                "price_change_pct_7d": safe_float(metrics.get("price_change_pct_7d"), 0.0),
+                "price_change_pct_30d": safe_float(metrics.get("price_change_pct_30d"), 0.0),
+                "spread_pct": safe_float(metrics.get("spread_pct"), 0.0),
+                "volatility_7d": safe_float(metrics.get("volatility_7d"), 0.0),
+                "momentum": str(metrics.get("momentum", "neutral")),
+                "total_listings": int(safe_float(metrics.get("total_listings") or metrics.get("num_listings"), 0)),
             }
             
             # Add signals summary
@@ -173,7 +204,30 @@ class LLMClient(ABC):
             )
             
             prompt_template = get_enhanced_recommendation_prompt()
-            prompt = prompt_template.format(**prompt_context)
+            try:
+                prompt = prompt_template.format(**prompt_context)
+            except (KeyError, ValueError) as e:
+                logger.error("Error formatting enhanced prompt", error=str(e), context_keys=list(prompt_context.keys()))
+                # Fallback to simple prompt
+                use_enhanced = False
+                prompt = f"""
+            Generate a concise rationale for the following MTG card trading recommendation:
+            
+            Card: {card_name}
+            Recommended Action: {action}
+            
+            Metrics:
+            - Current Price: ${metrics.get('current_price', 'N/A')}
+            - 7-Day Change: {metrics.get('price_change_pct_7d', 'N/A')}%
+            - 30-Day Change: {metrics.get('price_change_pct_30d', 'N/A')}%
+            - Market Spread: {metrics.get('spread_pct', 'N/A')}%
+            - Volatility (7d): {metrics.get('volatility_7d', 'N/A')}
+            - Momentum: {metrics.get('momentum', 'N/A')}
+            - Number of Listings: {metrics.get('total_listings', 'N/A')}
+            
+            Provide a clear, actionable rationale in 2-3 sentences. Focus on the key factors
+            driving this recommendation and any risks to consider.
+            """
         else:
             # Fallback to simple prompt
             prompt = f"""

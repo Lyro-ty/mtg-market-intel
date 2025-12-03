@@ -805,81 +805,81 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
             recent_snapshots = current_prices_result.all()
             
             if recent_snapshots:
-            # Group by marketplace to backfill for each marketplace
-            marketplaces_to_backfill = {}
-            for snapshot, marketplace in recent_snapshots:
-                if snapshot.marketplace_id not in marketplaces_to_backfill:
-                    marketplaces_to_backfill[snapshot.marketplace_id] = {
-                        'snapshot': snapshot,
-                        'marketplace': marketplace,
-                    }
-            
-            # Backfill for each marketplace
-            total_backfilled = 0
-            for marketplace_id, data in marketplaces_to_backfill.items():
-                snapshot = data['snapshot']
-                base_price = float(snapshot.price)
-                base_currency = snapshot.currency
-                base_foil_price = float(snapshot.price_foil) if snapshot.price_foil else None
+                # Group by marketplace to backfill for each marketplace
+                marketplaces_to_backfill = {}
+                for snapshot, marketplace in recent_snapshots:
+                    if snapshot.marketplace_id not in marketplaces_to_backfill:
+                        marketplaces_to_backfill[snapshot.marketplace_id] = {
+                            'snapshot': snapshot,
+                            'marketplace': marketplace,
+                        }
                 
-                # Generate 30 days of backfilled data (one point per day)
-                # Use deterministic variation based on card_id and day to ensure consistency
-                import hashlib
-                backfilled_count = 0
-                for day_offset in range(30, 0, -1):  # From 30 days ago to yesterday
-                    snapshot_date = now - timedelta(days=day_offset)
+                # Backfill for each marketplace
+                total_backfilled = 0
+                for marketplace_id, data in marketplaces_to_backfill.items():
+                    snapshot = data['snapshot']
+                    base_price = float(snapshot.price)
+                    base_currency = snapshot.currency
+                    base_foil_price = float(snapshot.price_foil) if snapshot.price_foil else None
                     
-                    # Check if we already have data for this date (within 12 hours)
-                    # Use count to avoid MultipleResultsFound error if multiple snapshots exist
-                    existing_backfill_query = select(func.count(PriceSnapshot.id)).where(
-                        PriceSnapshot.card_id == card_id,
-                        PriceSnapshot.marketplace_id == marketplace_id,
-                        PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
-                        PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
-                    )
-                    existing_count = await db.scalar(existing_backfill_query) or 0
-                    if existing_count > 0:
-                        continue  # Skip if we already have data for this day
-                    
-                    # Generate deterministic price variation based on card_id and day
-                    # This ensures the same card always gets the same backfilled data
-                    seed = f"{card_id}_{marketplace_id}_{day_offset}"
-                    hash_value = int(hashlib.md5(seed.encode()).hexdigest()[:8], 16)
-                    # Use hash to generate variation between -3% and +3% (deterministic)
-                    variation = ((hash_value % 600) / 10000.0) - 0.03  # Range: -0.03 to +0.03
-                    # Apply slight trend: prices 30 days ago were slightly lower
-                    trend_factor = 1.0 - (day_offset * 0.001)  # 0.1% decrease per day going back
-                    historical_price = base_price * trend_factor * (1 + variation)
-                    historical_price = max(0.01, historical_price)  # Ensure positive price
-                    
-                    historical_foil_price = None
-                    if base_foil_price:
-                        foil_seed = f"{card_id}_{marketplace_id}_foil_{day_offset}"
-                        foil_hash = int(hashlib.md5(foil_seed.encode()).hexdigest()[:8], 16)
-                        foil_variation = ((foil_hash % 600) / 10000.0) - 0.03
-                        historical_foil_price = base_foil_price * trend_factor * (1 + foil_variation)
-                        historical_foil_price = max(0.01, historical_foil_price)
-                    
-                    # Create backfilled snapshot
-                    backfilled_snapshot = PriceSnapshot(
+                    # Generate 30 days of backfilled data (one point per day)
+                    # Use deterministic variation based on card_id and day to ensure consistency
+                    import hashlib
+                    backfilled_count = 0
+                    for day_offset in range(30, 0, -1):  # From 30 days ago to yesterday
+                        snapshot_date = now - timedelta(days=day_offset)
+                        
+                        # Check if we already have data for this date (within 12 hours)
+                        # Use count to avoid MultipleResultsFound error if multiple snapshots exist
+                        existing_backfill_query = select(func.count(PriceSnapshot.id)).where(
+                            PriceSnapshot.card_id == card_id,
+                            PriceSnapshot.marketplace_id == marketplace_id,
+                            PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
+                            PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
+                        )
+                        existing_count = await db.scalar(existing_backfill_query) or 0
+                        if existing_count > 0:
+                            continue  # Skip if we already have data for this day
+                        
+                        # Generate deterministic price variation based on card_id and day
+                        # This ensures the same card always gets the same backfilled data
+                        seed = f"{card_id}_{marketplace_id}_{day_offset}"
+                        hash_value = int(hashlib.md5(seed.encode()).hexdigest()[:8], 16)
+                        # Use hash to generate variation between -3% and +3% (deterministic)
+                        variation = ((hash_value % 600) / 10000.0) - 0.03  # Range: -0.03 to +0.03
+                        # Apply slight trend: prices 30 days ago were slightly lower
+                        trend_factor = 1.0 - (day_offset * 0.001)  # 0.1% decrease per day going back
+                        historical_price = base_price * trend_factor * (1 + variation)
+                        historical_price = max(0.01, historical_price)  # Ensure positive price
+                        
+                        historical_foil_price = None
+                        if base_foil_price:
+                            foil_seed = f"{card_id}_{marketplace_id}_foil_{day_offset}"
+                            foil_hash = int(hashlib.md5(foil_seed.encode()).hexdigest()[:8], 16)
+                            foil_variation = ((foil_hash % 600) / 10000.0) - 0.03
+                            historical_foil_price = base_foil_price * trend_factor * (1 + foil_variation)
+                            historical_foil_price = max(0.01, historical_foil_price)
+                        
+                        # Create backfilled snapshot
+                        backfilled_snapshot = PriceSnapshot(
+                            card_id=card_id,
+                            marketplace_id=marketplace_id,
+                            snapshot_time=snapshot_date,
+                            price=historical_price,
+                            currency=base_currency,
+                            price_foil=historical_foil_price,
+                        )
+                        db.add(backfilled_snapshot)
+                        backfilled_count += 1
+                        total_backfilled += 1
+                
+                if total_backfilled > 0:
+                    await db.flush()
+                    logger.info(
+                        "Backfilled historical price data",
                         card_id=card_id,
-                        marketplace_id=marketplace_id,
-                        snapshot_time=snapshot_date,
-                        price=historical_price,
-                        currency=base_currency,
-                        price_foil=historical_foil_price,
+                        days_backfilled=total_backfilled,
                     )
-                    db.add(backfilled_snapshot)
-                    backfilled_count += 1
-                    total_backfilled += 1
-            
-            if total_backfilled > 0:
-                await db.flush()
-                logger.info(
-                    "Backfilled historical price data",
-                    card_id=card_id,
-                    days_backfilled=total_backfilled,
-                )
     
     # 3. Price data is already collected from Scryfall above
     # We no longer scrape individual listings - focus on aggregated price data

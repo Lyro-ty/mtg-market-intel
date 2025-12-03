@@ -97,8 +97,18 @@ def format_signals_context(signals: list[dict[str, Any]]) -> str:
         
         signal_desc = f"- {signal_type.replace('_', ' ').title()}"
         if value is not None:
-            signal_desc += f" (value: {value:.2f})"
-        signal_desc += f" [confidence: {confidence:.0%}]"
+            try:
+                # Ensure value is numeric before formatting
+                value_float = float(value)
+                signal_desc += f" (value: {value_float:.2f})"
+            except (ValueError, TypeError):
+                signal_desc += f" (value: {value})"
+        try:
+            # Ensure confidence is numeric before formatting
+            confidence_float = float(confidence)
+            signal_desc += f" [confidence: {confidence_float:.0%}]"
+        except (ValueError, TypeError):
+            signal_desc += f" [confidence: {confidence}]"
         signal_lines.append(signal_desc)
     
     return "Active Signals:\n" + "\n".join(signal_lines)
@@ -123,8 +133,16 @@ def format_historical_context(
     if price_history:
         # Show price trend over last 7 days
         if len(price_history) >= 7:
-            prices = [p.get("price", 0) for p in price_history[-7:]]
-            if prices:
+            prices = []
+            for p in price_history[-7:]:
+                price_val = p.get("price")
+                if price_val is not None:
+                    try:
+                        prices.append(float(price_val))
+                    except (ValueError, TypeError):
+                        pass  # Skip invalid price values
+            
+            if prices and len(prices) > 0:
                 avg_7d = sum(prices) / len(prices)
                 current = prices[-1]
                 trend = "up" if current > avg_7d else "down"

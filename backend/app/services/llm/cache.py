@@ -7,7 +7,6 @@ when the same analysis is requested multiple times.
 import hashlib
 import json
 from typing import Any, Optional
-from datetime import datetime, timedelta
 
 import structlog
 
@@ -99,8 +98,10 @@ def clear_llm_cache() -> None:
 
 def get_cache_stats() -> dict[str, Any]:
     """Get cache statistics."""
+    # Access cache size safely
+    cache_size = len(_llm_cache._cache) if hasattr(_llm_cache, '_cache') else 0
     return {
-        "size": len(_llm_cache._cache),
+        "size": cache_size,
         "max_size": _llm_cache.max_size,
         "default_ttl": _llm_cache.default_ttl,
     }

@@ -489,6 +489,8 @@ class AnalyticsAgent:
         signals = result.scalars().all()
         
         # Build enhanced context for LLM
+        # Note: Enhanced prompts expect numeric values, but we format them as strings for display
+        # The base client will handle conversion and provide defaults
         context = {
             "card_name": card.name,
             "avg_price": f"{metrics.avg_price:.2f}" if metrics.avg_price else "N/A",
@@ -501,7 +503,7 @@ class AnalyticsAgent:
                 {
                     "type": s.signal_type,
                     "confidence": float(s.confidence) if s.confidence else 0.5,
-                    "value": float(s.value) if s.value else None,
+                    "value": float(s.value) if s.value is not None else None,
                 }
                 for s in signals
             ],
