@@ -95,11 +95,23 @@ async function fetchApi<T>(
     throw new ApiError('Authentication required', 401);
   }
   
+  // Set timeout for long-running operations (like card refresh)
+  // Default to 5 minutes for refresh endpoints, 30 seconds for others
+  const isRefreshEndpoint = endpoint.includes('/refresh');
+  const timeoutMs = isRefreshEndpoint ? 5 * 60 * 1000 : 30 * 1000;
+  
   try {
+    // Create an AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
     const response = await fetch(url, {
       ...options,
       headers,
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       let errorDetail = 'Unknown error';
@@ -135,6 +147,14 @@ async function fetchApi<T>(
     
     return response.json();
   } catch (error) {
+    // Handle timeout/abort errors
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError(
+        `Request timeout: The operation took too long to complete. ${isRefreshEndpoint ? 'Try refreshing in the background or check backend logs.' : ''}`,
+        408
+      );
+    }
+    
     // Handle network errors
     if (error instanceof TypeError && error.message.includes('fetch')) {
       throw new ApiError(
@@ -395,7 +415,7 @@ export async function getColorDistribution(
 export async function getInventoryMarketIndex(
   range: '7d' | '30d' | '90d' | '1y' = '7d'
 ): Promise<MarketIndex> {
-  return fetchApi(`/inventory/market-index?range=${range}`);
+  return fetchApi(`/inventory/market-index?range=${range}`, {}, true);
 }
 
 export async function getInventoryTopMovers(
@@ -415,7 +435,7 @@ export async function getInventoryTopMovers(
   changePct: number;
   volume: number;
 }>; isMockData?: boolean }> {
-  return fetchApi(`/inventory/top-movers?window=${window}`);
+  return fetchApi(`/inventory/top-movers?window=${window}`, {}, true);
 }
 
 // Inventory API (requires authentication)

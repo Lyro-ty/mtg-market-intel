@@ -11,7 +11,7 @@ from typing import Any
 
 import structlog
 from celery import shared_task
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -99,20 +99,49 @@ async def _collect_price_data_async() -> dict[str, Any]:
             
             logger.info("Collecting prices for inventory cards first", count=len(inventory_cards))
             
-            # PRIORITY 2: Get all other cards (no limit - collect everything!)
+            # PRIORITY 2: Get cards without recent data (within 24 hours) - prioritize these
+            # Cards without data should be processed first to ensure all cards get data within 24 hours
+            now = datetime.utcnow()
+            stale_threshold = now - timedelta(hours=24)
+            
+            # Get cards that have no snapshots or only stale snapshots
+            cards_without_data_query = (
+                select(Card)
+                .outerjoin(
+                    PriceSnapshot,
+                    and_(
+                        PriceSnapshot.card_id == Card.id,
+                        PriceSnapshot.snapshot_time >= stale_threshold
+                    )
+                )
+                .where(
+                    Card.id.notin_(inventory_card_ids) if inventory_card_ids else True,
+                    PriceSnapshot.id.is_(None)  # No recent snapshots
+                )
+                .distinct()
+            )
+            result = await db.execute(cards_without_data_query)
+            cards_without_data = list(result.scalars().all())
+            
+            # PRIORITY 3: Get all other cards (have recent data, but still refresh periodically)
+            cards_with_data_ids = {c.id for c in cards_without_data}
             other_cards_query = (
                 select(Card)
-                .where(Card.id.notin_(inventory_card_ids) if inventory_card_ids else True)
+                .where(
+                    Card.id.notin_(inventory_card_ids) if inventory_card_ids else True,
+                    Card.id.notin_(cards_with_data_ids) if cards_with_data_ids else True
+                )
             )
             result = await db.execute(other_cards_query)
             other_cards = list(result.scalars().all())
             
-            # Combine: inventory cards first, then others
-            cards = inventory_cards + other_cards
+            # Combine: inventory cards first, then cards without data, then others
+            cards = inventory_cards + cards_without_data + other_cards
             logger.info(
                 "Total cards for price collection",
                 inventory=len(inventory_cards),
-                other=len(other_cards),
+                without_data=len(cards_without_data),
+                with_data=len(other_cards),
                 total=len(cards),
             )
             

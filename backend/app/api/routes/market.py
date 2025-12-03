@@ -375,15 +375,31 @@ async def get_market_index(
             "isMockData": True,
         }
     
-    # Calculate normalized index (base 100 at first point)
+    # Calculate normalized index
+    # Use median of recent data (last 25% of points) as base to avoid backfilled data skewing the index
     points = []
-    base_value = None
+    avg_prices = [float(row.avg_price) for row in rows if row.avg_price]
+    
+    if not avg_prices:
+        # No data available
+        return {
+            "range": range,
+            "points": [],
+            "isMockData": False,
+        }
+    
+    # Use median of recent data (last 25% of points) as normalization base
+    # This avoids backfilled/synthetic data at the start of the range skewing the index
+    recent_count = max(1, len(avg_prices) // 4)  # Last 25% of points
+    recent_prices = sorted(avg_prices[-recent_count:])
+    base_value = recent_prices[len(recent_prices) // 2] if recent_prices else avg_prices[0]
+    
+    # Fallback to first point if median calculation fails
+    if not base_value or base_value <= 0:
+        base_value = avg_prices[0]
     
     for row in rows:
         if row.avg_price:
-            if base_value is None:
-                base_value = float(row.avg_price)
-            
             # Normalize to base 100
             index_value = (float(row.avg_price) / base_value) * 100.0
             

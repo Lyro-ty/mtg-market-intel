@@ -329,6 +329,9 @@ async def refresh_card_data(
     
     If sync=True (default), fetches data immediately and returns updated card detail.
     If sync=False, dispatches background tasks and returns task IDs.
+    
+    Note: Synchronous refresh can take 30-60 seconds for cards with historical data.
+    Consider using sync=False for background processing if you don't need immediate results.
     """
     card = await db.get(Card, card_id)
     if not card:
@@ -336,7 +339,21 @@ async def refresh_card_data(
     
     if sync:
         # Synchronous refresh - fetch data immediately and return
-        return await _sync_refresh_card(db, card)
+        # Use fast_mode=True for instant refresh (skips heavy operations if data exists)
+        try:
+            return await _sync_refresh_card(db, card, fast_mode=True)
+        except Exception as e:
+            logger.error(
+                "Error during card refresh",
+                card_id=card_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            # Re-raise as HTTPException to ensure proper error response
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to refresh card: {str(e)}"
+            )
     
     # Async refresh - dispatch background tasks
     # Note: Price collection is handled by scheduled tasks, so we only dispatch analytics/recommendations
@@ -479,16 +496,21 @@ async def _get_or_create_marketplace_by_slug(db: AsyncSession, slug: str, name: 
     return mp
 
 
-async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse:
+async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = True) -> CardDetailResponse:
     """
     Synchronously refresh card data and return updated detail.
     
-    1. Fetches latest prices from Scryfall broken down by marketplace (TCGPlayer, Cardmarket)
-    2. Stores each marketplace price as a separate snapshot
-    3. Fetches and stores MTGJSON 30-day historical data
-    4. Computes metrics
-    5. Generates recommendations
-    6. Returns complete card detail
+    In fast_mode (default for instant refresh):
+    - Only fetches prices if data is missing or stale (>24h old)
+    - Skips heavy operations (MTGJSON, backfill, metrics, recommendations) if data exists
+    - Returns immediately with existing data if fresh
+    
+    In full_mode (background refresh):
+    - Fetches latest prices from Scryfall broken down by marketplace
+    - Stores each marketplace price as a separate snapshot
+    - Fetches and stores MTGJSON 30-day historical data
+    - Computes metrics
+    - Generates recommendations
     
     Note: Prices are now stored separately by marketplace for better charting.
     """
@@ -507,7 +529,94 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     card_colors = getattr(card, 'colors', None)
     card_mana_cost = getattr(card, 'mana_cost', None)
     
-    logger.info("Sync refresh starting", card_id=card_id, card_name=card_name)
+    # Define now at the start to ensure it's always available
+    now = datetime.now(timezone.utc)
+    
+    # Fast mode: Check if we have recent data (within 24 hours)
+    if fast_mode:
+        recent_snapshot_query = select(PriceSnapshot).where(
+            PriceSnapshot.card_id == card_id,
+            PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
+        ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+        recent_result = await db.execute(recent_snapshot_query)
+        recent_snapshot = recent_result.scalar_one_or_none()
+        
+        if recent_snapshot:
+            # Data is fresh, skip heavy operations and return existing data
+            logger.debug("Fast refresh: data is fresh, skipping refresh", card_id=card_id)
+            # Return card detail with existing data (skip MTGJSON, backfill, metrics, signals, recommendations)
+            # Re-fetch the card to ensure we have the latest data
+            refreshed_card = await db.get(Card, card_id)
+            if not refreshed_card:
+                raise HTTPException(status_code=404, detail="Card not found")
+            
+            # Get current prices
+            current_prices = await _get_current_prices(db, card_id)
+            
+            # Get latest metrics (may be stale, but that's ok for fast mode)
+            metrics_query = select(MetricsCardsDaily).where(
+                MetricsCardsDaily.card_id == card_id
+            ).order_by(MetricsCardsDaily.date.desc()).limit(1)
+            result = await db.execute(metrics_query)
+            latest_metrics = result.scalar_one_or_none()
+            
+            # Get recent signals
+            signals_query = select(Signal).where(
+                Signal.card_id == card_id
+            ).order_by(Signal.date.desc()).limit(5)
+            result = await db.execute(signals_query)
+            recent_signals = result.scalars().all()
+            
+            # Get active recommendations
+            recs_query = select(Recommendation).where(
+                Recommendation.card_id == card_id,
+                Recommendation.is_active == True,
+            ).order_by(Recommendation.created_at.desc()).limit(5)
+            result = await db.execute(recs_query)
+            active_recs = result.scalars().all()
+            
+            return CardDetailResponse(
+                card=CardResponse.model_validate(refreshed_card),
+                metrics=CardMetricsResponse(
+                    card_id=card_id,
+                    date=str(latest_metrics.date) if latest_metrics else None,
+                    avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else None,
+                    min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else None,
+                    max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else None,
+                    spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else None,
+                    price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else None,
+                    price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else None,
+                    volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else None,
+                    ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else None,
+                    ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else None,
+                    total_listings=latest_metrics.total_listings if latest_metrics else None,
+                ) if latest_metrics else None,
+                current_prices=current_prices,
+                recent_signals=[
+                    SignalSummary(
+                        signal_type=s.signal_type,
+                        value=float(s.value) if s.value else None,
+                        confidence=float(s.confidence) if s.confidence else None,
+                        date=str(s.date),
+                        llm_insight=s.llm_insight,
+                    )
+                    for s in recent_signals
+                ],
+                active_recommendations=[
+                    RecommendationSummary(
+                        action=r.action,
+                        confidence=float(r.confidence),
+                        rationale=r.rationale,
+                        marketplace=None,
+                        potential_profit_pct=float(r.potential_profit_pct) if r.potential_profit_pct else None,
+                    )
+                    for r in active_recs
+                ],
+                refresh_requested=False,
+                refresh_reason=None,
+            )
+    
+    logger.info("Sync refresh starting", card_id=card_id, card_name=card_name, fast_mode=fast_mode)
     
     # 1. Fetch prices from Scryfall broken down by marketplace
     scryfall = ScryfallAdapter()
@@ -520,8 +629,6 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
             collector_number=card_collector_number,
             scryfall_id=card_scryfall_id,
         )
-        
-        now = datetime.now(timezone.utc)
         
         for price_data in all_prices:
             if not price_data or price_data.price <= 0:
@@ -592,15 +699,16 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
     finally:
         await scryfall.close()
     
-    # 2. Fetch and store MTGJSON 30-day historical data by marketplace
+    # 2. Fetch and store MTGJSON 30-day historical data by marketplace (skip in fast mode)
     # Note: MTGJSON file is cached for 7 days (updates weekly), so we don't need to download it every time
     mtgjson_snapshots_created = 0
-    from app.services.ingestion import get_adapter
-    mtgjson = get_adapter("mtgjson", cached=True)
-    try:
-        # Fetch 30-day historical prices from MTGJSON
-        # MTGJSON returns prices for both TCGPlayer (USD) and Cardmarket (EUR)
-        historical_prices = await mtgjson.fetch_price_history(
+    if not fast_mode:  # Skip MTGJSON in fast mode for instant refresh
+        from app.services.ingestion import get_adapter
+        mtgjson = get_adapter("mtgjson", cached=True)
+        try:
+            # Fetch 30-day historical prices from MTGJSON
+            # MTGJSON returns prices for both TCGPlayer (USD) and Cardmarket (EUR)
+            historical_prices = await mtgjson.fetch_price_history(
             card_name=card_name,
             set_code=card_set_code,
             collector_number=card_collector_number,
@@ -658,44 +766,45 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
                 historical_points=len(historical_prices),
                 snapshots_created=mtgjson_snapshots_created,
             )
-    except Exception as e:
-        # Rollback the session if there was an error during flush
-        try:
-            await db.rollback()
-        except Exception:
-            pass  # Ignore rollback errors
-        logger.warning(
-            "Failed to fetch MTGJSON historical data",
-            card_id=card_id,
-            error=str(e),
-        )
-    finally:
-        await mtgjson.close()
+        except Exception as e:
+            # Rollback the session if there was an error during flush
+            try:
+                await db.rollback()
+            except Exception:
+                pass  # Ignore rollback errors
+            logger.warning(
+                "Failed to fetch MTGJSON historical data",
+                card_id=card_id,
+                error=str(e),
+            )
+        finally:
+            await mtgjson.close()
     
-    # 2.5. Ensure we have 30 days of historical data for charting
+    # 2.5. Ensure we have 30 days of historical data for charting (skip in fast mode)
     # If MTGJSON didn't provide historical data, backfill from current prices
-    # Check how many days of data we have
-    thirty_days_ago = now - timedelta(days=30)
-    history_check_query = select(func.count(PriceSnapshot.id)).where(
-        PriceSnapshot.card_id == card_id,
-        PriceSnapshot.snapshot_time >= thirty_days_ago,
-    )
-    history_count = await db.scalar(history_check_query) or 0
-    
-    # If we have less than 10 data points in the last 30 days, backfill historical data
-    if history_count < 10:
-        # Get current prices from Scryfall data we just collected
-        current_prices_query = select(PriceSnapshot, Marketplace).join(
-            Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
-        ).where(
+    if not fast_mode:  # Skip backfill in fast mode
+        # Check how many days of data we have
+        thirty_days_ago = now - timedelta(days=30)
+        history_check_query = select(func.count(PriceSnapshot.id)).where(
             PriceSnapshot.card_id == card_id,
-            PriceSnapshot.snapshot_time >= now - timedelta(hours=24),  # Recent snapshots
-        ).order_by(PriceSnapshot.snapshot_time.desc())
+            PriceSnapshot.snapshot_time >= thirty_days_ago,
+        )
+        history_count = await db.scalar(history_check_query) or 0
         
-        current_prices_result = await db.execute(current_prices_query)
-        recent_snapshots = current_prices_result.all()
-        
-        if recent_snapshots:
+        # If we have less than 10 data points in the last 30 days, backfill historical data
+        if history_count < 10:
+            # Get current prices from Scryfall data we just collected
+            current_prices_query = select(PriceSnapshot, Marketplace).join(
+                Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
+            ).where(
+                PriceSnapshot.card_id == card_id,
+                PriceSnapshot.snapshot_time >= now - timedelta(hours=24),  # Recent snapshots
+            ).order_by(PriceSnapshot.snapshot_time.desc())
+            
+            current_prices_result = await db.execute(current_prices_query)
+            recent_snapshots = current_prices_result.all()
+            
+            if recent_snapshots:
             # Group by marketplace to backfill for each marketplace
             marketplaces_to_backfill = {}
             for snapshot, marketplace in recent_snapshots:
@@ -784,8 +893,84 @@ async def _sync_refresh_card(db: AsyncSession, card: Card) -> CardDetailResponse
         scryfall_snapshots=scryfall_snapshots_created,
         mtgjson_snapshots=mtgjson_snapshots_created,
         total_snapshots=total_snapshots_created,
+        fast_mode=fast_mode,
     )
     
+    # Skip heavy operations in fast mode
+    if fast_mode:
+        # In fast mode, just commit price updates and return
+        await db.commit()
+        # Return card detail with updated prices but skip metrics/signals/recommendations
+        refreshed_card = await db.get(Card, card_id)
+        if not refreshed_card:
+            raise HTTPException(status_code=404, detail="Card not found after refresh")
+        
+        current_prices = await _get_current_prices(db, card_id)
+        
+        # Get latest metrics (may be stale)
+        metrics_query = select(MetricsCardsDaily).where(
+            MetricsCardsDaily.card_id == card_id
+        ).order_by(MetricsCardsDaily.date.desc()).limit(1)
+        result = await db.execute(metrics_query)
+        latest_metrics = result.scalar_one_or_none()
+        
+        # Get recent signals
+        signals_query = select(Signal).where(
+            Signal.card_id == card_id
+        ).order_by(Signal.date.desc()).limit(5)
+        result = await db.execute(signals_query)
+        recent_signals = result.scalars().all()
+        
+        # Get active recommendations
+        recs_query = select(Recommendation).where(
+            Recommendation.card_id == card_id,
+            Recommendation.is_active == True,
+        ).order_by(Recommendation.created_at.desc()).limit(5)
+        result = await db.execute(recs_query)
+        active_recs = result.scalars().all()
+        
+        return CardDetailResponse(
+            card=CardResponse.model_validate(refreshed_card),
+            metrics=CardMetricsResponse(
+                card_id=card_id,
+                date=str(latest_metrics.date) if latest_metrics else None,
+                avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else None,
+                min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else None,
+                max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else None,
+                spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else None,
+                price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else None,
+                price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else None,
+                volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else None,
+                ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else None,
+                ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else None,
+                total_listings=latest_metrics.total_listings if latest_metrics else None,
+            ) if latest_metrics else None,
+            current_prices=current_prices,
+            recent_signals=[
+                SignalSummary(
+                    signal_type=s.signal_type,
+                    value=float(s.value) if s.value else None,
+                    confidence=float(s.confidence) if s.confidence else None,
+                    date=str(s.date),
+                    llm_insight=s.llm_insight,
+                )
+                for s in recent_signals
+            ],
+            active_recommendations=[
+                RecommendationSummary(
+                    action=r.action,
+                    confidence=float(r.confidence),
+                    rationale=r.rationale,
+                    marketplace=None,
+                    potential_profit_pct=float(r.potential_profit_pct) if r.potential_profit_pct else None,
+                )
+                for r in active_recs
+            ],
+            refresh_requested=False,
+            refresh_reason=None,
+        )
+    
+    # Full mode: Continue with heavy operations (vectorization, metrics, signals, recommendations)
     # 2.5. Vectorize card for ML training
     # Store card attributes before vectorization to avoid lazy loading issues
     from app.services.vectorization import get_vectorization_service
