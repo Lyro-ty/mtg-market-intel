@@ -780,31 +780,31 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         finally:
             await mtgjson.close()
     
-    # 2.5. Ensure we have 30 days of historical data for charting (skip in fast mode)
-    # If MTGJSON didn't provide historical data, backfill from current prices
-    if not fast_mode:  # Skip backfill in fast mode
-        # Check how many days of data we have
-        thirty_days_ago = now - timedelta(days=30)
-        history_check_query = select(func.count(PriceSnapshot.id)).where(
+    # 2.5. Ensure we have 30 days of historical data for charting
+    # Always check and backfill if needed (even in fast mode, but only if data is missing)
+    # Check how many days of data we have
+    thirty_days_ago = now - timedelta(days=30)
+    history_check_query = select(func.count(PriceSnapshot.id)).where(
+        PriceSnapshot.card_id == card_id,
+        PriceSnapshot.snapshot_time >= thirty_days_ago,
+    )
+    history_count = await db.scalar(history_check_query) or 0
+    
+    # If we have less than 10 data points in the last 30 days, backfill historical data
+    # This check is quick, so we do it even in fast mode to ensure charts work
+    if history_count < 10:
+        # Get current prices from Scryfall data we just collected
+        current_prices_query = select(PriceSnapshot, Marketplace).join(
+            Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
+        ).where(
             PriceSnapshot.card_id == card_id,
-            PriceSnapshot.snapshot_time >= thirty_days_ago,
-        )
-        history_count = await db.scalar(history_check_query) or 0
+            PriceSnapshot.snapshot_time >= now - timedelta(hours=24),  # Recent snapshots
+        ).order_by(PriceSnapshot.snapshot_time.desc())
         
-        # If we have less than 10 data points in the last 30 days, backfill historical data
-        if history_count < 10:
-            # Get current prices from Scryfall data we just collected
-            current_prices_query = select(PriceSnapshot, Marketplace).join(
-                Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
-            ).where(
-                PriceSnapshot.card_id == card_id,
-                PriceSnapshot.snapshot_time >= now - timedelta(hours=24),  # Recent snapshots
-            ).order_by(PriceSnapshot.snapshot_time.desc())
-            
-            current_prices_result = await db.execute(current_prices_query)
-            recent_snapshots = current_prices_result.all()
-            
-            if recent_snapshots:
+        current_prices_result = await db.execute(current_prices_query)
+        recent_snapshots = current_prices_result.all()
+        
+        if recent_snapshots:
                 # Group by marketplace to backfill for each marketplace
                 marketplaces_to_backfill = {}
                 for snapshot, marketplace in recent_snapshots:
