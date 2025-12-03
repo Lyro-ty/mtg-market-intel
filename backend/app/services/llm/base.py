@@ -7,6 +7,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.llm.cache import get_cached_response, cache_response
+from app.services.llm.enhanced_prompts import (
+    get_enhanced_explanation_prompt,
+    get_enhanced_recommendation_prompt,
+    format_signals_context,
+    format_historical_context,
+)
+
 
 @dataclass
 class LLMResponse:
@@ -58,6 +66,8 @@ class LLMClient(ABC):
         self,
         context: dict[str, Any],
         prompt_template: str | None = None,
+        use_cache: bool = True,
+        use_enhanced: bool = True,
     ) -> str:
         """
         Generate a human-readable explanation of market data.
@@ -65,20 +75,49 @@ class LLMClient(ABC):
         Args:
             context: Dictionary containing market metrics and data.
             prompt_template: Optional custom prompt template.
+            use_cache: Whether to use cached responses (default: True).
+            use_enhanced: Whether to use enhanced prompts with more context (default: True).
             
         Returns:
             Human-readable explanation string.
         """
         if prompt_template is None:
-            prompt_template = self._default_explanation_prompt()
+            if use_enhanced:
+                prompt_template = get_enhanced_explanation_prompt()
+            else:
+                prompt_template = self._default_explanation_prompt()
+        
+        # Add signals context if available
+        signals = context.get("signals", [])
+        if signals:
+            context["signals_context"] = format_signals_context(signals)
+        else:
+            context["signals_context"] = ""
+        
+        # Add total_listings if not present
+        if "total_listings" not in context:
+            context["total_listings"] = context.get("num_listings", "N/A")
         
         prompt = prompt_template.format(**context)
+        system_prompt = "You are an expert MTG market analyst. Provide concise, actionable insights based on data."
+        
+        # Check cache first
+        if use_cache:
+            cached = get_cached_response(prompt, system_prompt, temperature=0.5)
+            if cached:
+                return cached
+        
         response = await self.generate(
             prompt=prompt,
-            system_prompt="You are an MTG market analyst. Provide concise, actionable insights.",
+            system_prompt=system_prompt,
             temperature=0.5,
             max_tokens=500,
         )
+        
+        # Cache the response
+        if use_cache:
+            cache_response(prompt, response.content, system_prompt, temperature=0.5, ttl=3600)
+        
         return response.content
     
     async def generate_recommendation_rationale(
@@ -86,6 +125,10 @@ class LLMClient(ABC):
         card_name: str,
         action: str,
         metrics: dict[str, Any],
+        confidence: float | None = None,
+        signals: list[dict[str, Any]] | None = None,
+        use_cache: bool = True,
+        use_enhanced: bool = True,
     ) -> str:
         """
         Generate a rationale for a trading recommendation.
@@ -94,35 +137,83 @@ class LLMClient(ABC):
             card_name: Name of the MTG card.
             action: Recommended action (BUY/SELL/HOLD).
             metrics: Dictionary of relevant metrics.
+            confidence: Confidence score for the recommendation.
+            signals: List of signals that triggered this recommendation.
+            use_cache: Whether to use cached responses (default: True).
+            use_enhanced: Whether to use enhanced prompts (default: True).
             
         Returns:
             Human-readable rationale string.
         """
-        prompt = f"""
-        Generate a concise rationale for the following MTG card trading recommendation:
+        if use_enhanced:
+            # Build enhanced prompt context
+            prompt_context = {
+                "card_name": card_name,
+                "action": action,
+                "confidence": confidence or metrics.get("confidence", 0.7),
+                "current_price": metrics.get("current_price", 0),
+                "price_change_pct_7d": metrics.get("price_change_pct_7d", 0),
+                "price_change_pct_30d": metrics.get("price_change_pct_30d", 0),
+                "spread_pct": metrics.get("spread_pct", 0),
+                "volatility_7d": metrics.get("volatility_7d", 0),
+                "momentum": metrics.get("momentum", "neutral"),
+                "total_listings": metrics.get("total_listings", metrics.get("num_listings", 0)),
+            }
+            
+            # Add signals summary
+            if signals:
+                prompt_context["signals_summary"] = format_signals_context(signals)
+            else:
+                prompt_context["signals_summary"] = ""
+            
+            # Add historical context if available
+            prompt_context["historical_context"] = format_historical_context(
+                price_history=metrics.get("price_history"),
+                recent_recommendations=metrics.get("recent_recommendations"),
+            )
+            
+            prompt_template = get_enhanced_recommendation_prompt()
+            prompt = prompt_template.format(**prompt_context)
+        else:
+            # Fallback to simple prompt
+            prompt = f"""
+            Generate a concise rationale for the following MTG card trading recommendation:
+            
+            Card: {card_name}
+            Recommended Action: {action}
+            
+            Metrics:
+            - Current Price: ${metrics.get('current_price', 'N/A')}
+            - 7-Day Change: {metrics.get('price_change_pct_7d', 'N/A')}%
+            - 30-Day Change: {metrics.get('price_change_pct_30d', 'N/A')}%
+            - Market Spread: {metrics.get('spread_pct', 'N/A')}%
+            - Volatility (7d): {metrics.get('volatility_7d', 'N/A')}
+            - Momentum: {metrics.get('momentum', 'N/A')}
+            - Number of Listings: {metrics.get('total_listings', 'N/A')}
+            
+            Provide a clear, actionable rationale in 2-3 sentences. Focus on the key factors
+            driving this recommendation and any risks to consider.
+            """
         
-        Card: {card_name}
-        Recommended Action: {action}
+        system_prompt = "You are an expert MTG market analyst. Be concise and data-driven."
         
-        Metrics:
-        - Current Price: ${metrics.get('current_price', 'N/A')}
-        - 7-Day Change: {metrics.get('price_change_pct_7d', 'N/A')}%
-        - 30-Day Change: {metrics.get('price_change_pct_30d', 'N/A')}%
-        - Market Spread: {metrics.get('spread_pct', 'N/A')}%
-        - Volatility (7d): {metrics.get('volatility_7d', 'N/A')}
-        - Momentum: {metrics.get('momentum', 'N/A')}
-        - Number of Listings: {metrics.get('total_listings', 'N/A')}
-        
-        Provide a clear, actionable rationale in 2-3 sentences. Focus on the key factors
-        driving this recommendation and any risks to consider.
-        """
+        # Check cache first
+        if use_cache:
+            cached = get_cached_response(prompt, system_prompt, temperature=0.5)
+            if cached:
+                return cached
         
         response = await self.generate(
             prompt=prompt,
-            system_prompt="You are an MTG market analyst. Be concise and data-driven.",
+            system_prompt=system_prompt,
             temperature=0.5,
             max_tokens=200,
         )
+        
+        # Cache the response
+        if use_cache:
+            cache_response(prompt, response.content, system_prompt, temperature=0.5, ttl=3600)
+        
         return response.content
     
     def _default_explanation_prompt(self) -> str:

@@ -480,7 +480,15 @@ class AnalyticsAgent:
         if not metrics:
             return None
         
-        # Build context for LLM
+        # Get recent signals for context
+        signals_query = select(Signal).where(
+            Signal.card_id == card_id,
+            Signal.date == target_date,
+        )
+        result = await self.db.execute(signals_query)
+        signals = result.scalars().all()
+        
+        # Build enhanced context for LLM
         context = {
             "card_name": card.name,
             "avg_price": f"{metrics.avg_price:.2f}" if metrics.avg_price else "N/A",
@@ -488,10 +496,24 @@ class AnalyticsAgent:
             "price_change_pct_30d": f"{metrics.price_change_pct_30d:.1f}" if metrics.price_change_pct_30d else "N/A",
             "spread_pct": f"{metrics.spread_pct:.1f}" if metrics.spread_pct else "N/A",
             "volatility_7d": f"{metrics.volatility_7d:.4f}" if metrics.volatility_7d else "N/A",
+            "total_listings": metrics.total_listings or 0,
+            "signals": [
+                {
+                    "type": s.signal_type,
+                    "confidence": float(s.confidence) if s.confidence else 0.5,
+                    "value": float(s.value) if s.value else None,
+                }
+                for s in signals
+            ],
         }
         
         try:
-            insight = await self.llm.generate_explanation(context)
+            # Use enhanced prompts and caching by default
+            insight = await self.llm.generate_explanation(
+                context,
+                use_cache=True,
+                use_enhanced=True,
+            )
             
             # Store insight in the latest signal
             signals_query = select(Signal).where(
