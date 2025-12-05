@@ -9,7 +9,7 @@ import io
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
 import structlog
@@ -885,7 +885,7 @@ async def get_inventory_market_index(
         separate_currencies: If True, returns separate indices for USD and EUR.
     """
     # Determine date range and bucket size
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if range == "7d":
         start_date = now - timedelta(days=7)
         bucket_minutes = 30
@@ -1720,7 +1720,7 @@ async def refresh_inventory_valuations(
         if metrics and metrics.avg_price:
             old_value = item.current_value
             item.current_value = float(metrics.avg_price)
-            item.last_valued_at = datetime.utcnow()
+            item.last_valued_at = datetime.now(timezone.utc)
             
             # Calculate value change percentage
             if old_value:

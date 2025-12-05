@@ -322,13 +322,20 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
     """
     Async implementation of comprehensive price data seeding.
     
-    Strategy:
-    - Phase 1: Get all cards from database
-    - Phase 2: Pull current prices from Scryfall (all cards)
-    - Phase 3: Pull historical data from MTGJSON (30d/90d/6m/1y)
-    - Phase 4: Combine and store in database
-    - Phase 5: Ensure data quality for charts and ML
+    Workflow:
+    1. Collect Scryfall card names (get all cards from database - cards are sourced from Scryfall)
+    2. Match MTGJSON card names to Scryfall card names (by name, set_code, collector_number)
+    3. Generate 30-day history using MTGJSON data
+    4. Collect current prices from CardTrader (if API token available)
+    5. Store all data in database
+    
+    This ensures:
+    - All cards have current prices from Scryfall (TCGPlayer, Cardmarket, MTGO)
+    - All cards have 30-day historical data from MTGJSON where available
+    - Cards have current prices from CardTrader (European market) if configured
     """
+    from datetime import timezone
+    
     logger.info("Starting comprehensive price data seeding")
     
     session_maker, engine = create_task_session_maker()
@@ -354,21 +361,40 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                 }
             
             results = {
-                "started_at": datetime.utcnow().isoformat(),
+                "started_at": datetime.now(timezone.utc).isoformat(),
                 "total_cards": len(all_cards),
                 "current_snapshots": 0,
                 "historical_snapshots": 0,
+                "cardtrader_snapshots": 0,
                 "cards_processed": 0,
                 "errors": [],
             }
             
+            # Helper to get or create marketplace (shared across phases)
+            async def get_or_create_marketplace(slug: str, name: str, base_url: str, currency: str) -> Marketplace:
+                query = select(Marketplace).where(Marketplace.slug == slug)
+                result = await db.execute(query)
+                mp = result.scalar_one_or_none()
+                if not mp:
+                    mp = Marketplace(
+                        name=name,
+                        slug=slug,
+                        base_url=base_url,
+                        api_url=None,
+                        is_enabled=True,
+                        supports_api=False,
+                        default_currency=currency,
+                        rate_limit_seconds=1.0,
+                    )
+                    db.add(mp)
+                    await db.flush()
+                return mp
+            
             # Phase 2: Pull current prices from Scryfall (broken down by marketplace)
+            # Cards are already in database from Scryfall, now we get their current prices
             scryfall = ScryfallAdapter()
             try:
-                logger.info("Phase 2: Pulling current prices from Scryfall", cards=len(all_cards))
-                
-                # Helper to get or create marketplace
-                async def get_or_create_marketplace(slug: str, name: str, base_url: str, currency: str) -> Marketplace:
+                logger.info("Phase 2: Collecting current prices from Scryfall for all cards", cards=len(all_cards))
                     query = select(Marketplace).where(Marketplace.slug == slug)
                     result = await db.execute(query)
                     mp = result.scalar_one_or_none()
@@ -397,7 +423,7 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                             scryfall_id=card.scryfall_id,
                         )
                         
-                        now = datetime.utcnow()
+                        now = datetime.now(timezone.utc)
                         
                         for price_data in all_prices:
                             if not price_data or price_data.price <= 0:
@@ -469,30 +495,11 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
             finally:
                 await scryfall.close()
             
-            # Phase 3: Pull historical data from MTGJSON (by marketplace)
+            # Phase 3: Match MTGJSON card names to Scryfall cards and pull 30-day historical data
+            # MTGJSON matches cards by name, set_code, and collector_number
             mtgjson = MTGJSONAdapter()
             try:
-                logger.info("Phase 3: Pulling historical prices from MTGJSON")
-                
-                # Helper to get or create marketplace (reuse from Phase 2)
-                async def get_or_create_marketplace(slug: str, name: str, base_url: str, currency: str) -> Marketplace:
-                    query = select(Marketplace).where(Marketplace.slug == slug)
-                    result = await db.execute(query)
-                    mp = result.scalar_one_or_none()
-                    if not mp:
-                        mp = Marketplace(
-                            name=name,
-                            slug=slug,
-                            base_url=base_url,
-                            api_url=None,
-                            is_enabled=True,
-                            supports_api=False,
-                            default_currency=currency,
-                            rate_limit_seconds=1.0,
-                        )
-                        db.add(mp)
-                        await db.flush()
-                    return mp
+                logger.info("Phase 3: Matching MTGJSON cards to Scryfall cards and collecting 30-day historical prices")
                 
                 # Process cards in batches to avoid memory issues
                 batch_size = 50
@@ -501,14 +508,14 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                     
                     for card in batch:
                         try:
-                            # Fetch historical prices for multiple time ranges
-                            # MTGJSON provides ~90 days of weekly data, so we'll get what's available
+                            # Match MTGJSON card by name, set_code, and collector_number
+                            # MTGJSON provides ~90 days of weekly data, but we focus on 30 days for startup
                             historical_prices = await mtgjson.fetch_price_history(
                                 card_name=card.name,
                                 set_code=card.set_code,
                                 collector_number=card.collector_number,
                                 scryfall_id=card.scryfall_id,
-                                days=365,  # Get as much as possible (MTGJSON has ~90 days)
+                                days=30,  # Focus on 30-day history for startup seeding
                             )
                             
                             if historical_prices:
@@ -561,9 +568,7 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                     snapshots=results["historical_snapshots"],
                                 )
                             
-                            # Ensure we have 30 days of data - backfill if needed
                             # Check how many days of data we have for this card
-                            from datetime import datetime, timedelta, timezone
                             now = datetime.now(timezone.utc)
                             thirty_days_ago = now - timedelta(days=30)
                             history_check_query = select(func.count(PriceSnapshot.id)).where(
@@ -664,17 +669,93 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
             finally:
                 await mtgjson.close()
             
-            # Phase 4: Commit all changes
+            # Phase 4: Collect current prices from CardTrader (if API token available)
+            # Note: CardTrader doesn't provide historical data, only current prices
+            if settings.cardtrader_api_token:
+                from app.services.ingestion import get_adapter
+                cardtrader = get_adapter("cardtrader", cached=False)
+                try:
+                    logger.info("Phase 4: Collecting current prices from CardTrader", cards=len(all_cards))
+                    
+                    # Get or create CardTrader marketplace
+                    cardtrader_mp = await get_or_create_marketplace(
+                        "cardtrader", "CardTrader", "https://www.cardtrader.com", "EUR"
+                    )
+                    
+                    now = datetime.now(timezone.utc)
+                    
+                    for card in all_cards:
+                        try:
+                            # Fetch current price from CardTrader
+                            price_data = await cardtrader.fetch_price(
+                                card_name=card.name,
+                                set_code=card.set_code,
+                                collector_number=card.collector_number,
+                                scryfall_id=card.scryfall_id,
+                            )
+                            
+                            if price_data and price_data.price > 0:
+                                # Check if we already have a recent snapshot (within last 24 hours)
+                                recent_snapshot_query = select(PriceSnapshot).where(
+                                    and_(
+                                        PriceSnapshot.card_id == card.id,
+                                        PriceSnapshot.marketplace_id == cardtrader_mp.id,
+                                        PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
+                                    )
+                                )
+                                recent_result = await db.execute(recent_snapshot_query)
+                                recent_snapshot = recent_result.scalar_one_or_none()
+                                
+                                if not recent_snapshot:
+                                    # Create price snapshot
+                                    snapshot = PriceSnapshot(
+                                        card_id=card.id,
+                                        marketplace_id=cardtrader_mp.id,
+                                        snapshot_time=now,
+                                        price=price_data.price,
+                                        currency=price_data.currency,
+                                        price_foil=price_data.price_foil,
+                                        min_price=price_data.price_low,
+                                        max_price=price_data.price_high,
+                                        num_listings=price_data.num_listings,
+                                    )
+                                    db.add(snapshot)
+                                    results["cardtrader_snapshots"] += 1
+                                    
+                                    # Flush periodically
+                                    if results["cardtrader_snapshots"] % 100 == 0:
+                                        await db.flush()
+                        
+                        except Exception as e:
+                            error_msg = f"CardTrader card {card.id} ({card.name}): {str(e)}"
+                            results["errors"].append(error_msg)
+                            logger.warning("Failed to fetch CardTrader price", card_id=card.id, error=str(e))
+                            continue
+                    
+                    await db.flush()
+                    logger.info("Phase 4 complete: CardTrader prices collected", snapshots=results["cardtrader_snapshots"])
+                
+                finally:
+                    await cardtrader.close()
+            else:
+                logger.info("Phase 4: Skipping CardTrader (API token not configured)")
+            
+            # Phase 5: Commit all changes
             await db.commit()
             
-            results["completed_at"] = datetime.utcnow().isoformat()
-            results["total_snapshots"] = results["current_snapshots"] + results["historical_snapshots"]
+            results["completed_at"] = datetime.now(timezone.utc).isoformat()
+            results["total_snapshots"] = (
+                results["current_snapshots"] + 
+                results["historical_snapshots"] + 
+                results.get("cardtrader_snapshots", 0)
+            )
             
             logger.info(
                 "Comprehensive price data seeding completed",
                 cards_processed=results["cards_processed"],
                 current_snapshots=results["current_snapshots"],
                 historical_snapshots=results["historical_snapshots"],
+                cardtrader_snapshots=results.get("cardtrader_snapshots", 0),
                 total_snapshots=results["total_snapshots"],
                 errors_count=len(results["errors"]),
             )
