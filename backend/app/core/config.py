@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     cardmarket_access_token: str = ""
     cardmarket_access_secret: str = ""
     cardtrader_api_token: str = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJjYXJkdHJhZGVyLXByb2R1Y3Rpb24iLCJzdWIiOiJhcHA6MTg0ODciLCJhdWQiOiJhcHA6MTg0ODciLCJleHAiOjQ5MjA1OTI5MDUsImp0aSI6IjIwZDlkMDQzLTlhNTQtNDJhYS04ZDU4LTQ0ODc5ZWIxZTRmMSIsImlhdCI6MTc2NDkxOTMwNSwibmFtZSI6Ikx5cm8gQXBwIDIwMjUxMjA1MDIyMTQ1In0.HbX0-DZlowGAPPaLd3rklyM50q-VTi6rd2WwPwbTvzZ2pQjLyuZv8c8J7wDAFYGEMvGX5jRKY25lHAdrUYEsWitJ0RCysdVq97NBBmwuIsdDvVytwFrYUc6V0zGR4SBw03v99TD_cL9mPwy-vMW16xlJRw63FpM4DLktfYCLrkshS9syY7ytFPLHUKACsxT3qN459esgPm2jDjEgnzjxuqNLW_s9suC-oecWCltDAYYBsSZUFm74JR8eTgWdbWMF8YTVf-Qjcb0fdsbMqEwhdG_7wx0qKv9XaXV_jaBOSSOfDf5BeuxIDJ9vswDb2_XinvNKdCLsfMwF9BI-EYLIYA"  # CardTrader API JWT token for Full API access
+    cardtrader_secret_key: str = ""
     
     # Scraping Configuration
     scraper_user_agent: str = "MTGMarketIntel/1.0"

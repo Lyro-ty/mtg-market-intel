@@ -3,7 +3,7 @@ Market API endpoints for market-wide analytics and charts.
 """
 import json
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
 import structlog
@@ -172,7 +172,7 @@ async def get_market_overview(
     
     # Total price snapshots (active price data from last 24h)
     # Note: We no longer collect individual listings - using price snapshots from Scryfall/MTGJSON
-    day_ago = datetime.utcnow() - timedelta(days=1)
+    day_ago = datetime.now(timezone.utc) - timedelta(days=1)
     try:
         total_snapshots = await asyncio.wait_for(
             db.scalar(
@@ -458,7 +458,7 @@ async def get_market_index(
     if is_foil is not None:
         is_foil_bool = is_foil.lower() in ('true', '1', 'yes')
     # Determine date range and bucket size
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if range == "7d":
         start_date = now - timedelta(days=7)
         bucket_minutes = 30  # 30 minutes for 7 days
@@ -890,7 +890,7 @@ async def get_volume_by_format(
     """
     Get trading volume grouped by format over time using time-bucketed price snapshots.
     """
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     # Determine bucket size based on days
     if days <= 7:
