@@ -1062,6 +1062,29 @@ async def get_inventory_market_index(
                 })
         
         if not points:
+            # Log diagnostic info when no data found
+            total_snapshots = await db.scalar(
+                select(func.count(PriceSnapshot.id))
+            ) or 0
+            
+            recent_snapshots = await db.scalar(
+                select(func.count(PriceSnapshot.id)).where(
+                    PriceSnapshot.snapshot_time >= start_date,
+                    PriceSnapshot.card_id.in_(card_ids) if card_ids else True
+                )
+            ) or 0
+            
+            logger.info(
+                "No inventory market index data found",
+                range=range,
+                currency=currency or "ALL",
+                is_foil=is_foil_bool,
+                inventory_card_count=len(card_ids) if card_ids else 0,
+                total_snapshots_in_db=total_snapshots,
+                recent_snapshots_in_range=recent_snapshots,
+                start_date=start_date.isoformat(),
+            )
+            
             # Return empty data if no points
             return {
                 "range": range,

@@ -339,11 +339,11 @@ async def _get_currency_index(
     Returns list of points with 'timestamp' and 'indexValue' keys.
     """
     # Determine which price field to use based on foil filter
-    if is_foil_bool is True:
+    if is_foil is True:
         # Use foil prices only
         price_field = PriceSnapshot.price_foil
         price_condition = PriceSnapshot.price_foil.isnot(None)
-    elif is_foil_bool is False:
+    elif is_foil is False:
         # Exclude foil prices (only non-foil)
         price_field = PriceSnapshot.price
         # Use == None instead of .is_(None) to avoid SQLAlchemy type issues
@@ -384,10 +384,10 @@ async def _get_currency_index(
     
     # Use fixed base point: average of first day's data (or first point if less than a day)
     base_date = start_date + timedelta(days=1)
-    if is_foil_bool is True:
+    if is_foil is True:
         base_price_field = PriceSnapshot.price_foil
         base_condition = PriceSnapshot.price_foil.isnot(None)
-    elif is_foil_bool is False:
+    elif is_foil is False:
         base_price_field = PriceSnapshot.price
         base_condition = PriceSnapshot.price_foil == None  # noqa: E711
     else:
@@ -599,6 +599,28 @@ async def get_market_index(
         raise HTTPException(status_code=500, detail="Failed to fetch market index")
     
     if not rows:
+        # Log diagnostic info when no data found
+        # Check if there's any price snapshot data at all
+        total_snapshots = await db.scalar(
+            select(func.count(PriceSnapshot.id))
+        ) or 0
+        
+        recent_snapshots = await db.scalar(
+            select(func.count(PriceSnapshot.id)).where(
+                PriceSnapshot.snapshot_time >= start_date
+            )
+        ) or 0
+        
+        logger.info(
+            "No market index data found",
+            range=range,
+            currency=currency or "ALL",
+            is_foil=is_foil_bool,
+            total_snapshots_in_db=total_snapshots,
+            recent_snapshots_in_range=recent_snapshots,
+            start_date=start_date.isoformat(),
+        )
+        
         # Return empty data if no real data available
         return {
             "range": range,
@@ -626,7 +648,7 @@ async def get_market_index(
     if is_foil_bool is True:
         base_price_field = PriceSnapshot.price_foil
         base_condition = PriceSnapshot.price_foil.isnot(None)
-    elif is_foil_bool is False:
+    elif is_foil is False:
         base_price_field = PriceSnapshot.price
         base_condition = PriceSnapshot.price_foil == None  # noqa: E711
     else:
