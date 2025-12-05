@@ -357,10 +357,12 @@ async def _get_currency_index(
         func.avg(price_field).label("avg_price"),
         func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
     ).where(
-        PriceSnapshot.snapshot_time >= start_date,
-        PriceSnapshot.currency == currency,  # Filter by currency
-        price_condition,
-        price_field > 0,
+        and_(
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.currency == currency,  # Filter by currency
+            price_condition,
+            price_field > 0,
+        )
     ).group_by(bucket_expr).order_by(bucket_expr)
     
     try:
@@ -393,11 +395,13 @@ async def _get_currency_index(
         base_price_field = PriceSnapshot.price
         base_condition = PriceSnapshot.price.isnot(None)
     base_query = select(func.avg(base_price_field)).where(
-        PriceSnapshot.snapshot_time >= start_date,
-        PriceSnapshot.snapshot_time < base_date,
-        PriceSnapshot.currency == currency,
-        base_condition,
-        base_price_field > 0,
+        and_(
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.snapshot_time < base_date,
+            PriceSnapshot.currency == currency,
+            base_condition,
+            base_price_field > 0,
+        )
     )
     base_value = await db.scalar(base_query)
     
@@ -518,9 +522,11 @@ async def get_market_index(
         func.avg(price_field).label("avg_price"),
         func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
     ).where(
-        PriceSnapshot.snapshot_time >= start_date,
-        price_condition,
-        price_field > 0,
+        and_(
+            PriceSnapshot.snapshot_time >= start_date,
+            price_condition,
+            price_field > 0,
+        )
     )
     
     # Filter by currency if specified
@@ -652,14 +658,18 @@ async def get_market_index(
     else:
         base_price_field = PriceSnapshot.price
         base_condition = PriceSnapshot.price.isnot(None)
-    base_query = select(func.avg(base_price_field)).where(
+    base_conditions = [
         PriceSnapshot.snapshot_time >= start_date,
         PriceSnapshot.snapshot_time < base_date,
         base_condition,
         base_price_field > 0,
-    )
+    ]
     if currency:
-        base_query = base_query.where(PriceSnapshot.currency == currency)
+        base_conditions.append(PriceSnapshot.currency == currency)
+    
+    base_query = select(func.avg(base_price_field)).where(
+        and_(*base_conditions)
+    )
     
     base_value = await db.scalar(base_query)
     

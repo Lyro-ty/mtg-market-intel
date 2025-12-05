@@ -970,10 +970,12 @@ async def get_inventory_market_index(
             PriceSnapshot.card_id,
             func.avg(price_field).label("avg_price"),
         ).where(
-            PriceSnapshot.snapshot_time >= start_date,
-            PriceSnapshot.card_id.in_(card_ids),
-            price_condition,
-            price_field > 0,
+            and_(
+                PriceSnapshot.snapshot_time >= start_date,
+                PriceSnapshot.card_id.in_(card_ids),
+                price_condition,
+                price_field > 0,
+            )
         )
         
         # Filter by currency if specified
@@ -1024,15 +1026,23 @@ async def get_inventory_market_index(
         else:
             base_price_field = PriceSnapshot.price
             base_condition = PriceSnapshot.price.isnot(None)
+        # Build CASE statement for quantity mapping
+        quantity_case = case(
+            *[(PriceSnapshot.card_id == card_id, quantity) for card_id, quantity in quantity_map.items()],
+            else_=1
+        )
+        
         base_query = select(
-            func.sum(base_price_field * func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_value"),
-            func.sum(func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_quantity")
+            func.sum(base_price_field * quantity_case).label("total_value"),
+            func.sum(quantity_case).label("total_quantity")
         ).where(
-            PriceSnapshot.snapshot_time >= start_date,
-            PriceSnapshot.snapshot_time < base_date,
-            PriceSnapshot.card_id.in_(card_ids),
-            base_condition,
-            base_price_field > 0,
+            and_(
+                PriceSnapshot.snapshot_time >= start_date,
+                PriceSnapshot.snapshot_time < base_date,
+                PriceSnapshot.card_id.in_(card_ids),
+                base_condition,
+                base_price_field > 0,
+            )
         )
         if currency:
             base_query = base_query.where(PriceSnapshot.currency == currency)
@@ -1145,11 +1155,13 @@ async def _get_inventory_currency_index(
         PriceSnapshot.card_id,
         func.avg(price_field).label("avg_price"),
     ).where(
-        PriceSnapshot.snapshot_time >= start_date,
-        PriceSnapshot.card_id.in_(card_ids),
-        PriceSnapshot.currency == currency,
-        price_condition,
-        price_field > 0,
+        and_(
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.card_id.in_(card_ids),
+            PriceSnapshot.currency == currency,
+            price_condition,
+            price_field > 0,
+        )
     ).group_by(
         bucket_expr,
         PriceSnapshot.card_id
@@ -1195,16 +1207,24 @@ async def _get_inventory_currency_index(
     else:
         base_price_field = PriceSnapshot.price
         base_condition = PriceSnapshot.price.isnot(None)
+    # Build CASE statement for quantity mapping
+    quantity_case = case(
+        *[(PriceSnapshot.card_id == card_id, quantity) for card_id, quantity in quantity_map.items()],
+        else_=1
+    )
+    
     base_query = select(
-        func.sum(base_price_field * func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_value"),
-        func.sum(func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_quantity")
+        func.sum(base_price_field * quantity_case).label("total_value"),
+        func.sum(quantity_case).label("total_quantity")
     ).where(
-        PriceSnapshot.snapshot_time >= start_date,
-        PriceSnapshot.snapshot_time < base_date,
-        PriceSnapshot.card_id.in_(card_ids),
-        PriceSnapshot.currency == currency,
-        base_condition,
-        base_price_field > 0,
+        and_(
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.snapshot_time < base_date,
+            PriceSnapshot.card_id.in_(card_ids),
+            PriceSnapshot.currency == currency,
+            base_condition,
+            base_price_field > 0,
+        )
     )
     
     base_result = await db.execute(base_query)
