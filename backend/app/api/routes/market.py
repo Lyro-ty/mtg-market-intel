@@ -400,11 +400,14 @@ async def _get_currency_index(
     if not base_value or base_value <= 0:
         base_value = avg_prices[0]
     
+    # Convert base_value to float to avoid Decimal/float division issues
+    base_value_float = float(base_value) if base_value else 100.0
+    
     points = []
     for row in rows:
         if row.avg_price:
             # Normalize to base 100
-            index_value = (float(row.avg_price) / base_value) * 100.0 if base_value > 0 else 100.0
+            index_value = (float(row.avg_price) / base_value_float) * 100.0 if base_value_float > 0 else 100.0
             
             bucket_dt = row.bucket_time
             if isinstance(bucket_dt, datetime):
@@ -627,10 +630,13 @@ async def get_market_index(
     if not base_value or base_value <= 0:
         base_value = avg_prices[0]
     
+    # Convert base_value to float to avoid Decimal/float division issues
+    base_value_float = float(base_value) if base_value else 100.0
+    
     for row in rows:
         if row.avg_price:
             # Normalize to base 100
-            index_value = (float(row.avg_price) / base_value) * 100.0 if base_value > 0 else 100.0
+            index_value = (float(row.avg_price) / base_value_float) * 100.0 if base_value_float > 0 else 100.0
             
             # bucket_time is already a datetime from PostgreSQL
             bucket_dt = row.bucket_time
