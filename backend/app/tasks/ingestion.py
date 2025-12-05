@@ -292,7 +292,18 @@ async def _collect_price_data_async() -> dict[str, Any]:
                         
                         except Exception as e:
                             # CardTrader errors are non-fatal (blueprint mapping may not exist)
-                            logger.debug("CardTrader price fetch failed", card_id=card.id, error=str(e))
+                            # Log at info level for first few failures to help debug
+                            if i < 5:
+                                logger.info(
+                                    "CardTrader price fetch failed",
+                                    card_id=card.id,
+                                    card_name=card.name,
+                                    set_code=card.set_code,
+                                    error=str(e),
+                                    error_type=type(e).__name__
+                                )
+                            else:
+                                logger.debug("CardTrader price fetch failed", card_id=card.id, error=str(e))
                             continue
                 else:
                     logger.info("CardTrader API token not configured - skipping CardTrader collection")

@@ -339,11 +339,11 @@ async def _get_currency_index(
     Returns list of points with 'timestamp' and 'indexValue' keys.
     """
     # Determine which price field to use based on foil filter
-    if is_foil is True:
+    if is_foil_bool is True:
         # Use foil prices only
         price_field = PriceSnapshot.price_foil
         price_condition = PriceSnapshot.price_foil.isnot(None)
-    elif is_foil is False:
+    elif is_foil_bool is False:
         # Exclude foil prices (only non-foil)
         price_field = PriceSnapshot.price
         price_condition = PriceSnapshot.price_foil.is_(None)
@@ -383,9 +383,9 @@ async def _get_currency_index(
     
     # Use fixed base point: average of first day's data (or first point if less than a day)
     base_date = start_date + timedelta(days=1)
-    base_price_field = PriceSnapshot.price_foil if is_foil is True else PriceSnapshot.price
-    base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil is True else (
-        PriceSnapshot.price_foil.is_(None) if is_foil is False else PriceSnapshot.price.isnot(None)
+    base_price_field = PriceSnapshot.price_foil if is_foil_bool is True else PriceSnapshot.price
+    base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil_bool is True else (
+        PriceSnapshot.price_foil.is_(None) if is_foil_bool is False else PriceSnapshot.price.isnot(None)
     )
     base_query = select(func.avg(base_price_field)).where(
         PriceSnapshot.snapshot_time >= start_date,
@@ -428,7 +428,7 @@ async def get_market_index(
     range: str = Query("7d", regex="^(7d|30d|90d|1y)$"),
     currency: Optional[str] = Query(None, regex="^(USD|EUR)$"),
     separate_currencies: bool = Query(False),
-    is_foil: Optional[bool] = Query(None, description="Filter by foil pricing. If True, uses price_foil. If False, excludes foil prices. If None, uses regular prices."),
+    is_foil: Optional[str] = Query(None, description="Filter by foil pricing. 'true' uses price_foil, 'false' excludes foil prices, None uses regular prices."),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -442,7 +442,12 @@ async def get_market_index(
         range: Time range (7d, 30d, 90d, 1y)
         currency: Filter by currency (USD or EUR). If not specified, aggregates all currencies.
         separate_currencies: If True, returns separate indices for USD and EUR.
+        is_foil: Filter by foil pricing ('true', 'false', or None)
     """
+    # Convert string query parameter to boolean
+    is_foil_bool: Optional[bool] = None
+    if is_foil is not None:
+        is_foil_bool = is_foil.lower() in ('true', '1', 'yes')
     # Determine date range and bucket size
     now = datetime.utcnow()
     if range == "7d":
@@ -471,8 +476,8 @@ async def get_market_index(
     
     # Handle separate currencies mode
     if separate_currencies:
-        usd_points = await _get_currency_index("USD", start_date, bucket_expr, bucket_minutes, db, is_foil)
-        eur_points = await _get_currency_index("EUR", start_date, bucket_expr, bucket_minutes, db, is_foil)
+        usd_points = await _get_currency_index("USD", start_date, bucket_expr, bucket_minutes, db, is_foil_bool)
+        eur_points = await _get_currency_index("EUR", start_date, bucket_expr, bucket_minutes, db, is_foil_bool)
         
         # Apply interpolation to both currency series
         usd_points = interpolate_missing_points(usd_points, start_date, end_date, bucket_minutes)
@@ -489,11 +494,11 @@ async def get_market_index(
         }
     
     # Determine which price field to use based on foil filter
-    if is_foil is True:
+    if is_foil_bool is True:
         # Use foil prices only
         price_field = PriceSnapshot.price_foil
         price_condition = PriceSnapshot.price_foil.isnot(None)
-    elif is_foil is False:
+    elif is_foil_bool is False:
         # Exclude foil prices (only non-foil)
         price_field = PriceSnapshot.price
         price_condition = PriceSnapshot.price_foil.is_(None)
@@ -611,9 +616,9 @@ async def get_market_index(
     # Use fixed base point: average of first day's data (or first point if less than a day)
     # This provides consistent normalization across refreshes
     base_date = start_date + timedelta(days=1)
-    base_price_field = PriceSnapshot.price_foil if is_foil is True else PriceSnapshot.price
-    base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil is True else (
-        PriceSnapshot.price_foil.is_(None) if is_foil is False else PriceSnapshot.price.isnot(None)
+    base_price_field = PriceSnapshot.price_foil if is_foil_bool is True else PriceSnapshot.price
+    base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil_bool is True else (
+        PriceSnapshot.price_foil.is_(None) if is_foil_bool is False else PriceSnapshot.price.isnot(None)
     )
     base_query = select(func.avg(base_price_field)).where(
         PriceSnapshot.snapshot_time >= start_date,

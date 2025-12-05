@@ -117,22 +117,176 @@ class CardTraderAdapter(MarketplaceAdapter):
         """
         Find CardTrader blueprint ID for a card.
         
-        This is a simplified implementation. A full implementation would:
+        Process:
         1. Query CardTrader expansions API to find the set
-        2. Search for the card within that expansion
-        3. Return the blueprint_id
-        
-        For now, returns None - blueprint mapping should be done separately.
-        
-        TODO: Implement full blueprint mapping system:
-        - Create CardTraderBlueprint model to cache mappings
-        - Query /expansions to find expansion by set_code
-        - Query /blueprints?expansion_id=X to find card
-        - Match by name and collector_number
-        - Cache results in database for faster lookups
+        2. Search for the card within that expansion's blueprints
+        3. Match by name and collector_number
+        4. Return the blueprint_id
         """
-        logger.debug("Blueprint lookup not yet implemented", card_name=card_name, set_code=set_code)
-        return None
+        await self._rate_limit()
+        client = await self._get_client()
+        
+        try:
+            # Step 1: Find expansion by set code
+            # CardTrader uses different set codes, try exact match first, then partial
+            response = await client.get("/expansions")
+            response.raise_for_status()
+            expansions_data = response.json()
+            
+            # Handle different response formats
+            if isinstance(expansions_data, dict) and "data" in expansions_data:
+                expansions = expansions_data["data"]
+            elif isinstance(expansions_data, list):
+                expansions = expansions_data
+            else:
+                expansions = []
+            
+            # Find matching expansion
+            expansion_id = None
+            set_code_upper = set_code.upper()
+            
+            for expansion in expansions:
+                # Check various fields that might contain set code
+                exp_code = None
+                if isinstance(expansion, dict):
+                    exp_code = expansion.get("code") or expansion.get("code_short") or expansion.get("set_code")
+                    if not exp_code and "name" in expansion:
+                        # Sometimes set code is in the name
+                        name = expansion.get("name", "").upper()
+                        if set_code_upper in name:
+                            expansion_id = expansion.get("id")
+                            break
+                
+                if exp_code and exp_code.upper() == set_code_upper:
+                    expansion_id = expansion.get("id")
+                    break
+            
+            if not expansion_id:
+                logger.debug(
+                    "Expansion not found in CardTrader",
+                    set_code=set_code,
+                    card_name=card_name,
+                    expansions_checked=len(expansions)
+                )
+                return None
+            
+            # Step 2: Get blueprints for this expansion (with pagination support)
+            blueprints = []
+            page = 1
+            limit = 1000
+            max_pages = 10  # Safety limit to avoid infinite loops
+            
+            while page <= max_pages:
+                await self._rate_limit()
+                response = await client.get(
+                    "/blueprints",
+                    params={"expansion_id": expansion_id, "limit": limit, "page": page}
+                )
+                response.raise_for_status()
+                blueprints_data = response.json()
+                
+                # Handle different response formats
+                page_blueprints = []
+                if isinstance(blueprints_data, dict):
+                    if "data" in blueprints_data:
+                        page_blueprints = blueprints_data["data"]
+                    elif "blueprints" in blueprints_data:
+                        page_blueprints = blueprints_data["blueprints"]
+                elif isinstance(blueprints_data, list):
+                    page_blueprints = blueprints_data
+                
+                if not page_blueprints:
+                    break  # No more results
+                
+                blueprints.extend(page_blueprints)
+                
+                # Check if there are more pages
+                if isinstance(blueprints_data, dict):
+                    has_more = blueprints_data.get("has_more", False)
+                    total = blueprints_data.get("total")
+                    if not has_more or (total and len(blueprints) >= total):
+                        break
+                
+                # If we got fewer than limit, we're on the last page
+                if len(page_blueprints) < limit:
+                    break
+                
+                page += 1
+            
+            # Step 3: Match card by name and collector number
+            card_name_normalized = card_name.upper().strip()
+            
+            for blueprint in blueprints:
+                if not isinstance(blueprint, dict):
+                    continue
+                
+                # Match by name
+                blueprint_name = blueprint.get("name") or blueprint.get("card_name")
+                if not blueprint_name:
+                    continue
+                
+                blueprint_name_normalized = blueprint_name.upper().strip()
+                
+                # Exact name match
+                if blueprint_name_normalized == card_name_normalized:
+                    # If collector number provided, try to match it
+                    if collector_number:
+                        blueprint_collector = str(blueprint.get("number") or blueprint.get("collector_number") or "")
+                        if blueprint_collector and blueprint_collector != str(collector_number):
+                            continue  # Name matches but collector number doesn't
+                    
+                    blueprint_id = blueprint.get("id")
+                    if blueprint_id:
+                        logger.debug(
+                            "Found CardTrader blueprint",
+                            blueprint_id=blueprint_id,
+                            card_name=card_name,
+                            set_code=set_code
+                        )
+                        return int(blueprint_id)
+                
+                # Partial name match (in case of slight variations)
+                elif card_name_normalized in blueprint_name_normalized or blueprint_name_normalized in card_name_normalized:
+                    # Only use partial match if collector number matches
+                    if collector_number:
+                        blueprint_collector = str(blueprint.get("number") or blueprint.get("collector_number") or "")
+                        if blueprint_collector == str(collector_number):
+                            blueprint_id = blueprint.get("id")
+                            if blueprint_id:
+                                logger.debug(
+                                    "Found CardTrader blueprint (partial name match)",
+                                    blueprint_id=blueprint_id,
+                                    card_name=card_name,
+                                    set_code=set_code
+                                )
+                                return int(blueprint_id)
+            
+            logger.debug(
+                "Blueprint not found",
+                card_name=card_name,
+                set_code=set_code,
+                collector_number=collector_number,
+                expansion_id=expansion_id,
+                blueprints_checked=len(blueprints)
+            )
+            return None
+            
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "CardTrader API error in blueprint lookup",
+                status=e.response.status_code,
+                card_name=card_name,
+                set_code=set_code
+            )
+            return None
+        except Exception as e:
+            logger.error(
+                "Error finding CardTrader blueprint",
+                card_name=card_name,
+                set_code=set_code,
+                error=str(e)
+            )
+            return None
     
     async def _get_marketplace_products(self, blueprint_id: int) -> list[dict[str, Any]]:
         """Get marketplace products for a blueprint."""
