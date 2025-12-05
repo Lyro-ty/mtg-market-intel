@@ -395,23 +395,6 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
             scryfall = ScryfallAdapter()
             try:
                 logger.info("Phase 2: Collecting current prices from Scryfall for all cards", cards=len(all_cards))
-                    query = select(Marketplace).where(Marketplace.slug == slug)
-                    result = await db.execute(query)
-                    mp = result.scalar_one_or_none()
-                    if not mp:
-                        mp = Marketplace(
-                            name=name,
-                            slug=slug,
-                            base_url=base_url,
-                            api_url=None,
-                            is_enabled=True,
-                            supports_api=False,
-                            default_currency=currency,
-                            rate_limit_seconds=1.0,
-                        )
-                        db.add(mp)
-                        await db.flush()
-                    return mp
                 
                 for i, card in enumerate(all_cards):
                     try:
