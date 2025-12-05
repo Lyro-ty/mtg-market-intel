@@ -10,10 +10,11 @@ import json
 import re
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import select, func, and_, or_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +37,97 @@ from app.schemas.inventory import (
     InventoryUrgency,
     ActionType,
 )
+
+
+def interpolate_missing_points(
+    points: List[Dict[str, Any]], 
+    start_date: datetime, 
+    end_date: datetime, 
+    bucket_minutes: int
+) -> List[Dict[str, Any]]:
+    """
+    Fill gaps in time-series data using forward-fill and linear interpolation.
+    
+    Args:
+        points: List of points with 'timestamp' and 'indexValue' keys
+        start_date: Start of the time range
+        end_date: End of the time range
+        bucket_minutes: Size of each bucket in minutes
+    
+    Returns:
+        List of points with gaps filled
+    """
+    if not points:
+        return []
+    
+    # Convert timestamps to datetime objects for easier manipulation
+    point_dict = {}
+    for point in points:
+        if isinstance(point['timestamp'], str):
+            ts = datetime.fromisoformat(point['timestamp'].replace('Z', '+00:00'))
+        else:
+            ts = point['timestamp']
+        point_dict[ts] = point['indexValue']
+    
+    # Generate all expected bucket timestamps
+    bucket_timedelta = timedelta(minutes=bucket_minutes)
+    expected_times = []
+    current = start_date
+    while current <= end_date:
+        expected_times.append(current)
+        current += bucket_timedelta
+    
+    # Fill missing points using forward-fill, then linear interpolation
+    filled_points = []
+    last_value = None
+    
+    for i, expected_time in enumerate(expected_times):
+        if expected_time in point_dict:
+            # We have actual data for this bucket
+            last_value = point_dict[expected_time]
+            filled_points.append({
+                'timestamp': expected_time.isoformat(),
+                'indexValue': last_value
+            })
+        elif last_value is not None:
+            # Forward-fill: use last known value
+            filled_points.append({
+                'timestamp': expected_time.isoformat(),
+                'indexValue': last_value
+            })
+        else:
+            # No data yet, find next known value for interpolation
+            next_value = None
+            next_time = None
+            for future_time in expected_times[i+1:]:
+                if future_time in point_dict:
+                    next_value = point_dict[future_time]
+                    next_time = future_time
+                    break
+            
+            if next_value is not None and last_value is not None:
+                # Linear interpolation between last and next
+                time_diff = (next_time - expected_times[i-1]).total_seconds()
+                if time_diff > 0:
+                    interp_factor = (expected_time - expected_times[i-1]).total_seconds() / time_diff
+                    interp_value = last_value + (next_value - last_value) * interp_factor
+                    filled_points.append({
+                        'timestamp': expected_time.isoformat(),
+                        'indexValue': round(interp_value, 2)
+                    })
+                    last_value = interp_value
+            elif next_value is not None:
+                # Use next value if no previous value
+                filled_points.append({
+                    'timestamp': expected_time.isoformat(),
+                    'indexValue': next_value
+                })
+                last_value = next_value
+            else:
+                # No data available, skip this bucket
+                continue
+    
+    return filled_points
 
 
 class RunRecommendationsRequest(BaseModel):
@@ -73,15 +165,86 @@ def parse_condition(text: str) -> InventoryCondition:
     return CONDITION_ALIASES.get(normalized, InventoryCondition.NEAR_MINT)
 
 
-def parse_plaintext_line(line: str) -> dict:
+async def parse_plaintext_line_enhanced(line: str, db: AsyncSession) -> dict:
     """
-    Parse a plaintext line into inventory components.
+    Parse a plaintext line into inventory components with enhanced set code validation.
     
     Supports formats like:
     - "4x Lightning Bolt"
     - "2 Black Lotus [FOIL]"
     - "1x Tarmogoyf (MMA) NM"
     - "Force of Will - Alliances - LP"
+    """
+    result = {
+        "quantity": 1,
+        "card_name": "",
+        "set_code": None,
+        "condition": InventoryCondition.NEAR_MINT,
+        "is_foil": False,
+    }
+    
+    # Check for foil
+    if re.search(r'\[foil\]|\(foil\)|foil', line, re.IGNORECASE):
+        result["is_foil"] = True
+        line = re.sub(r'\[foil\]|\(foil\)|foil', '', line, flags=re.IGNORECASE)
+    
+    # Parse quantity at start: "4x", "4 x", or just "4 "
+    qty_match = re.match(r'^(\d+)\s*[xX]?\s*', line)
+    if qty_match:
+        result["quantity"] = int(qty_match.group(1))
+        line = line[qty_match.end():]
+    
+    # Check for condition at end
+    for alias, cond in CONDITION_ALIASES.items():
+        if line.lower().rstrip().endswith(alias):
+            result["condition"] = cond
+            line = line[:-(len(alias))].rstrip(' -')
+            break
+    
+    # Check for set code in parentheses: (MMA) or [MMA]
+    set_match = re.search(r'[\(\[]([A-Z0-9]{2,6})[\)\]]', line, re.IGNORECASE)
+    if set_match:
+        potential_set = set_match.group(1).upper()
+        
+        # Validate against known sets
+        set_query = select(Card.set_code).where(
+            Card.set_code.ilike(f"%{potential_set}%")
+        ).distinct().limit(5)
+        set_result = await db.execute(set_query)
+        known_sets = [row[0] for row in set_result.all()]
+        
+        if known_sets:
+            # Use exact match if available, otherwise first match
+            if potential_set in known_sets:
+                result["set_code"] = potential_set
+            else:
+                result["set_code"] = known_sets[0]  # Best match
+        else:
+            # If no match found, still use the extracted code (might be valid but not in DB yet)
+            result["set_code"] = potential_set
+        
+        line = line[:set_match.start()] + line[set_match.end():]
+    
+    # Check for set name after dash: "Card Name - Set Name"
+    if " - " in line and not result["set_code"]:
+        parts = line.split(" - ")
+        result["card_name"] = parts[0].strip()
+        # The rest might be set name or other info - just use the card name
+    else:
+        result["card_name"] = line.strip()
+    
+    # Clean up card name
+    result["card_name"] = re.sub(r'\s+', ' ', result["card_name"]).strip()
+    
+    return result
+
+
+def parse_plaintext_line(line: str) -> dict:
+    """
+    Parse a plaintext line into inventory components (non-async version for backward compatibility).
+    
+    This is a simplified version that doesn't validate set codes against the database.
+    For enhanced validation, use parse_plaintext_line_enhanced().
     """
     result = {
         "quantity": 1,
@@ -263,7 +426,8 @@ async def import_inventory(
                 continue
             
             try:
-                parsed = parse_plaintext_line(line)
+                # Use enhanced parsing with set code validation
+                parsed = await parse_plaintext_line_enhanced(line, db)
                 
                 if not parsed["card_name"]:
                     items.append(ImportedItem(
@@ -701,12 +865,20 @@ async def create_inventory_item(
 async def get_inventory_market_index(
     current_user: CurrentUser,
     range: str = Query("7d", regex="^(7d|30d|90d|1y)$"),
+    currency: Optional[str] = Query(None, regex="^(USD|EUR)$"),
+    separate_currencies: bool = Query(False),
+    is_foil: Optional[bool] = Query(None, description="Filter by foil pricing. If True, uses price_foil. If False, excludes foil prices. If None, uses regular prices."),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get market index data for the current user's inventory items.
     
     Calculates a weighted index based on the user's inventory items' price history.
+    
+    Args:
+        range: Time range (7d, 30d, 90d, 1y)
+        currency: Filter by currency (USD or EUR). If not specified, aggregates all currencies.
+        separate_currencies: If True, returns separate indices for USD and EUR.
     """
     # Determine date range and bucket size
     now = datetime.utcnow()
@@ -723,6 +895,8 @@ async def get_inventory_market_index(
         start_date = now - timedelta(days=365)
         bucket_minutes = 1440
     
+    end_date = now
+    
     try:
         # Get user's inventory items with their card IDs
         inventory_query = select(InventoryItem.card_id, InventoryItem.quantity).where(
@@ -735,6 +909,7 @@ async def get_inventory_market_index(
             # Return empty data if no inventory
             return {
                 "range": range,
+                "currency": currency or "ALL",
                 "points": [],
                 "isMockData": False,
             }
@@ -749,16 +924,59 @@ async def get_inventory_market_index(
             func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
         )
         
+        # Handle separate currencies mode
+        if separate_currencies:
+            usd_points = await _get_inventory_currency_index(
+                "USD", start_date, bucket_expr, bucket_minutes, card_ids, quantity_map, db, is_foil
+            )
+            eur_points = await _get_inventory_currency_index(
+                "EUR", start_date, bucket_expr, bucket_minutes, card_ids, quantity_map, db, is_foil
+            )
+            
+            # Apply interpolation
+            usd_points = interpolate_missing_points(usd_points, start_date, end_date, bucket_minutes)
+            eur_points = interpolate_missing_points(eur_points, start_date, end_date, bucket_minutes)
+            
+            return {
+                "range": range,
+                "separate_currencies": True,
+                "currencies": {
+                    "USD": {"currency": "USD", "points": usd_points},
+                    "EUR": {"currency": "EUR", "points": eur_points},
+                },
+                "isMockData": False,
+            }
+        
+        # Determine which price field to use based on foil filter
+        if is_foil is True:
+            # Use foil prices only
+            price_field = PriceSnapshot.price_foil
+            price_condition = PriceSnapshot.price_foil.isnot(None)
+        elif is_foil is False:
+            # Exclude foil prices (only non-foil)
+            price_field = PriceSnapshot.price
+            price_condition = PriceSnapshot.price_foil.is_(None)
+        else:
+            # Default: use regular prices
+            price_field = PriceSnapshot.price
+            price_condition = PriceSnapshot.price.isnot(None)
+        
         query = select(
             bucket_expr.label("bucket_time"),
             PriceSnapshot.card_id,
-            func.avg(PriceSnapshot.price).label("avg_price"),
+            func.avg(price_field).label("avg_price"),
         ).where(
             PriceSnapshot.snapshot_time >= start_date,
             PriceSnapshot.card_id.in_(card_ids),
-            PriceSnapshot.price.isnot(None),
-            PriceSnapshot.price > 0,
-        ).group_by(
+            price_condition,
+            price_field > 0,
+        )
+        
+        # Filter by currency if specified
+        if currency:
+            query = query.where(PriceSnapshot.currency == currency)
+        
+        query = query.group_by(
             bucket_expr,
             PriceSnapshot.card_id
         ).order_by(
@@ -788,15 +1006,40 @@ async def get_inventory_market_index(
             bucket_data[timestamp_str]["total_value"] += value
             bucket_data[timestamp_str]["total_quantity"] += quantity
         
-        # Convert to points and normalize to base 100
+        # Convert to points and normalize to base 100 using fixed base point
         points = []
+        base_date = start_date + timedelta(days=1)
+        
+        # Calculate base value from first day's data
+        base_price_field = PriceSnapshot.price_foil if is_foil is True else PriceSnapshot.price
+        base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil is True else (
+            PriceSnapshot.price_foil.is_(None) if is_foil is False else PriceSnapshot.price.isnot(None)
+        )
+        base_query = select(
+            func.sum(base_price_field * func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_value"),
+            func.sum(func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_quantity")
+        ).where(
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.snapshot_time < base_date,
+            PriceSnapshot.card_id.in_(card_ids),
+            base_condition,
+            base_price_field > 0,
+        )
+        if currency:
+            base_query = base_query.where(PriceSnapshot.currency == currency)
+        
+        base_result = await db.execute(base_query)
+        base_row = base_result.first()
         base_value = None
+        if base_row and base_row.total_quantity and base_row.total_quantity > 0:
+            base_value = float(base_row.total_value) / float(base_row.total_quantity)
         
         for timestamp_str in sorted(bucket_data.keys()):
             data = bucket_data[timestamp_str]
             if data["total_quantity"] > 0:
                 avg_value = data["total_value"] / data["total_quantity"]
                 
+                # Use calculated base value or first point as fallback
                 if base_value is None:
                     base_value = avg_value
                 
@@ -809,61 +1052,148 @@ async def get_inventory_market_index(
                 })
         
         if not points:
-            # Return mock data if no points
-            points = []
-            base_value = 100.0
-            num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
-            if range == "7d":
-                num_points = 7 * 24 * 2
-            elif range == "30d":
-                num_points = 30 * 24
-            elif range == "90d":
-                num_points = 90 * 6
-            
-            for i in range(min(num_points, 1000)):
-                date = start_date + timedelta(minutes=i * bucket_minutes)
-                value = base_value + (i % 10 - 5) * 0.5
-                points.append({
-                    "timestamp": date.isoformat(),
-                    "indexValue": round(value, 2),
-                })
+            # Return empty data if no points
             return {
                 "range": range,
-                "points": points,
-                "isMockData": True,
+                "currency": currency or "ALL",
+                "points": [],
+                "isMockData": False,
             }
+        
+        # Apply interpolation to fill gaps
+        points = interpolate_missing_points(points, start_date, end_date, bucket_minutes)
         
         return {
             "range": range,
+            "currency": currency or "ALL",
             "points": points,
             "isMockData": False,
         }
         
     except Exception as e:
         logger.error("Error fetching inventory market index", error=str(e), error_type=type(e).__name__, range=range)
-        # Return mock data on error
-        points = []
-        base_value = 100.0
-        num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
-        if range == "7d":
-            num_points = 7 * 24 * 2
-        elif range == "30d":
-            num_points = 30 * 24
-        elif range == "90d":
-            num_points = 90 * 6
-        
-        for i in range(min(num_points, 1000)):
-            date = start_date + timedelta(minutes=i * bucket_minutes)
-            value = base_value + (i % 10 - 5) * 0.5
-            points.append({
-                "timestamp": date.isoformat(),
-                "indexValue": round(value, 2),
-            })
+        # Return empty data on error
         return {
             "range": range,
-            "points": points,
-            "isMockData": True,
+            "currency": currency or "ALL",
+            "points": [],
+            "isMockData": False,
         }
+
+
+async def _get_inventory_currency_index(
+    currency: str,
+    start_date: datetime,
+    bucket_expr,
+    bucket_minutes: int,
+    card_ids: List[int],
+    quantity_map: Dict[int, int],
+    db: AsyncSession,
+    is_foil: Optional[bool] = None
+) -> List[Dict[str, Any]]:
+    """
+    Helper function to get inventory index points for a specific currency.
+    """
+    # Determine which price field to use based on foil filter
+    if is_foil is True:
+        # Use foil prices only
+        price_field = PriceSnapshot.price_foil
+        price_condition = PriceSnapshot.price_foil.isnot(None)
+    elif is_foil is False:
+        # Exclude foil prices (only non-foil)
+        price_field = PriceSnapshot.price
+        price_condition = PriceSnapshot.price_foil.is_(None)
+    else:
+        # Default: use regular prices
+        price_field = PriceSnapshot.price
+        price_condition = PriceSnapshot.price.isnot(None)
+    
+    query = select(
+        bucket_expr.label("bucket_time"),
+        PriceSnapshot.card_id,
+        func.avg(price_field).label("avg_price"),
+    ).where(
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.card_id.in_(card_ids),
+        PriceSnapshot.currency == currency,
+        price_condition,
+        price_field > 0,
+    ).group_by(
+        bucket_expr,
+        PriceSnapshot.card_id
+    ).order_by(
+        bucket_expr
+    )
+    
+    try:
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=25
+        )
+        rows = result.all()
+    except Exception as e:
+        logger.error(f"Error fetching inventory {currency} index", error=str(e))
+        return []
+    
+    # Group by time bucket and calculate weighted average
+    bucket_data = {}
+    for row in rows:
+        bucket_time = row.bucket_time
+        if isinstance(bucket_time, datetime):
+            timestamp_str = bucket_time.isoformat()
+        else:
+            timestamp_str = str(bucket_time)
+        
+        if timestamp_str not in bucket_data:
+            bucket_data[timestamp_str] = {"total_value": 0.0, "total_quantity": 0}
+        
+        quantity = quantity_map.get(row.card_id, 1)
+        value = float(row.avg_price) * quantity
+        bucket_data[timestamp_str]["total_value"] += value
+        bucket_data[timestamp_str]["total_quantity"] += quantity
+    
+    # Calculate base value from first day
+    base_date = start_date + timedelta(days=1)
+    base_price_field = PriceSnapshot.price_foil if is_foil is True else PriceSnapshot.price
+    base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil is True else (
+        PriceSnapshot.price_foil.is_(None) if is_foil is False else PriceSnapshot.price.isnot(None)
+    )
+    base_query = select(
+        func.sum(base_price_field * func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_value"),
+        func.sum(func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_quantity")
+    ).where(
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.snapshot_time < base_date,
+        PriceSnapshot.card_id.in_(card_ids),
+        PriceSnapshot.currency == currency,
+        base_condition,
+        base_price_field > 0,
+    )
+    
+    base_result = await db.execute(base_query)
+    base_row = base_result.first()
+    base_value = None
+    if base_row and base_row.total_quantity and base_row.total_quantity > 0:
+        base_value = float(base_row.total_value) / float(base_row.total_quantity)
+    
+    points = []
+    for timestamp_str in sorted(bucket_data.keys()):
+        data = bucket_data[timestamp_str]
+        if data["total_quantity"] > 0:
+            avg_value = data["total_value"] / data["total_quantity"]
+            
+            if base_value is None:
+                base_value = avg_value
+            
+            # Normalize to base 100
+            index_value = (avg_value / base_value) * 100.0 if base_value > 0 else 100.0
+            
+            points.append({
+                "timestamp": timestamp_str,
+                "indexValue": round(index_value, 2),
+            })
+    
+    return points
 
 
 @router.get("/top-movers")
@@ -1367,3 +1697,61 @@ async def run_inventory_recommendations(
     result = await agent.run_inventory_recommendations(item_ids, user_id=current_user.id)
     
     return result
+
+
+@router.get("/export")
+async def export_inventory(
+    current_user: CurrentUser,
+    format: str = Query("csv", regex="^(csv|txt)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Export user's inventory to CSV or plain text.
+    
+    Args:
+        format: Export format - 'csv' or 'txt'
+    """
+    query = select(InventoryItem, Card).join(
+        Card, InventoryItem.card_id == Card.id
+    ).where(InventoryItem.user_id == current_user.id).order_by(Card.name)
+    
+    result = await db.execute(query)
+    items = result.all()
+    
+    if format == "csv":
+        output = io.StringIO()
+        # Use quoting to handle special characters in card names
+        writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+        writer.writerow([
+            "Card Name", "Set", "Quantity", "Condition", "Foil", 
+            "Language", "Acquisition Price", "Current Value", "Profit/Loss"
+        ])
+        for item, card in items:
+            writer.writerow([
+                card.name, 
+                card.set_code, 
+                item.quantity, 
+                item.condition,
+                "Yes" if item.is_foil else "No", 
+                item.language or "",
+                item.acquisition_price if item.acquisition_price else "",
+                item.current_value if item.current_value else "",
+                item.profit_loss if item.profit_loss else ""
+            ])
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=inventory.csv"}
+        )
+    else:  # txt
+        lines = []
+        for item, card in items:
+            foil_text = " FOIL" if item.is_foil else ""
+            lines.append(
+                f"{item.quantity}x {card.name} [{card.set_code}]{foil_text} {item.condition}"
+            )
+        return Response(
+            content="\n".join(lines),
+            media_type="text/plain",
+            headers={"Content-Disposition": "attachment; filename=inventory.txt"}
+        )

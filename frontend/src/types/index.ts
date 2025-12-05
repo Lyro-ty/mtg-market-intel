@@ -408,6 +408,12 @@ export interface MarketIndexPoint {
 export interface MarketIndex {
   range: '7d' | '30d' | '90d' | '1y';
   points: MarketIndexPoint[];
+  currency?: 'USD' | 'EUR' | 'ALL';
+  separate_currencies?: boolean;
+  currencies?: {
+    USD?: { currency: 'USD'; points: MarketIndexPoint[] };
+    EUR?: { currency: 'EUR'; points: MarketIndexPoint[] };
+  };
   isMockData?: boolean;
 }
 

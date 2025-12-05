@@ -97,6 +97,14 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=23),  # 11 PM UTC
             "options": {"queue": "ingestion"},
         },
+        
+        # Download Scryfall bulk data daily at 2 AM
+        # This provides comprehensive historical price coverage
+        "download-scryfall-bulk": {
+            "task": "app.tasks.data_seeding.download_scryfall_bulk_data_task",
+            "schedule": crontab(minute=0, hour=2),  # 2 AM UTC
+            "options": {"queue": "ingestion"},
+        },
     },
     
     # Task routing

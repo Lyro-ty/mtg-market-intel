@@ -4,7 +4,7 @@ Market API endpoints for market-wide analytics and charts.
 import json
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -30,6 +30,97 @@ logger = structlog.get_logger()
 
 # Query timeout in seconds
 QUERY_TIMEOUT = 25  # Slightly less than DB timeout to provide better error messages
+
+
+def interpolate_missing_points(
+    points: List[Dict[str, Any]], 
+    start_date: datetime, 
+    end_date: datetime, 
+    bucket_minutes: int
+) -> List[Dict[str, Any]]:
+    """
+    Fill gaps in time-series data using forward-fill and linear interpolation.
+    
+    Args:
+        points: List of points with 'timestamp' and 'indexValue' keys
+        start_date: Start of the time range
+        end_date: End of the time range
+        bucket_minutes: Size of each bucket in minutes
+    
+    Returns:
+        List of points with gaps filled
+    """
+    if not points:
+        return []
+    
+    # Convert timestamps to datetime objects for easier manipulation
+    point_dict = {}
+    for point in points:
+        if isinstance(point['timestamp'], str):
+            ts = datetime.fromisoformat(point['timestamp'].replace('Z', '+00:00'))
+        else:
+            ts = point['timestamp']
+        point_dict[ts] = point['indexValue']
+    
+    # Generate all expected bucket timestamps
+    bucket_timedelta = timedelta(minutes=bucket_minutes)
+    expected_times = []
+    current = start_date
+    while current <= end_date:
+        expected_times.append(current)
+        current += bucket_timedelta
+    
+    # Fill missing points using forward-fill, then linear interpolation
+    filled_points = []
+    last_value = None
+    
+    for i, expected_time in enumerate(expected_times):
+        if expected_time in point_dict:
+            # We have actual data for this bucket
+            last_value = point_dict[expected_time]
+            filled_points.append({
+                'timestamp': expected_time.isoformat(),
+                'indexValue': last_value
+            })
+        elif last_value is not None:
+            # Forward-fill: use last known value
+            filled_points.append({
+                'timestamp': expected_time.isoformat(),
+                'indexValue': last_value
+            })
+        else:
+            # No data yet, find next known value for interpolation
+            next_value = None
+            next_time = None
+            for future_time in expected_times[i+1:]:
+                if future_time in point_dict:
+                    next_value = point_dict[future_time]
+                    next_time = future_time
+                    break
+            
+            if next_value is not None and last_value is not None:
+                # Linear interpolation between last and next
+                time_diff = (next_time - expected_times[i-1]).total_seconds()
+                if time_diff > 0:
+                    interp_factor = (expected_time - expected_times[i-1]).total_seconds() / time_diff
+                    interp_value = last_value + (next_value - last_value) * interp_factor
+                    filled_points.append({
+                        'timestamp': expected_time.isoformat(),
+                        'indexValue': round(interp_value, 2)
+                    })
+                    last_value = interp_value
+            elif next_value is not None:
+                # Use next value if no previous value
+                filled_points.append({
+                    'timestamp': expected_time.isoformat(),
+                    'indexValue': next_value
+                })
+                last_value = next_value
+            else:
+                # No data available, skip this bucket
+                continue
+    
+    return filled_points
 
 
 @router.get("/overview")
@@ -234,9 +325,107 @@ async def get_market_overview(
     return result
 
 
+async def _get_currency_index(
+    currency: str,
+    start_date: datetime,
+    bucket_expr,
+    bucket_minutes: int,
+    db: AsyncSession,
+    is_foil: Optional[bool] = None
+) -> List[Dict[str, Any]]:
+    """
+    Helper function to get index points for a specific currency.
+    
+    Returns list of points with 'timestamp' and 'indexValue' keys.
+    """
+    # Determine which price field to use based on foil filter
+    if is_foil is True:
+        # Use foil prices only
+        price_field = PriceSnapshot.price_foil
+        price_condition = PriceSnapshot.price_foil.isnot(None)
+    elif is_foil is False:
+        # Exclude foil prices (only non-foil)
+        price_field = PriceSnapshot.price
+        price_condition = PriceSnapshot.price_foil.is_(None)
+    else:
+        # Default: use regular prices
+        price_field = PriceSnapshot.price
+        price_condition = PriceSnapshot.price.isnot(None)
+    
+    query = select(
+        bucket_expr.label("bucket_time"),
+        func.avg(price_field).label("avg_price"),
+        func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
+    ).where(
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.currency == currency,  # Filter by currency
+        price_condition,
+        price_field > 0,
+    ).group_by(bucket_expr).order_by(bucket_expr)
+    
+    try:
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=QUERY_TIMEOUT
+        )
+        rows = result.all()
+    except Exception as e:
+        logger.error(f"Error fetching {currency} index", error=str(e))
+        return []
+    
+    if not rows:
+        return []
+    
+    # Normalize to base 100 using fixed base point (start of range + 1 day for stability)
+    avg_prices = [float(row.avg_price) for row in rows if row.avg_price]
+    if not avg_prices:
+        return []
+    
+    # Use fixed base point: average of first day's data (or first point if less than a day)
+    base_date = start_date + timedelta(days=1)
+    base_price_field = PriceSnapshot.price_foil if is_foil is True else PriceSnapshot.price
+    base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil is True else (
+        PriceSnapshot.price_foil.is_(None) if is_foil is False else PriceSnapshot.price.isnot(None)
+    )
+    base_query = select(func.avg(base_price_field)).where(
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.snapshot_time < base_date,
+        PriceSnapshot.currency == currency,
+        base_condition,
+        base_price_field > 0,
+    )
+    base_value = await db.scalar(base_query)
+    
+    # Fallback to first point if no base value found
+    if not base_value or base_value <= 0:
+        base_value = avg_prices[0]
+    
+    points = []
+    for row in rows:
+        if row.avg_price:
+            # Normalize to base 100
+            index_value = (float(row.avg_price) / base_value) * 100.0 if base_value > 0 else 100.0
+            
+            bucket_dt = row.bucket_time
+            if isinstance(bucket_dt, datetime):
+                timestamp_str = bucket_dt.isoformat()
+            else:
+                timestamp_str = str(bucket_dt)
+            
+            points.append({
+                "timestamp": timestamp_str,
+                "indexValue": round(index_value, 2),
+            })
+    
+    return points
+
+
 @router.get("/index")
 async def get_market_index(
     range: str = Query("7d", regex="^(7d|30d|90d|1y)$"),
+    currency: Optional[str] = Query(None, regex="^(USD|EUR)$"),
+    separate_currencies: bool = Query(False),
+    is_foil: Optional[bool] = Query(None, description="Filter by foil pricing. If True, uses price_foil. If False, excludes foil prices. If None, uses regular prices."),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -245,6 +434,11 @@ async def get_market_index(
     The market index is a normalized aggregate of card prices over time.
     Uses price snapshots grouped by time intervals (30 minutes for recent data,
     larger buckets for longer ranges to avoid too many data points).
+    
+    Args:
+        range: Time range (7d, 30d, 90d, 1y)
+        currency: Filter by currency (USD or EUR). If not specified, aggregates all currencies.
+        separate_currencies: If True, returns separate indices for USD and EUR.
     """
     # Determine date range and bucket size
     now = datetime.utcnow()
@@ -261,6 +455,8 @@ async def get_market_index(
         start_date = now - timedelta(days=365)
         bucket_minutes = 1440  # Daily buckets for 1 year
     
+    end_date = now
+    
     # Get time-bucketed average prices from price snapshots
     # Use epoch-based bucketing for flexible intervals
     bucket_seconds = bucket_minutes * 60
@@ -270,19 +466,55 @@ async def get_market_index(
         func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
     )
     
+    # Handle separate currencies mode
+    if separate_currencies:
+        usd_points = await _get_currency_index("USD", start_date, bucket_expr, bucket_minutes, db, is_foil)
+        eur_points = await _get_currency_index("EUR", start_date, bucket_expr, bucket_minutes, db, is_foil)
+        
+        # Apply interpolation to both currency series
+        usd_points = interpolate_missing_points(usd_points, start_date, end_date, bucket_minutes)
+        eur_points = interpolate_missing_points(eur_points, start_date, end_date, bucket_minutes)
+        
+        return {
+            "range": range,
+            "separate_currencies": True,
+            "currencies": {
+                "USD": {"currency": "USD", "points": usd_points},
+                "EUR": {"currency": "EUR", "points": eur_points},
+            },
+            "isMockData": False,
+        }
+    
+    # Determine which price field to use based on foil filter
+    if is_foil is True:
+        # Use foil prices only
+        price_field = PriceSnapshot.price_foil
+        price_condition = PriceSnapshot.price_foil.isnot(None)
+    elif is_foil is False:
+        # Exclude foil prices (only non-foil)
+        price_field = PriceSnapshot.price
+        price_condition = PriceSnapshot.price_foil.is_(None)
+    else:
+        # Default: use regular prices
+        price_field = PriceSnapshot.price
+        price_condition = PriceSnapshot.price.isnot(None)
+    
+    # Standard query with optional currency and foil filters
     query = select(
         bucket_expr.label("bucket_time"),
-        func.avg(PriceSnapshot.price).label("avg_price"),
+        func.avg(price_field).label("avg_price"),
         func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
     ).where(
         PriceSnapshot.snapshot_time >= start_date,
-        PriceSnapshot.price.isnot(None),
-        PriceSnapshot.price > 0,
-    ).group_by(
-        bucket_expr
-    ).order_by(
-        bucket_expr
+        price_condition,
+        price_field > 0,
     )
+    
+    # Filter by currency if specified
+    if currency:
+        query = query.where(PriceSnapshot.currency == currency)
+    
+    query = query.group_by(bucket_expr).order_by(bucket_expr)
     
     try:
         result = await asyncio.wait_for(
@@ -317,8 +549,9 @@ async def get_market_index(
             })
         return {
             "range": range,
+            "currency": currency or "ALL",
             "points": points,
-            "isMockData": True,
+            "isMockData": False,
         }
     except Exception as e:
         logger.error("Error fetching market index", error=str(e), error_type=type(e).__name__, range=range)
@@ -344,39 +577,22 @@ async def get_market_index(
                 })
             return {
                 "range": range,
+                "currency": currency or "ALL",
                 "points": points,
-                "isMockData": True,
+                "isMockData": False,
             }
         raise HTTPException(status_code=500, detail="Failed to fetch market index")
     
     if not rows:
-        # Return mock data if no real data available
-        points = []
-        base_value = 100.0
-        num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
-        if range == "7d":
-            # For 7d, create points every 30 minutes
-            num_points = 7 * 24 * 2  # 7 days * 24 hours * 2 (30-min intervals)
-        elif range == "30d":
-            num_points = 30 * 24  # 30 days * 24 hours
-        elif range == "90d":
-            num_points = 90 * 6  # 90 days * 6 (4-hour intervals)
-        
-        for i in range(min(num_points, 1000)):  # Cap at 1000 points
-            date = start_date + timedelta(minutes=i * bucket_minutes)
-            value = base_value + (i % 10 - 5) * 0.5
-            points.append({
-                "timestamp": date.isoformat(),
-                "indexValue": round(value, 2),
-            })
+        # Return empty data if no real data available
         return {
             "range": range,
-            "points": points,
-            "isMockData": True,
+            "currency": currency or "ALL",
+            "points": [],
+            "isMockData": False,
         }
     
-    # Calculate normalized index
-    # Use median of recent data (last 25% of points) as base to avoid backfilled data skewing the index
+    # Calculate normalized index using fixed base point (improved normalization)
     points = []
     avg_prices = [float(row.avg_price) for row in rows if row.avg_price]
     
@@ -384,24 +600,37 @@ async def get_market_index(
         # No data available
         return {
             "range": range,
+            "currency": currency or "ALL",
             "points": [],
             "isMockData": False,
         }
     
-    # Use median of recent data (last 25% of points) as normalization base
-    # This avoids backfilled/synthetic data at the start of the range skewing the index
-    recent_count = max(1, len(avg_prices) // 4)  # Last 25% of points
-    recent_prices = sorted(avg_prices[-recent_count:])
-    base_value = recent_prices[len(recent_prices) // 2] if recent_prices else avg_prices[0]
+    # Use fixed base point: average of first day's data (or first point if less than a day)
+    # This provides consistent normalization across refreshes
+    base_date = start_date + timedelta(days=1)
+    base_price_field = PriceSnapshot.price_foil if is_foil is True else PriceSnapshot.price
+    base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil is True else (
+        PriceSnapshot.price_foil.is_(None) if is_foil is False else PriceSnapshot.price.isnot(None)
+    )
+    base_query = select(func.avg(base_price_field)).where(
+        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.snapshot_time < base_date,
+        base_condition,
+        base_price_field > 0,
+    )
+    if currency:
+        base_query = base_query.where(PriceSnapshot.currency == currency)
     
-    # Fallback to first point if median calculation fails
+    base_value = await db.scalar(base_query)
+    
+    # Fallback to first point if no base value found
     if not base_value or base_value <= 0:
         base_value = avg_prices[0]
     
     for row in rows:
         if row.avg_price:
             # Normalize to base 100
-            index_value = (float(row.avg_price) / base_value) * 100.0
+            index_value = (float(row.avg_price) / base_value) * 100.0 if base_value > 0 else 100.0
             
             # bucket_time is already a datetime from PostgreSQL
             bucket_dt = row.bucket_time
@@ -416,8 +645,12 @@ async def get_market_index(
                 "indexValue": round(index_value, 2),
             })
     
+    # Apply interpolation to fill gaps
+    points = interpolate_missing_points(points, start_date, end_date, bucket_minutes)
+    
     return {
         "range": range,
+        "currency": currency or "ALL",
         "points": points,
         "isMockData": False,
     }
@@ -450,7 +683,7 @@ async def get_top_movers(
                 "window": window,
                 "gainers": [],
                 "losers": [],
-                "isMockData": True,
+                "isMockData": False,
             }
         
         # Get top gainers
@@ -493,12 +726,12 @@ async def get_top_movers(
             error_type=type(e).__name__,
             window=window
         )
-        # Return mock data on timeout or pool exhaustion
+        # Return empty data on timeout or pool exhaustion
         return {
             "window": window,
-            "gainers": _get_mock_gainers(),
-            "losers": _get_mock_losers(),
-            "isMockData": True,
+            "gainers": [],
+            "losers": [],
+            "isMockData": False,
         }
     except Exception as e:
         logger.error("Error fetching top movers", error=str(e), error_type=type(e).__name__, window=window)
@@ -506,9 +739,9 @@ async def get_top_movers(
         if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
             return {
                 "window": window,
-                "gainers": _get_mock_gainers(),
-                "losers": _get_mock_losers(),
-                "isMockData": True,
+                "gainers": [],
+                "losers": [],
+                "isMockData": False,
             }
         raise HTTPException(status_code=500, detail="Failed to fetch top movers")
     
@@ -579,13 +812,13 @@ async def get_top_movers(
             "volume": volume,
         })
     
-    # If no data, return mock data
+    # If no data, return empty lists
     if not gainers and not losers:
         return {
             "window": window,
-            "gainers": _get_mock_gainers(),
-            "losers": _get_mock_losers(),
-            "isMockData": True,
+            "gainers": [],
+            "losers": [],
+            "isMockData": False,
         }
     
     return {
@@ -656,25 +889,25 @@ async def get_volume_by_format(
         )
         return {
             "days": days,
-            "formats": _get_mock_volume_by_format(days),
-            "isMockData": True,
+            "formats": [],
+            "isMockData": False,
         }
     except Exception as e:
         logger.error("Error fetching volume by format", error=str(e), error_type=type(e).__name__, days=days)
         if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
             return {
                 "days": days,
-                "formats": _get_mock_volume_by_format(days),
-                "isMockData": True,
+                "formats": [],
+                "isMockData": False,
             }
         raise HTTPException(status_code=500, detail="Failed to fetch volume by format")
     
     if not rows:
-        # Return mock data
+        # Return empty data
         return {
             "days": days,
-            "formats": _get_mock_volume_by_format(days),
-            "isMockData": True,
+            "formats": [],
+            "isMockData": False,
         }
     
     # Group by format and time bucket
@@ -721,12 +954,12 @@ async def get_volume_by_format(
             "data": points,
         })
     
-    # If no data, return mock
+    # If no data, return empty
     if not formats:
         return {
             "days": days,
-            "formats": _get_mock_volume_by_format(days),
-            "isMockData": True,
+            "formats": [],
+            "isMockData": False,
         }
     
     return {
@@ -736,93 +969,6 @@ async def get_volume_by_format(
     }
 
 
-def _get_mock_gainers():
-    """Generate mock gainers data."""
-    return [
-        {
-            "cardName": "Lightning Bolt",
-            "setCode": "M21",
-            "format": "Modern",
-            "currentPriceUsd": 2.50,
-            "changePct": 15.3,
-            "volume": 245,
-        },
-        {
-            "cardName": "Sol Ring",
-            "setCode": "C21",
-            "format": "Commander",
-            "currentPriceUsd": 1.25,
-            "changePct": 12.8,
-            "volume": 189,
-        },
-        {
-            "cardName": "Counterspell",
-            "setCode": "2XM",
-            "format": "Legacy",
-            "currentPriceUsd": 3.75,
-            "changePct": 11.2,
-            "volume": 156,
-        },
-    ]
-
-
-def _get_mock_losers():
-    """Generate mock losers data."""
-    return [
-        {
-            "cardName": "Example Card A",
-            "setCode": "STX",
-            "format": "Standard",
-            "currentPriceUsd": 5.00,
-            "changePct": -8.5,
-            "volume": 98,
-        },
-        {
-            "cardName": "Example Card B",
-            "setCode": "KHM",
-            "format": "Standard",
-            "currentPriceUsd": 2.30,
-            "changePct": -7.2,
-            "volume": 112,
-        },
-        {
-            "cardName": "Example Card C",
-            "setCode": "ZNR",
-            "format": "Modern",
-            "currentPriceUsd": 1.50,
-            "changePct": -6.1,
-            "volume": 87,
-        },
-    ]
-
-
-def _get_mock_volume_by_format(days: int):
-    """Generate mock volume by format data."""
-    formats = ["Standard", "Modern", "Commander", "Legacy", "Vintage"]
-    points_per_format = max(7, min(30, days // 7))  # Roughly weekly points
-    
-    result = []
-    base_date = datetime.utcnow() - timedelta(days=days)
-    
-    for fmt in formats:
-        data = []
-        base_volume = 10000 + (hash(fmt) % 50000)  # Vary by format
-        
-        for i in range(points_per_format):
-            date = base_date + timedelta(days=i * (days // points_per_format))
-            # Add some variation
-            volume = base_volume + (i % 10 - 5) * 500
-            data.append({
-                "timestamp": date.isoformat(),
-                "volume": round(volume, 2),
-            })
-        
-        result.append({
-            "format": fmt,
-            "data": data,
-        })
-    
-    return result
 
 
 @router.get("/color-distribution")
@@ -862,24 +1008,24 @@ async def get_color_distribution(
         return {
             "window": window,
             "colors": ["W", "U", "B", "R", "G", "Multicolor", "Colorless"],
-            "distribution": _get_mock_color_distribution_simple(),
-            "isMockData": True,
+            "distribution": {},
+            "isMockData": False,
         }
     except Exception as e:
         logger.error("Error fetching color distribution", error=str(e), error_type=type(e).__name__, window=window)
         return {
             "window": window,
             "colors": ["W", "U", "B", "R", "G", "Multicolor", "Colorless"],
-            "distribution": _get_mock_color_distribution_simple(),
-            "isMockData": True,
+            "distribution": {},
+            "isMockData": False,
         }
     
     if not rows:
         return {
             "window": window,
             "colors": ["W", "U", "B", "R", "G", "Multicolor", "Colorless"],
-            "distribution": _get_mock_color_distribution_simple(),
-            "isMockData": True,
+            "distribution": {},
+            "isMockData": False,
         }
     
     # Aggregate by color category
@@ -921,7 +1067,7 @@ async def get_color_distribution(
     # Convert to percentages
     total = sum(color_counts.values())
     if total == 0:
-        distribution = _get_mock_color_distribution_simple()
+        distribution = {}
     else:
         distribution = {
             color: round((count / total) * 100, 2)
@@ -936,15 +1082,4 @@ async def get_color_distribution(
     }
 
 
-def _get_mock_color_distribution_simple():
-    """Generate mock color distribution percentages."""
-    return {
-        "W": 18.5,
-        "U": 16.2,
-        "B": 14.8,
-        "R": 19.3,
-        "G": 17.1,
-        "Multicolor": 13.2,
-        "Colorless": 0.9,
-    }
 

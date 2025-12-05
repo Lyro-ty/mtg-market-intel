@@ -13,16 +13,16 @@ from typing import Type
 from app.services.ingestion.base import MarketplaceAdapter, AdapterConfig
 from app.services.ingestion.scryfall import ScryfallAdapter
 from app.services.ingestion.adapters.mtgjson import MTGJSONAdapter
-from app.services.ingestion.adapters.mock import MockMarketplaceAdapter
+from app.services.ingestion.adapters.cardtrader import CardTraderAdapter
 
 logger = structlog.get_logger()
 
 # Registry of available adapters
-# Note: Web scrapers removed - using Scryfall and MTGJSON as primary data sources
+# Note: Web scrapers removed - using Scryfall, MTGJSON, and CardTrader as primary data sources
 _ADAPTER_REGISTRY: dict[str, Type[MarketplaceAdapter]] = {
     "scryfall": ScryfallAdapter,
     "mtgjson": MTGJSONAdapter,
-    "mock": MockMarketplaceAdapter,
+    "cardtrader": CardTraderAdapter,
 }
 
 # Cached adapter instances - DISABLED by default due to event loop issues

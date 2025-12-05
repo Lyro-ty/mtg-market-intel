@@ -388,9 +388,22 @@ export async function getMarketOverview(): Promise<MarketOverview> {
 }
 
 export async function getMarketIndex(
-  range: '7d' | '30d' | '90d' | '1y' = '7d'
+  range: '7d' | '30d' | '90d' | '1y' = '7d',
+  currency?: 'USD' | 'EUR',
+  separateCurrencies: boolean = false,
+  isFoil?: boolean
 ): Promise<MarketIndex> {
-  return fetchApi(`/market/index?range=${range}`);
+  const params = new URLSearchParams({ range });
+  if (currency) {
+    params.append('currency', currency);
+  }
+  if (separateCurrencies) {
+    params.append('separate_currencies', 'true');
+  }
+  if (isFoil !== undefined) {
+    params.append('is_foil', String(isFoil));
+  }
+  return fetchApi(`/market/index?${params.toString()}`);
 }
 
 export async function getTopMovers(
@@ -413,9 +426,22 @@ export async function getColorDistribution(
 
 // Inventory dashboard API
 export async function getInventoryMarketIndex(
-  range: '7d' | '30d' | '90d' | '1y' = '7d'
+  range: '7d' | '30d' | '90d' | '1y' = '7d',
+  currency?: 'USD' | 'EUR',
+  separateCurrencies: boolean = false,
+  isFoil?: boolean
 ): Promise<MarketIndex> {
-  return fetchApi(`/inventory/market-index?range=${range}`, {}, true);
+  const params = new URLSearchParams({ range });
+  if (currency) {
+    params.append('currency', currency);
+  }
+  if (separateCurrencies) {
+    params.append('separate_currencies', 'true');
+  }
+  if (isFoil !== undefined) {
+    params.append('is_foil', String(isFoil));
+  }
+  return fetchApi(`/inventory/market-index?${params.toString()}`, {}, true);
 }
 
 export async function getInventoryTopMovers(
