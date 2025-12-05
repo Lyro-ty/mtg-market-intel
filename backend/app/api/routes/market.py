@@ -123,6 +123,79 @@ def interpolate_missing_points(
     return filled_points
 
 
+@router.get("/diagnostics")
+async def get_market_diagnostics(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Diagnostic endpoint to check if price snapshot data exists.
+    Useful for debugging why charts show "No data available".
+    """
+    from datetime import timezone
+    
+    now = datetime.now(timezone.utc)
+    seven_days_ago = now - timedelta(days=7)
+    thirty_days_ago = now - timedelta(days=30)
+    
+    # Count total snapshots
+    total_snapshots = await db.scalar(
+        select(func.count(PriceSnapshot.id))
+    ) or 0
+    
+    # Count snapshots in different time ranges
+    recent_7d = await db.scalar(
+        select(func.count(PriceSnapshot.id)).where(
+            PriceSnapshot.snapshot_time >= seven_days_ago
+        )
+    ) or 0
+    
+    recent_30d = await db.scalar(
+        select(func.count(PriceSnapshot.id)).where(
+            PriceSnapshot.snapshot_time >= thirty_days_ago
+        )
+    ) or 0
+    
+    # Count by currency
+    usd_count = await db.scalar(
+        select(func.count(PriceSnapshot.id)).where(
+            PriceSnapshot.currency == "USD"
+        )
+    ) or 0
+    
+    eur_count = await db.scalar(
+        select(func.count(PriceSnapshot.id)).where(
+            PriceSnapshot.currency == "EUR"
+        )
+    ) or 0
+    
+    # Count cards with snapshots
+    cards_with_snapshots = await db.scalar(
+        select(func.count(func.distinct(PriceSnapshot.card_id)))
+    ) or 0
+    
+    # Get sample snapshot
+    sample_query = select(PriceSnapshot).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+    sample_result = await db.execute(sample_query)
+    sample = sample_result.scalar_one_or_none()
+    
+    return {
+        "total_snapshots": total_snapshots,
+        "recent_7d": recent_7d,
+        "recent_30d": recent_30d,
+        "usd_snapshots": usd_count,
+        "eur_snapshots": eur_count,
+        "cards_with_snapshots": cards_with_snapshots,
+        "sample_snapshot": {
+            "card_id": sample.card_id if sample else None,
+            "marketplace_id": sample.marketplace_id if sample else None,
+            "snapshot_time": sample.snapshot_time.isoformat() if sample else None,
+            "price": float(sample.price) if sample else None,
+            "currency": sample.currency if sample else None,
+        } if sample else None,
+        "current_time": now.isoformat(),
+    }
+
+
 @router.get("/overview")
 async def get_market_overview(
     db: AsyncSession = Depends(get_db),
@@ -517,23 +590,34 @@ async def get_market_index(
         price_condition = PriceSnapshot.price.isnot(None)
     
     # Standard query with optional currency and foil filters
+    query_conditions = [
+        PriceSnapshot.snapshot_time >= start_date,
+        price_condition,
+        price_field > 0,
+    ]
+    
+    # Filter by currency if specified
+    if currency:
+        query_conditions.append(PriceSnapshot.currency == currency)
+    
     query = select(
         bucket_expr.label("bucket_time"),
         func.avg(price_field).label("avg_price"),
         func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
     ).where(
-        and_(
-            PriceSnapshot.snapshot_time >= start_date,
-            price_condition,
-            price_field > 0,
-        )
+        and_(*query_conditions)
+    ).group_by(bucket_expr).order_by(bucket_expr)
+    
+    # Log query details for debugging
+    logger.debug(
+        "Market index query",
+        range=range,
+        currency=currency or "ALL",
+        is_foil=is_foil_bool,
+        start_date=start_date.isoformat(),
+        bucket_minutes=bucket_minutes,
+        price_field=str(price_field),
     )
-    
-    # Filter by currency if specified
-    if currency:
-        query = query.where(PriceSnapshot.currency == currency)
-    
-    query = query.group_by(bucket_expr).order_by(bucket_expr)
     
     try:
         result = await asyncio.wait_for(

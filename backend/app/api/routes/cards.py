@@ -12,6 +12,7 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation
 from app.schemas.card import (
@@ -699,6 +700,62 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
     finally:
         await scryfall.close()
     
+    # 1.5. Fetch current prices from CardTrader (if API token available)
+    cardtrader_snapshots_created = 0
+    if settings.cardtrader_api_token:
+        from app.services.ingestion import get_adapter
+        cardtrader = get_adapter("cardtrader", cached=False)
+        try:
+            # Fetch current price from CardTrader
+            price_data = await cardtrader.fetch_price(
+                card_name=card_name,
+                set_code=card_set_code,
+                collector_number=card_collector_number,
+                scryfall_id=card_scryfall_id,
+            )
+            
+            if price_data and price_data.price > 0:
+                # Get or create CardTrader marketplace
+                cardtrader_mp = await _get_or_create_marketplace_by_slug(
+                    db, "cardtrader", "CardTrader", "https://www.cardtrader.com", "EUR"
+                )
+                
+                # Check if we already have a recent snapshot (within last 24 hours)
+                recent_snapshot_query = select(PriceSnapshot).where(
+                    PriceSnapshot.card_id == card_id,
+                    PriceSnapshot.marketplace_id == cardtrader_mp.id,
+                    PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
+                ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+                recent_result = await db.execute(recent_snapshot_query)
+                recent_snapshot = recent_result.scalar_one_or_none()
+                
+                if not recent_snapshot:
+                    # Create price snapshot
+                    snapshot = PriceSnapshot(
+                        card_id=card_id,
+                        marketplace_id=cardtrader_mp.id,
+                        snapshot_time=now,
+                        price=price_data.price,
+                        currency=price_data.currency,
+                        price_foil=price_data.price_foil,
+                        min_price=price_data.price_low,
+                        max_price=price_data.price_high,
+                        num_listings=price_data.num_listings,
+                    )
+                    db.add(snapshot)
+                    cardtrader_snapshots_created += 1
+                    await db.flush()
+                    logger.debug(
+                        "CardTrader price snapshot created",
+                        card_id=card_id,
+                        price=price_data.price,
+                        currency=price_data.currency,
+                    )
+        except Exception as e:
+            logger.warning("Failed to fetch CardTrader price", card_id=card_id, error=str(e))
+        finally:
+            await cardtrader.close()
+    
     # 2. Fetch and store MTGJSON 30-day historical data by marketplace (skip in fast mode)
     # Note: MTGJSON file is cached for 7 days (updates weekly), so we don't need to download it every time
     mtgjson_snapshots_created = 0
@@ -886,10 +943,9 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
                 #         days_backfilled=total_backfilled,
                 #     )
     
-    # 3. Price data is already collected from Scryfall above
+    # 3. Price data is already collected from Scryfall, CardTrader, and MTGJSON above
     # We no longer scrape individual listings - focus on aggregated price data
-    # Note: scryfall_snapshots_created is already set above, use it directly
-    total_snapshots_created = scryfall_snapshots_created + mtgjson_snapshots_created
+    total_snapshots_created = scryfall_snapshots_created + cardtrader_snapshots_created + mtgjson_snapshots_created
     
     await db.flush()
     logger.info(
