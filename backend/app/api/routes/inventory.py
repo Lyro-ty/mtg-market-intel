@@ -959,7 +959,8 @@ async def get_inventory_market_index(
         elif is_foil_bool is False:
             # Exclude foil prices (only non-foil)
             price_field = PriceSnapshot.price
-            price_condition = PriceSnapshot.price_foil.is_(None)
+            # Use == None instead of .is_(None) to avoid SQLAlchemy type issues
+            price_condition = PriceSnapshot.price_foil == None  # noqa: E711
         else:
             # Default: use regular prices
             price_field = PriceSnapshot.price
@@ -1015,10 +1016,15 @@ async def get_inventory_market_index(
         base_date = start_date + timedelta(days=1)
         
         # Calculate base value from first day's data
-        base_price_field = PriceSnapshot.price_foil if is_foil_bool is True else PriceSnapshot.price
-        base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil_bool is True else (
-            PriceSnapshot.price_foil.is_(None) if is_foil_bool is False else PriceSnapshot.price.isnot(None)
-        )
+        if is_foil_bool is True:
+            base_price_field = PriceSnapshot.price_foil
+            base_condition = PriceSnapshot.price_foil.isnot(None)
+        elif is_foil_bool is False:
+            base_price_field = PriceSnapshot.price
+            base_condition = PriceSnapshot.price_foil == None  # noqa: E711
+        else:
+            base_price_field = PriceSnapshot.price
+            base_condition = PriceSnapshot.price.isnot(None)
         base_query = select(
             func.sum(base_price_field * func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_value"),
             func.sum(func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_quantity")
@@ -1106,7 +1112,8 @@ async def _get_inventory_currency_index(
     elif is_foil is False:
         # Exclude foil prices (only non-foil)
         price_field = PriceSnapshot.price
-        price_condition = PriceSnapshot.price_foil.is_(None)
+        # Use == None instead of .is_(None) to avoid SQLAlchemy type issues
+        price_condition = PriceSnapshot.price_foil == None  # noqa: E711
     else:
         # Default: use regular prices
         price_field = PriceSnapshot.price
@@ -1158,10 +1165,15 @@ async def _get_inventory_currency_index(
     
     # Calculate base value from first day
     base_date = start_date + timedelta(days=1)
-    base_price_field = PriceSnapshot.price_foil if is_foil is True else PriceSnapshot.price
-    base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil is True else (
-        PriceSnapshot.price_foil.is_(None) if is_foil is False else PriceSnapshot.price.isnot(None)
-    )
+    if is_foil is True:
+        base_price_field = PriceSnapshot.price_foil
+        base_condition = PriceSnapshot.price_foil.isnot(None)
+    elif is_foil is False:
+        base_price_field = PriceSnapshot.price
+        base_condition = PriceSnapshot.price_foil == None  # noqa: E711
+    else:
+        base_price_field = PriceSnapshot.price
+        base_condition = PriceSnapshot.price.isnot(None)
     base_query = select(
         func.sum(base_price_field * func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_value"),
         func.sum(func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_quantity")
