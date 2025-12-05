@@ -13,6 +13,8 @@ import {
   DollarSign,
   BarChart3,
   Filter,
+  Search,
+  X,
 } from 'lucide-react';
 import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
 import {
@@ -21,6 +23,7 @@ import {
 } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { LoadingPage, Loading } from '@/components/ui/Loading';
 import { InventoryImportModal } from '@/components/inventory/InventoryImportModal';
 import { InventoryItemCard } from '@/components/inventory/InventoryItemCard';
@@ -32,8 +35,11 @@ import {
   getInventoryRecommendations,
   refreshInventoryValuations,
   runInventoryRecommendations,
+  deleteInventoryItem,
+  updateInventoryItem,
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import type { InventoryCondition } from '@/types';
 
 type TabType = 'overview' | 'items' | 'recommendations';
 
@@ -45,11 +51,22 @@ function InventoryPageContent(): JSX.Element {
   const [marketIndexRange, setMarketIndexRange] = useState<'7d' | '30d' | '90d' | '1y'>('7d');
   const [marketIndexFoil, setMarketIndexFoil] = useState<boolean | undefined>(undefined);
   
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterFoil, setFilterFoil] = useState<boolean | undefined>(undefined);
+  const [filterCondition, setFilterCondition] = useState<InventoryCondition | undefined>(undefined);
+  
   const queryClient = useQueryClient();
   
   const { data: inventoryData, isLoading: inventoryLoading } = useQuery({
-    queryKey: ['inventory', page],
-    queryFn: () => getInventory({ page, pageSize: 20 }),
+    queryKey: ['inventory', page, searchQuery, filterFoil, filterCondition],
+    queryFn: () => getInventory({ 
+      page, 
+      pageSize: 20,
+      search: searchQuery || undefined,
+      isFoil: filterFoil,
+      condition: filterCondition,
+    }),
     refetchInterval: 15 * 60 * 1000,
   });
   
@@ -94,6 +111,38 @@ function InventoryPageContent(): JSX.Element {
       queryClient.invalidateQueries({ queryKey: ['inventory-analytics'] });
     },
   });
+  
+  const deleteItemMutation = useMutation({
+    mutationFn: deleteInventoryItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-analytics'] });
+    },
+  });
+  
+  const toggleFoilMutation = useMutation({
+    mutationFn: ({ itemId, isFoil }: { itemId: number; isFoil: boolean }) =>
+      updateInventoryItem(itemId, { is_foil: isFoil }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-analytics'] });
+    },
+  });
+  
+  const handleDelete = (itemId: number) => {
+    deleteItemMutation.mutate(itemId);
+  };
+  
+  const handleToggleFoil = (itemId: number, isFoil: boolean) => {
+    toggleFoilMutation.mutate({ itemId, isFoil });
+  };
+  
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setFilterFoil(undefined);
+    setFilterCondition(undefined);
+    setPage(1);
+  };
   
   const isLoading = inventoryLoading || analyticsLoading;
   
@@ -449,6 +498,89 @@ function InventoryPageContent(): JSX.Element {
           {/* Items Tab */}
           {activeTab === 'items' && inventoryData && (
             <div className="space-y-4">
+              {/* Search and Filters */}
+              <Card>
+                <CardContent className="p-4">
+                  <div className="space-y-4">
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[rgb(var(--muted-foreground))]" />
+                      <Input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Search by card name..."
+                        className="pl-10"
+                      />
+                    </div>
+                    
+                    {/* Filters */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-[rgb(var(--muted-foreground))]">Filters:</span>
+                      
+                      {/* Foil Filter */}
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant={filterFoil === undefined ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => setFilterFoil(undefined)}
+                        >
+                          All
+                        </Button>
+                        <Button
+                          variant={filterFoil === false ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => setFilterFoil(false)}
+                        >
+                          Non-Foil
+                        </Button>
+                        <Button
+                          variant={filterFoil === true ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => setFilterFoil(true)}
+                        >
+                          Foil
+                        </Button>
+                      </div>
+                      
+                      {/* Condition Filter */}
+                      <select
+                        value={filterCondition || ''}
+                        onChange={(e) => {
+                          setFilterCondition(e.target.value ? (e.target.value as InventoryCondition) : undefined);
+                          setPage(1);
+                        }}
+                        className="px-3 py-1.5 text-sm rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--card))] text-[rgb(var(--foreground))]"
+                      >
+                        <option value="">All Conditions</option>
+                        <option value="MINT">Mint</option>
+                        <option value="NEAR_MINT">Near Mint</option>
+                        <option value="LIGHTLY_PLAYED">Lightly Played</option>
+                        <option value="MODERATELY_PLAYED">Moderately Played</option>
+                        <option value="HEAVILY_PLAYED">Heavily Played</option>
+                        <option value="DAMAGED">Damaged</option>
+                      </select>
+                      
+                      {/* Clear Filters */}
+                      {(searchQuery || filterFoil !== undefined || filterCondition) && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleClearFilters}
+                          className="ml-auto"
+                        >
+                          <X className="w-4 h-4 mr-1" />
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
               <div className="text-sm text-[rgb(var(--muted-foreground))]">
                 Showing {inventoryData.items.length} of {inventoryData.total} items
               </div>
@@ -475,7 +607,12 @@ function InventoryPageContent(): JSX.Element {
                 <>
                   <div className="grid gap-4">
                     {inventoryData.items.map((item) => (
-                      <InventoryItemCard key={item.id} item={item} />
+                      <InventoryItemCard
+                        key={item.id}
+                        item={item}
+                        onDelete={handleDelete}
+                        onToggleFoil={handleToggleFoil}
+                      />
                     ))}
                   </div>
                   

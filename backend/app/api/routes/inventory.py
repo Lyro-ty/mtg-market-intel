@@ -867,9 +867,13 @@ async def get_inventory_market_index(
     range: str = Query("7d", regex="^(7d|30d|90d|1y)$"),
     currency: Optional[str] = Query(None, regex="^(USD|EUR)$"),
     separate_currencies: bool = Query(False),
-    is_foil: Optional[bool] = Query(None, description="Filter by foil pricing. If True, uses price_foil. If False, excludes foil prices. If None, uses regular prices."),
+    is_foil: Optional[str] = Query(None, description="Filter by foil pricing. 'true' uses price_foil, 'false' excludes foil prices, None uses regular prices."),
     db: AsyncSession = Depends(get_db),
 ):
+    # Convert string query parameter to boolean
+    is_foil_bool: Optional[bool] = None
+    if is_foil is not None:
+        is_foil_bool = is_foil.lower() in ('true', '1', 'yes')
     """
     Get market index data for the current user's inventory items.
     
@@ -927,10 +931,10 @@ async def get_inventory_market_index(
         # Handle separate currencies mode
         if separate_currencies:
             usd_points = await _get_inventory_currency_index(
-                "USD", start_date, bucket_expr, bucket_minutes, card_ids, quantity_map, db, is_foil
+                "USD", start_date, bucket_expr, bucket_minutes, card_ids, quantity_map, db, is_foil_bool
             )
             eur_points = await _get_inventory_currency_index(
-                "EUR", start_date, bucket_expr, bucket_minutes, card_ids, quantity_map, db, is_foil
+                "EUR", start_date, bucket_expr, bucket_minutes, card_ids, quantity_map, db, is_foil_bool
             )
             
             # Apply interpolation
@@ -948,11 +952,11 @@ async def get_inventory_market_index(
             }
         
         # Determine which price field to use based on foil filter
-        if is_foil is True:
+        if is_foil_bool is True:
             # Use foil prices only
             price_field = PriceSnapshot.price_foil
             price_condition = PriceSnapshot.price_foil.isnot(None)
-        elif is_foil is False:
+        elif is_foil_bool is False:
             # Exclude foil prices (only non-foil)
             price_field = PriceSnapshot.price
             price_condition = PriceSnapshot.price_foil.is_(None)
@@ -1011,9 +1015,9 @@ async def get_inventory_market_index(
         base_date = start_date + timedelta(days=1)
         
         # Calculate base value from first day's data
-        base_price_field = PriceSnapshot.price_foil if is_foil is True else PriceSnapshot.price
-        base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil is True else (
-            PriceSnapshot.price_foil.is_(None) if is_foil is False else PriceSnapshot.price.isnot(None)
+        base_price_field = PriceSnapshot.price_foil if is_foil_bool is True else PriceSnapshot.price
+        base_condition = PriceSnapshot.price_foil.isnot(None) if is_foil_bool is True else (
+            PriceSnapshot.price_foil.is_(None) if is_foil_bool is False else PriceSnapshot.price.isnot(None)
         )
         base_query = select(
             func.sum(base_price_field * func.coalesce(func.cast(quantity_map.get(PriceSnapshot.card_id, 1), func.Integer), 1)).label("total_value"),

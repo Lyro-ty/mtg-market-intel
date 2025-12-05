@@ -2,15 +2,19 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Sparkles, TrendingUp, TrendingDown, Package } from 'lucide-react';
+import { Sparkles, TrendingUp, TrendingDown, Package, Trash2, Edit2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils';
 import type { InventoryItem } from '@/types';
 
 interface InventoryItemCardProps {
   item: InventoryItem;
   onClick?: () => void;
+  onDelete?: (itemId: number) => void;
+  onToggleFoil?: (itemId: number, isFoil: boolean) => void;
+  onEdit?: (item: InventoryItem) => void;
 }
 
 const CONDITION_LABELS: Record<string, string> = {
@@ -31,7 +35,7 @@ const CONDITION_COLORS: Record<string, string> = {
   DAMAGED: 'bg-red-700/20 text-red-500',
 };
 
-export function InventoryItemCard({ item, onClick }: InventoryItemCardProps) {
+export function InventoryItemCard({ item, onClick, onDelete, onToggleFoil, onEdit }: InventoryItemCardProps) {
   const profitLoss = item.profit_loss ?? (
     item.current_value && item.acquisition_price
       ? (item.current_value - item.acquisition_price) * item.quantity
@@ -141,11 +145,61 @@ export function InventoryItemCard({ item, onClick }: InventoryItemCardProps) {
             )}
             
             {/* Footer */}
-            <div className="flex items-center justify-between mt-2 text-xs text-[rgb(var(--muted-foreground))]">
-              {item.acquisition_source && (
-                <span>From: {item.acquisition_source}</span>
-              )}
-              <span className="ml-auto">{formatRelativeTime(item.created_at)}</span>
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex items-center gap-2 text-xs text-[rgb(var(--muted-foreground))]">
+                {item.acquisition_source && (
+                  <span>From: {item.acquisition_source}</span>
+                )}
+                <span>{formatRelativeTime(item.created_at)}</span>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex items-center gap-1">
+                {onToggleFoil && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleFoil(item.id, !item.is_foil);
+                    }}
+                    className="h-7 px-2"
+                    title={item.is_foil ? 'Mark as non-foil' : 'Mark as foil'}
+                  >
+                    <Sparkles className={`w-3 h-3 ${item.is_foil ? 'text-purple-500' : ''}`} />
+                  </Button>
+                )}
+                {onEdit && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(item);
+                    }}
+                    className="h-7 px-2"
+                    title="Edit item"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </Button>
+                )}
+                {onDelete && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Are you sure you want to remove ${item.card_name} from your inventory?`)) {
+                        onDelete(item.id);
+                      }
+                    }}
+                    className="h-7 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                    title="Remove from inventory"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
