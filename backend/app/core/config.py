@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     cardmarket_app_secret: str = ""
     cardmarket_access_token: str = ""
     cardmarket_access_secret: str = ""
+    cardtrader_api_token: str = "REDACTED_CARDTRADER_TOKEN"  # CardTrader API JWT token for Full API access
     
     # Scraping Configuration
     scraper_user_agent: str = "MTGMarketIntel/1.0"

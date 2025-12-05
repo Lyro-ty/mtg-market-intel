@@ -24,6 +24,8 @@ from app.core.config import settings
 from app.models import Card, Marketplace, PriceSnapshot
 from app.services.ingestion import ScryfallAdapter
 from app.services.ingestion.adapters.mtgjson import MTGJSONAdapter
+import httpx
+import json
 
 logger = structlog.get_logger()
 
@@ -71,6 +73,249 @@ def seed_comprehensive_price_data(self) -> dict[str, Any]:
         Summary of seeding results.
     """
     return run_async(_seed_comprehensive_price_data_async())
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def download_scryfall_bulk_data_task(self) -> dict[str, Any]:
+    """
+    Download and process Scryfall bulk data files.
+    
+    Scryfall provides bulk data downloads that include all cards with prices.
+    This task downloads the bulk data and extracts price information.
+    
+    Returns:
+        Summary of processing results.
+    """
+    return run_async(_download_scryfall_bulk_data_async())
+
+
+async def _download_scryfall_bulk_data_async() -> dict[str, Any]:
+    """
+    Download Scryfall bulk data and extract prices.
+    
+    Process:
+    1. Get bulk data manifest from Scryfall
+    2. Find default_cards or all_cards file
+    3. Download and process each card
+    4. Extract prices and create price snapshots
+    """
+    logger.info("Starting Scryfall bulk data download")
+    
+    BULK_DATA_URL = "https://api.scryfall.com/bulk-data"
+    results = {
+        "cards_processed": 0,
+        "snapshots_created": 0,
+        "errors": [],
+    }
+    
+    session_maker, engine = create_task_session_maker()
+    
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # Get manifest
+            logger.info("Fetching Scryfall bulk data manifest")
+            response = await client.get(BULK_DATA_URL)
+            response.raise_for_status()
+            manifest = response.json()
+            
+            # Find default_cards or all_cards file
+            target_file = None
+            for file_info in manifest.get("data", []):
+                if file_info.get("type") in ["default_cards", "all_cards"]:
+                    target_file = file_info
+                    break
+            
+            if not target_file:
+                logger.warning("No default_cards or all_cards file found in manifest")
+                return results
+            
+            download_uri = target_file.get("download_uri")
+            if not download_uri:
+                logger.warning("No download URI found for bulk data file")
+                return results
+            
+            logger.info(
+                "Found bulk data file",
+                type=target_file.get("type"),
+                size_mb=target_file.get("size") / (1024 * 1024) if target_file.get("size") else None,
+                updated_at=target_file.get("updated_at"),
+            )
+            
+            # Download file (this can be very large, so we stream it)
+            # NOTE: For very large files (100MB+), consider using a streaming JSON parser
+            # For now, we accumulate the entire file in memory which works for most cases
+            logger.info("Downloading bulk data file", uri=download_uri)
+            async with client.stream("GET", download_uri) as response:
+                response.raise_for_status()
+                
+                # Accumulate file content
+                buffer = b""
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    buffer += chunk
+                
+                # Parse the complete file
+                # TODO: For very large files, consider using ijson for streaming JSON parsing
+                # to avoid loading entire file into memory
+                try:
+                    cards_data = json.loads(buffer.decode("utf-8"))
+                    logger.info("Parsed bulk data file", total_cards=len(cards_data))
+                except json.JSONDecodeError as e:
+                    logger.error("Failed to parse bulk data JSON", error=str(e))
+                    return results
+                except MemoryError as e:
+                    logger.error("Insufficient memory to parse bulk data file", error=str(e))
+                    results["errors"].append("File too large to process in memory. Consider using streaming parser.")
+                    return results
+            
+            # Process cards
+            async with session_maker() as db:
+                # Get or create marketplaces
+                marketplace_map = {
+                    "usd": ("tcgplayer", "TCGPlayer", "USD"),
+                    "eur": ("cardmarket", "Cardmarket", "EUR"),
+                    "tix": ("mtgo", "MTGO", "TIX"),
+                }
+                
+                marketplaces = {}
+                for price_key, (slug, name, currency) in marketplace_map.items():
+                    marketplace = await db.scalar(
+                        select(Marketplace).where(Marketplace.slug == slug).limit(1)
+                    )
+                    if not marketplace:
+                        marketplace = Marketplace(
+                            name=name,
+                            slug=slug,
+                            base_url=f"https://{slug}.com",
+                            default_currency=currency,
+                            is_enabled=True,
+                            supports_api=True,
+                        )
+                        db.add(marketplace)
+                        await db.flush()
+                    marketplaces[price_key] = marketplace
+                
+                # Process each card
+                processed = 0
+                snapshots_created = 0
+                for card_data in cards_data:
+                    try:
+                        # process_bulk_card returns number of snapshots created
+                        snapshots = await process_bulk_card(card_data, db, marketplaces)
+                        if snapshots > 0:
+                            snapshots_created += snapshots
+                        processed += 1
+                        results["cards_processed"] = processed
+                        results["snapshots_created"] = snapshots_created
+                        
+                        # Commit in batches to avoid memory issues
+                        if processed % 1000 == 0:
+                            await db.commit()
+                            logger.debug("Processed cards batch", count=processed, snapshots=snapshots_created)
+                    
+                    except Exception as e:
+                        error_msg = f"Card {card_data.get('name', 'unknown')}: {str(e)}"
+                        results["errors"].append(error_msg)
+                        logger.warning("Failed to process bulk card", error=str(e))
+                        continue
+                
+                await db.commit()
+                logger.info("Completed bulk data processing", processed=processed, snapshots=snapshots_created)
+        
+    except Exception as e:
+        logger.error("Scryfall bulk data download failed", error=str(e))
+        results["errors"].append(f"Download failed: {str(e)}")
+    finally:
+        await engine.dispose()
+    
+    return results
+
+
+async def process_bulk_card(
+    card_data: dict[str, Any],
+    db: AsyncSession,
+    marketplaces: dict[str, Marketplace],
+) -> int:
+    """
+    Extract prices from Scryfall bulk card data and create price snapshots.
+    
+    Args:
+        card_data: Card data from Scryfall bulk file
+        db: Database session
+        marketplaces: Dictionary mapping price keys to Marketplace objects
+    
+    Returns:
+        Number of snapshots created
+    """
+    # Get or create card
+    scryfall_id = card_data.get("id")
+    if not scryfall_id:
+        return 0
+    
+    card = await db.scalar(
+        select(Card).where(Card.scryfall_id == scryfall_id).limit(1)
+    )
+    
+    if not card:
+        # Card doesn't exist in our database, skip it
+        # (We only process cards we're already tracking)
+        return 0
+    
+    # Extract prices
+    prices = card_data.get("prices", {})
+    if not prices:
+        return 0
+    
+    snapshots_created = 0
+    
+    # Get updated_at timestamp from card data
+    updated_at_str = card_data.get("updated_at")
+    snapshot_time = datetime.utcnow()
+    if updated_at_str:
+        try:
+            # Scryfall timestamps are ISO format
+            snapshot_time = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    
+    # Process each price type
+    for price_key, (slug, name, currency) in [
+        ("usd", ("tcgplayer", "TCGPlayer", "USD")),
+        ("eur", ("cardmarket", "Cardmarket", "EUR")),
+        ("tix", ("mtgo", "MTGO", "TIX")),
+    ]:
+        price_value = prices.get(price_key)
+        if price_value and float(price_value) > 0:
+            marketplace = marketplaces.get(price_key)
+            if not marketplace:
+                continue
+            
+            # Check if snapshot already exists (within 24 hours)
+            existing = await db.scalar(
+                select(PriceSnapshot).where(
+                    PriceSnapshot.card_id == card.id,
+                    PriceSnapshot.marketplace_id == marketplace.id,
+                    PriceSnapshot.snapshot_time >= snapshot_time - timedelta(hours=24),
+                ).limit(1)
+            )
+            
+            if not existing:
+                # Get foil price if available
+                foil_key = f"{price_key}_foil"
+                price_foil = prices.get(foil_key)
+                price_foil_float = float(price_foil) if price_foil and float(price_foil) > 0 else None
+                
+                snapshot = PriceSnapshot(
+                    card_id=card.id,
+                    marketplace_id=marketplace.id,
+                    snapshot_time=snapshot_time,
+                    price=float(price_value),
+                    currency=currency,
+                    price_foil=price_foil_float,
+                )
+                db.add(snapshot)
+                snapshots_created += 1
+    
+    return snapshots_created
 
 
 async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
@@ -337,62 +582,67 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                 recent_result = await db.execute(recent_query)
                                 recent_snapshot = recent_result.scalar_one_or_none()
                                 
-                                if recent_snapshot:
-                                    import hashlib
-                                    base_price = float(recent_snapshot.price)
-                                    base_currency = recent_snapshot.currency
-                                    base_foil_price = float(recent_snapshot.price_foil) if recent_snapshot.price_foil else None
-                                    
-                                    backfilled = 0
-                                    for day_offset in range(30, 0, -1):
-                                        snapshot_date = now - timedelta(days=day_offset)
-                                        
-                                        # Check if data exists for this day
-                                        # Use count to avoid MultipleResultsFound error if multiple snapshots exist
-                                        existing_query = select(func.count(PriceSnapshot.id)).where(
-                                            PriceSnapshot.card_id == card.id,
-                                            PriceSnapshot.marketplace_id == recent_snapshot.marketplace_id,
-                                            PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
-                                            PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
-                                        )
-                                        existing_count = await db.scalar(existing_query) or 0
-                                        if existing_count > 0:
-                                            continue
-                                        
-                                        # Generate deterministic price
-                                        seed = f"{card.id}_{recent_snapshot.marketplace_id}_{day_offset}"
-                                        hash_value = int(hashlib.md5(seed.encode()).hexdigest()[:8], 16)
-                                        variation = ((hash_value % 600) / 10000.0) - 0.03
-                                        trend_factor = 1.0 - (day_offset * 0.001)
-                                        historical_price = base_price * trend_factor * (1 + variation)
-                                        historical_price = max(0.01, historical_price)
-                                        
-                                        historical_foil_price = None
-                                        if base_foil_price:
-                                            foil_seed = f"{card.id}_{recent_snapshot.marketplace_id}_foil_{day_offset}"
-                                            foil_hash = int(hashlib.md5(foil_seed.encode()).hexdigest()[:8], 16)
-                                            foil_variation = ((foil_hash % 600) / 10000.0) - 0.03
-                                            historical_foil_price = base_foil_price * trend_factor * (1 + foil_variation)
-                                            historical_foil_price = max(0.01, historical_foil_price)
-                                        
-                                        snapshot = PriceSnapshot(
-                                            card_id=card.id,
-                                            marketplace_id=recent_snapshot.marketplace_id,
-                                            snapshot_time=snapshot_date,
-                                            price=historical_price,
-                                            currency=base_currency,
-                                            price_foil=historical_foil_price,
-                                        )
-                                        db.add(snapshot)
-                                        backfilled += 1
-                                        results["historical_snapshots"] += 1
-                                    
-                                    if backfilled > 0:
-                                        logger.debug(
-                                            "Backfilled historical data for card",
-                                            card_id=card.id,
-                                            backfilled=backfilled,
-                                        )
+                                # NOTE: Synthetic backfilling has been disabled per CHARTING_ANALYSIS.md recommendations.
+                                # Synthetic data creates artificial patterns that contaminate charts and ML training data.
+                                # Instead, we use interpolation in chart endpoints to fill gaps (see market.py and inventory.py).
+                                # If historical data is needed, use real sources like Scryfall bulk data or MTGJSON.
+                                #
+                                # if recent_snapshot:
+                                #     import hashlib
+                                #     base_price = float(recent_snapshot.price)
+                                #     base_currency = recent_snapshot.currency
+                                #     base_foil_price = float(recent_snapshot.price_foil) if recent_snapshot.price_foil else None
+                                #     
+                                #     backfilled = 0
+                                #     for day_offset in range(30, 0, -1):
+                                #         snapshot_date = now - timedelta(days=day_offset)
+                                #         
+                                #         # Check if data exists for this day
+                                #         # Use count to avoid MultipleResultsFound error if multiple snapshots exist
+                                #         existing_query = select(func.count(PriceSnapshot.id)).where(
+                                #             PriceSnapshot.card_id == card.id,
+                                #             PriceSnapshot.marketplace_id == recent_snapshot.marketplace_id,
+                                #             PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
+                                #             PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
+                                #         )
+                                #         existing_count = await db.scalar(existing_query) or 0
+                                #         if existing_count > 0:
+                                #             continue
+                                #         
+                                #         # Generate deterministic price
+                                #         seed = f"{card.id}_{recent_snapshot.marketplace_id}_{day_offset}"
+                                #         hash_value = int(hashlib.md5(seed.encode()).hexdigest()[:8], 16)
+                                #         variation = ((hash_value % 600) / 10000.0) - 0.03
+                                #         trend_factor = 1.0 - (day_offset * 0.001)
+                                #         historical_price = base_price * trend_factor * (1 + variation)
+                                #         historical_price = max(0.01, historical_price)
+                                #         
+                                #         historical_foil_price = None
+                                #         if base_foil_price:
+                                #             foil_seed = f"{card.id}_{recent_snapshot.marketplace_id}_foil_{day_offset}"
+                                #             foil_hash = int(hashlib.md5(foil_seed.encode()).hexdigest()[:8], 16)
+                                #             foil_variation = ((foil_hash % 600) / 10000.0) - 0.03
+                                #             historical_foil_price = base_foil_price * trend_factor * (1 + foil_variation)
+                                #             historical_foil_price = max(0.01, historical_foil_price)
+                                #         
+                                #         snapshot = PriceSnapshot(
+                                #             card_id=card.id,
+                                #             marketplace_id=recent_snapshot.marketplace_id,
+                                #             snapshot_time=snapshot_date,
+                                #             price=historical_price,
+                                #             currency=base_currency,
+                                #             price_foil=historical_foil_price,
+                                #         )
+                                #         db.add(snapshot)
+                                #         backfilled += 1
+                                #         results["historical_snapshots"] += 1
+                                #     
+                                #     if backfilled > 0:
+                                #         logger.debug(
+                                #             "Backfilled historical data for card",
+                                #             card_id=card.id,
+                                #             backfilled=backfilled,
+                                #         )
                         
                         except Exception as e:
                             error_msg = f"Card {card.id} ({card.name}): {str(e)}"

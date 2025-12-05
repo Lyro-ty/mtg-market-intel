@@ -20,6 +20,7 @@ import type { MarketIndex, VolumeByFormat, ColorDistribution } from '@/types';
 
 export default function DashboardPage() {
   const [marketIndexRange, setMarketIndexRange] = useState<'7d' | '30d' | '90d' | '1y'>('7d');
+  const [marketIndexFoil, setMarketIndexFoil] = useState<boolean | undefined>(undefined);
 
   // Market Overview Stats
   // Refetch every 2 minutes for real-time data (matches price collection interval)
@@ -33,8 +34,8 @@ export default function DashboardPage() {
   // Market Index Chart
   // Refetch every 2 minutes for real-time data
   const { data: marketIndex, isLoading: indexLoading } = useQuery({
-    queryKey: ['market-index', marketIndexRange],
-    queryFn: () => getMarketIndex(marketIndexRange),
+    queryKey: ['market-index', marketIndexRange, marketIndexFoil],
+    queryFn: () => getMarketIndex(marketIndexRange, undefined, false, marketIndexFoil),
     refetchInterval: 2 * 60 * 1000, // 2 minutes in milliseconds
     refetchIntervalInBackground: true,
   });
@@ -166,6 +167,8 @@ export default function DashboardPage() {
         <MarketIndexChart
           data={marketIndex}
           onRangeChange={(range) => setMarketIndexRange(range)}
+          onFoilChange={(isFoil) => setMarketIndexFoil(isFoil)}
+          showFoilToggle={true}
         />
       ) : null}
 

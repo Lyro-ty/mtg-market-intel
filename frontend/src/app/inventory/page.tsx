@@ -43,6 +43,7 @@ function InventoryPageContent(): JSX.Element {
   const [page, setPage] = useState(1);
   const [recPage, setRecPage] = useState(1);
   const [marketIndexRange, setMarketIndexRange] = useState<'7d' | '30d' | '90d' | '1y'>('7d');
+  const [marketIndexFoil, setMarketIndexFoil] = useState<boolean | undefined>(undefined);
   
   const queryClient = useQueryClient();
   
@@ -65,8 +66,8 @@ function InventoryPageContent(): JSX.Element {
   });
   
   const { data: inventoryMarketIndex, isLoading: indexLoading } = useQuery({
-    queryKey: ['inventory-market-index', marketIndexRange],
-    queryFn: () => getInventoryMarketIndex(marketIndexRange),
+    queryKey: ['inventory-market-index', marketIndexRange, marketIndexFoil],
+    queryFn: () => getInventoryMarketIndex(marketIndexRange, undefined, false, marketIndexFoil),
     refetchInterval: 2 * 60 * 1000,
     refetchIntervalInBackground: true,
   });
@@ -304,6 +305,8 @@ function InventoryPageContent(): JSX.Element {
                   data={inventoryMarketIndex}
                   title="Inventory Value Index"
                   onRangeChange={(range) => setMarketIndexRange(range)}
+                  onFoilChange={(isFoil) => setMarketIndexFoil(isFoil)}
+                  showFoilToggle={true}
                 />
               ) : null}
               

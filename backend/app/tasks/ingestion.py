@@ -148,17 +148,29 @@ async def _collect_price_data_async() -> dict[str, Any]:
             results = {
                 "started_at": datetime.utcnow().isoformat(),
                 "scryfall_snapshots": 0,
+                "cardtrader_snapshots": 0,
                 "mtgjson_snapshots": 0,
                 "total_snapshots": 0,
                 "cards_processed": 0,
                 "errors": [],
             }
             
-            # Get or create Scryfall marketplace
+            # Get or create marketplaces
             scryfall_mp = await _get_or_create_scryfall_marketplace(db)
+            cardtrader_mp = await _get_or_create_cardtrader_marketplace(db)
             
-            # Get Scryfall adapter
+            # Get adapters
             scryfall = ScryfallAdapter()
+            from app.services.ingestion.adapters.cardtrader import CardTraderAdapter
+            from app.services.ingestion.base import AdapterConfig
+            cardtrader_config = AdapterConfig(
+                base_url="https://api.cardtrader.com/api/v2",
+                api_url="https://api.cardtrader.com/api/v2",
+                api_key=settings.cardtrader_api_token,
+                rate_limit_seconds=0.05,  # 200 requests per 10 seconds
+                timeout_seconds=30.0,
+            )
+            cardtrader = CardTraderAdapter(cardtrader_config)
             
             try:
                 # Collect prices from Scryfall for all cards
@@ -231,6 +243,60 @@ async def _collect_price_data_async() -> dict[str, Any]:
                         logger.warning("Failed to collect price for card", card_id=card.id, card_name=card.name, error=str(e))
                         continue
                 
+                # Collect prices from CardTrader (European market data)
+                if settings.cardtrader_api_token:
+                    logger.info("Collecting CardTrader price data", card_count=len(cards))
+                    
+                    for i, card in enumerate(cards):
+                        try:
+                            # Fetch price data from CardTrader
+                            price_data = await cardtrader.fetch_price(
+                                card_name=card.name,
+                                set_code=card.set_code,
+                                collector_number=card.collector_number,
+                                scryfall_id=card.scryfall_id,
+                            )
+                            
+                            if price_data and price_data.price > 0:
+                                # Check if we already have a recent snapshot (within last 24 hours)
+                                recent_snapshot_query = select(PriceSnapshot).where(
+                                    and_(
+                                        PriceSnapshot.card_id == card.id,
+                                        PriceSnapshot.marketplace_id == cardtrader_mp.id,
+                                        PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(hours=24),
+                                    )
+                                )
+                                recent_result = await db.execute(recent_snapshot_query)
+                                recent_snapshot = recent_result.scalar_one_or_none()
+                                
+                                if not recent_snapshot:
+                                    # Create price snapshot
+                                    snapshot = PriceSnapshot(
+                                        card_id=card.id,
+                                        marketplace_id=cardtrader_mp.id,
+                                        snapshot_time=datetime.utcnow(),
+                                        price=price_data.price,
+                                        currency=price_data.currency,
+                                        price_foil=price_data.price_foil,
+                                        min_price=price_data.price_low,
+                                        max_price=price_data.price_high,
+                                        num_listings=price_data.num_listings,
+                                    )
+                                    db.add(snapshot)
+                                    results["cardtrader_snapshots"] += 1
+                                    results["total_snapshots"] += 1
+                                    
+                                    # Flush periodically
+                                    if results["total_snapshots"] % 100 == 0:
+                                        await db.flush()
+                        
+                        except Exception as e:
+                            # CardTrader errors are non-fatal (blueprint mapping may not exist)
+                            logger.debug("CardTrader price fetch failed", card_id=card.id, error=str(e))
+                            continue
+                else:
+                    logger.info("CardTrader API token not configured - skipping CardTrader collection")
+                
                 await db.commit()
                 results["completed_at"] = datetime.utcnow().isoformat()
                 
@@ -238,6 +304,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                     "Price data collection completed",
                     cards_processed=results["cards_processed"],
                     scryfall_snapshots=results["scryfall_snapshots"],
+                    cardtrader_snapshots=results.get("cardtrader_snapshots", 0),
                     total_snapshots=results["total_snapshots"],
                     errors_count=len(results["errors"]),
                 )
@@ -245,6 +312,8 @@ async def _collect_price_data_async() -> dict[str, Any]:
                 return results
             finally:
                 await scryfall.close()
+                if settings.cardtrader_api_token:
+                    await cardtrader.close()
     finally:
         await engine.dispose()
 
@@ -265,6 +334,29 @@ async def _get_or_create_scryfall_marketplace(db: AsyncSession) -> Marketplace:
             supports_api=True,
             default_currency="USD",
             rate_limit_seconds=0.1,  # Scryfall allows 50-100ms between requests
+        )
+        db.add(mp)
+        await db.flush()
+    
+    return mp
+
+
+async def _get_or_create_cardtrader_marketplace(db: AsyncSession) -> Marketplace:
+    """Get or create CardTrader marketplace entry."""
+    query = select(Marketplace).where(Marketplace.slug == "cardtrader")
+    result = await db.execute(query)
+    mp = result.scalar_one_or_none()
+    
+    if not mp:
+        mp = Marketplace(
+            name="CardTrader",
+            slug="cardtrader",
+            base_url="https://www.cardtrader.com",
+            api_url="https://api.cardtrader.com/api/v2",
+            is_enabled=True,
+            supports_api=True,
+            default_currency="EUR",
+            rate_limit_seconds=0.05,  # 200 requests per 10 seconds
         )
         db.add(mp)
         await db.flush()
