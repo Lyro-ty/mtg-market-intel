@@ -959,8 +959,7 @@ async def get_inventory_market_index(
         elif is_foil_bool is False:
             # Exclude foil prices (only non-foil)
             price_field = PriceSnapshot.price
-            # Use == None instead of .is_(None) to avoid SQLAlchemy type issues
-            price_condition = PriceSnapshot.price_foil == None  # noqa: E711
+            price_condition = PriceSnapshot.price_foil.is_(None)
         else:
             # Default: use regular prices
             price_field = PriceSnapshot.price
@@ -1021,7 +1020,7 @@ async def get_inventory_market_index(
             base_condition = PriceSnapshot.price_foil.isnot(None)
         elif is_foil_bool is False:
             base_price_field = PriceSnapshot.price
-            base_condition = PriceSnapshot.price_foil == None  # noqa: E711
+            base_condition = PriceSnapshot.price_foil.is_(None)
         else:
             base_price_field = PriceSnapshot.price
             base_condition = PriceSnapshot.price.isnot(None)
@@ -1135,8 +1134,7 @@ async def _get_inventory_currency_index(
     elif is_foil is False:
         # Exclude foil prices (only non-foil)
         price_field = PriceSnapshot.price
-        # Use == None instead of .is_(None) to avoid SQLAlchemy type issues
-        price_condition = PriceSnapshot.price_foil == None  # noqa: E711
+        price_condition = PriceSnapshot.price_foil.is_(None)
     else:
         # Default: use regular prices
         price_field = PriceSnapshot.price
@@ -1193,7 +1191,7 @@ async def _get_inventory_currency_index(
         base_condition = PriceSnapshot.price_foil.isnot(None)
     elif is_foil is False:
         base_price_field = PriceSnapshot.price
-        base_condition = PriceSnapshot.price_foil == None  # noqa: E711
+        base_condition = PriceSnapshot.price_foil.is_(None)
     else:
         base_price_field = PriceSnapshot.price
         base_condition = PriceSnapshot.price.isnot(None)
