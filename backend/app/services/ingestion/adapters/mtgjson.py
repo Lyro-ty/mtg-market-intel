@@ -171,7 +171,20 @@ class MTGJSONAdapter(MarketplaceAdapter):
         Returns:
             List of CardPrice objects with historical timestamps.
         """
-        # Download AllPrintings file (contains price data)
+        # Try AllPrices.json first (price-only, more efficient)
+        # Fallback to AllPrintings.json if AllPrices is not available
+        allprices_cache = self._cache_dir / "AllPrices.json.gz"
+        allprices_url = f"{self.MTGJSON_DOWNLOAD_BASE}/AllPrices.json.gz"
+        
+        allprices_data = await self._download_file(allprices_url, allprices_cache)
+        
+        if allprices_data:
+            # AllPrices.json structure: { "uuid": { "paper": { "tcgplayer": {...}, "cardmarket": {...} } } }
+            # We need to find the card by UUID, but we don't have UUID - need to use AllPrintings to map
+            # For now, fall through to AllPrintings for card lookup, but could optimize later
+            logger.debug("AllPrices.json downloaded, but using AllPrintings for card lookup")
+        
+        # Download AllPrintings file (contains price data and card metadata for lookup)
         cache_file = self._cache_dir / "AllPrintings.json.gz"
         url = f"{self.MTGJSON_DOWNLOAD_BASE}/AllPrintings.json.gz"
         
@@ -209,6 +222,25 @@ class MTGJSONAdapter(MarketplaceAdapter):
         
         # Extract price data
         prices = card_data.get("prices", {})
+        
+        # If we have AllPrices data, try to use it for better historical coverage
+        if allprices_data and card_data.get("uuid"):
+            card_uuid = card_data.get("uuid")
+            allprices_card = allprices_data.get("data", {}).get(card_uuid)
+            if allprices_card:
+                # AllPrices has better historical data structure
+                paper_prices = allprices_card.get("paper", {})
+                if paper_prices:
+                    # Merge AllPrices data with AllPrintings data
+                    # AllPrices may have more complete historical data
+                    tcgplayer_allprices = paper_prices.get("tcgplayer", {})
+                    cardmarket_allprices = paper_prices.get("cardmarket", {})
+                    
+                    # Prefer AllPrices data if available (it's more complete)
+                    if tcgplayer_allprices:
+                        prices.setdefault("tcgplayer", {}).update(tcgplayer_allprices)
+                    if cardmarket_allprices:
+                        prices.setdefault("cardmarket", {}).update(cardmarket_allprices)
         if not prices:
             return []
         
