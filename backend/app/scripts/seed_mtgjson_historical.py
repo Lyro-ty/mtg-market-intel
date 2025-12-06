@@ -113,7 +113,7 @@ async def seed_mtgjson_historical(
     }
     
     async with async_session_maker() as db:
-        # Get MTGJSON adapter
+        # Get MTGJSON adapter (will cache data in memory after first load)
         mtgjson = get_adapter("mtgjson", cached=False)
         
         try:
@@ -143,6 +143,7 @@ async def seed_mtgjson_historical(
                             continue
                         
                         # Fetch 30-day historical prices from MTGJSON
+                        # The adapter will use cached data now that it's pre-loaded
                         historical_prices = await mtgjson.fetch_price_history(
                             card_name=card.name,
                             set_code=card.set_code,
@@ -153,6 +154,14 @@ async def seed_mtgjson_historical(
                         
                         if not historical_prices:
                             stats["cards_skipped"] += 1
+                            # Only log debug for first few failures to avoid spam
+                            if stats["cards_skipped"] <= 10:
+                                logger.debug(
+                                    "No MTGJSON data found for card",
+                                    card_name=card.name,
+                                    set_code=card.set_code,
+                                    collector_number=card.collector_number,
+                                )
                             continue
                         
                         # Store prices broken down by marketplace

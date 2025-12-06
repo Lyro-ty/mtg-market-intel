@@ -83,7 +83,7 @@ async def seed_basic_data():
         return False
 
 
-async def backfill_historical_data(timeout_minutes: int = 5, card_limit: int = 200):
+async def backfill_historical_data(timeout_minutes: int = 5, card_limit: int = 4000):
     """
     Backfill historical data from MTGJSON with a timeout.
     
@@ -180,8 +180,8 @@ async def main():
         logger.error("Basic data seeding failed, exiting")
         sys.exit(1)
     
-    # Step 3: Backfill MTGJSON historical data (with 5-minute timeout, process first 200 cards)
-    backfill_stats = await backfill_historical_data(timeout_minutes=5, card_limit=200)
+    # Step 3: Backfill MTGJSON historical data (with 5-minute timeout, process up to 4000 cards)
+    backfill_stats = await backfill_historical_data(timeout_minutes=5, card_limit=4000)
     
     # Step 4: Trigger background backfill task to continue processing all cards
     await trigger_background_backfill()
