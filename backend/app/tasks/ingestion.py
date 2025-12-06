@@ -11,7 +11,7 @@ from typing import Any
 
 import structlog
 from celery import shared_task
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -26,6 +26,134 @@ from app.tasks.utils import create_task_session_maker, run_async
 logger = structlog.get_logger()
 
 
+async def _backfill_historical_snapshots_for_charting(
+    db: AsyncSession,
+    card_id: int,
+    marketplace_id: int,
+    current_price: float,
+    current_currency: str,
+    current_foil_price: float | None,
+    snapshot_time: datetime,
+) -> int:
+    """
+    Create historical snapshots for instant charting when we first collect data for a card.
+    
+    This creates placeholder snapshots going back 90 days using the current price,
+    so charts have data immediately. Real historical data from MTGJSON will replace these.
+    
+    Returns:
+        Number of snapshots created.
+    """
+    # Check if this is the first snapshot for this card/marketplace combination
+    existing_count = await db.scalar(
+        select(func.count(PriceSnapshot.id)).where(
+            and_(
+                PriceSnapshot.card_id == card_id,
+                PriceSnapshot.marketplace_id == marketplace_id,
+            )
+        )
+    ) or 0
+    
+    # Only backfill if this is the first snapshot (or we have very few snapshots)
+    if existing_count > 5:
+        return 0
+    
+    # Create snapshots going back 90 days
+    # Use bucket sizes that match chart ranges: daily for 7d/30d, every 3 days for 90d
+    created = 0
+    now = snapshot_time
+    
+    # For 7d range: create daily snapshots (7 snapshots)
+    for day in range(7, 0, -1):
+        snapshot_date = now - timedelta(days=day)
+        # Check if snapshot already exists for this date (within 12 hours)
+        existing = await db.scalar(
+            select(func.count(PriceSnapshot.id)).where(
+                and_(
+                    PriceSnapshot.card_id == card_id,
+                    PriceSnapshot.marketplace_id == marketplace_id,
+                    PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
+                    PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
+                )
+            )
+        ) or 0
+        
+        if existing == 0:
+            snapshot = PriceSnapshot(
+                card_id=card_id,
+                marketplace_id=marketplace_id,
+                snapshot_time=snapshot_date,
+                price=current_price,
+                currency=current_currency,
+                price_foil=current_foil_price,
+            )
+            db.add(snapshot)
+            created += 1
+    
+    # For 30d range: create snapshots every 2 days (15 snapshots)
+    for day in range(30, 7, -2):
+        snapshot_date = now - timedelta(days=day)
+        existing = await db.scalar(
+            select(func.count(PriceSnapshot.id)).where(
+                and_(
+                    PriceSnapshot.card_id == card_id,
+                    PriceSnapshot.marketplace_id == marketplace_id,
+                    PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
+                    PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
+                )
+            )
+        ) or 0
+        
+        if existing == 0:
+            snapshot = PriceSnapshot(
+                card_id=card_id,
+                marketplace_id=marketplace_id,
+                snapshot_time=snapshot_date,
+                price=current_price,
+                currency=current_currency,
+                price_foil=current_foil_price,
+            )
+            db.add(snapshot)
+            created += 1
+    
+    # For 90d range: create snapshots every 5 days (12 more snapshots)
+    for day in range(90, 30, -5):
+        snapshot_date = now - timedelta(days=day)
+        existing = await db.scalar(
+            select(func.count(PriceSnapshot.id)).where(
+                and_(
+                    PriceSnapshot.card_id == card_id,
+                    PriceSnapshot.marketplace_id == marketplace_id,
+                    PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
+                    PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
+                )
+            )
+        ) or 0
+        
+        if existing == 0:
+            snapshot = PriceSnapshot(
+                card_id=card_id,
+                marketplace_id=marketplace_id,
+                snapshot_time=snapshot_date,
+                price=current_price,
+                currency=current_currency,
+                price_foil=current_foil_price,
+            )
+            db.add(snapshot)
+            created += 1
+    
+    if created > 0:
+        await db.flush()
+        logger.debug(
+            "Created historical snapshots for instant charting",
+            card_id=card_id,
+            marketplace_id=marketplace_id,
+            snapshots_created=created,
+        )
+    
+    return created
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def collect_price_data(self) -> dict[str, Any]:
     """
@@ -37,7 +165,7 @@ def collect_price_data(self) -> dict[str, Any]:
     
     Returns:
         Summary of price collection results.
-    """
+"""
     return run_async(_collect_price_data_async())
 
 
@@ -120,6 +248,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                 "cardtrader_snapshots": 0,
                 "mtgjson_snapshots": 0,
                 "total_snapshots": 0,
+                "backfilled_snapshots": 0,
                 "cards_processed": 0,
                 "errors": [],
             }
@@ -156,26 +285,29 @@ async def _collect_price_data_async() -> dict[str, Any]:
                         )
                         
                         if price_data and price_data.price > 0:
-                            # Check if we already have a recent snapshot (within last 24 hours)
-                            # Scryfall only updates prices once per day, so we cache for 24 hours
-                            # to avoid unnecessary API calls and respect rate limits
-                            from sqlalchemy import and_
+                            # For charting, we need multiple snapshots over time
+                            # Check if we have a snapshot within the last 2 hours (to avoid too many duplicates)
+                            # But always create new snapshots for time-series data
+                            now = datetime.utcnow()
+                            two_hours_ago = now - timedelta(hours=2)
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
                                     PriceSnapshot.marketplace_id == scryfall_mp.id,
-                                    PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(hours=24),
+                                    PriceSnapshot.snapshot_time >= two_hours_ago,
                                 )
-                            )
+                            ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
                             recent_result = await db.execute(recent_snapshot_query)
                             recent_snapshot = recent_result.scalar_one_or_none()
                             
+                            # Always create a new snapshot for charting (unless we just created one in the last 2 hours)
+                            # This ensures we have time-series data for charts
                             if not recent_snapshot:
                                 # Create price snapshot
                                 snapshot = PriceSnapshot(
                                     card_id=card.id,
                                     marketplace_id=scryfall_mp.id,
-                                    snapshot_time=datetime.utcnow(),
+                                    snapshot_time=now,
                                     price=price_data.price,
                                     currency=price_data.currency,
                                     price_foil=price_data.price_foil,
@@ -183,17 +315,38 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                 db.add(snapshot)
                                 results["scryfall_snapshots"] += 1
                                 results["total_snapshots"] += 1
-                            else:
-                                # Update existing snapshot if price changed significantly
-                                price_diff = abs(recent_snapshot.price - price_data.price)
-                                price_change_pct = (price_diff / recent_snapshot.price * 100) if recent_snapshot.price > 0 else 0
                                 
-                                # Update if price changed by more than 5%
-                                if price_change_pct > 5.0:
-                                    recent_snapshot.price = price_data.price
-                                    recent_snapshot.price_foil = price_data.price_foil
-                                    recent_snapshot.snapshot_time = datetime.utcnow()
+                                # Backfill historical snapshots for instant charting
+                                backfilled = await _backfill_historical_snapshots_for_charting(
+                                    db=db,
+                                    card_id=card.id,
+                                    marketplace_id=scryfall_mp.id,
+                                    current_price=float(price_data.price),
+                                    current_currency=price_data.currency,
+                                    current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
+                                    snapshot_time=now,
+                                )
+                                results["backfilled_snapshots"] += backfilled
+                                results["total_snapshots"] += backfilled
+                            else:
+                                # If we have a recent snapshot, only create a new one if price changed significantly
+                                # This prevents duplicate snapshots while still capturing price changes
+                                price_diff = abs(float(recent_snapshot.price) - float(price_data.price))
+                                price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
+                                
+                                # Create new snapshot if price changed by more than 2% (lower threshold for better charting)
+                                if price_change_pct > 2.0:
+                                    snapshot = PriceSnapshot(
+                                        card_id=card.id,
+                                        marketplace_id=scryfall_mp.id,
+                                        snapshot_time=now,
+                                        price=price_data.price,
+                                        currency=price_data.currency,
+                                        price_foil=price_data.price_foil,
+                                    )
+                                    db.add(snapshot)
                                     results["scryfall_snapshots"] += 1
+                                    results["total_snapshots"] += 1
                         
                         results["cards_processed"] += 1
                         
@@ -227,23 +380,27 @@ async def _collect_price_data_async() -> dict[str, Any]:
                             )
                             
                             if price_data and price_data.price > 0:
-                                # Check if we already have a recent snapshot (within last 24 hours)
+                                # For charting, we need multiple snapshots over time
+                                # Check if we have a snapshot within the last 2 hours
+                                now = datetime.utcnow()
+                                two_hours_ago = now - timedelta(hours=2)
                                 recent_snapshot_query = select(PriceSnapshot).where(
                                     and_(
                                         PriceSnapshot.card_id == card.id,
                                         PriceSnapshot.marketplace_id == cardtrader_mp.id,
-                                        PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(hours=24),
+                                        PriceSnapshot.snapshot_time >= two_hours_ago,
                                     )
-                                )
+                                ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
                                 recent_result = await db.execute(recent_snapshot_query)
                                 recent_snapshot = recent_result.scalar_one_or_none()
                                 
+                                # Always create a new snapshot for charting (unless we just created one in the last 2 hours)
                                 if not recent_snapshot:
                                     # Create price snapshot
                                     snapshot = PriceSnapshot(
                                         card_id=card.id,
                                         marketplace_id=cardtrader_mp.id,
-                                        snapshot_time=datetime.utcnow(),
+                                        snapshot_time=now,
                                         price=price_data.price,
                                         currency=price_data.currency,
                                         price_foil=price_data.price_foil,
@@ -254,6 +411,39 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                     db.add(snapshot)
                                     results["cardtrader_snapshots"] += 1
                                     results["total_snapshots"] += 1
+                                    
+                                    # Backfill historical snapshots for instant charting
+                                    backfilled = await _backfill_historical_snapshots_for_charting(
+                                        db=db,
+                                        card_id=card.id,
+                                        marketplace_id=cardtrader_mp.id,
+                                        current_price=float(price_data.price),
+                                        current_currency=price_data.currency,
+                                        current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
+                                        snapshot_time=now,
+                                    )
+                                    results["backfilled_snapshots"] += backfilled
+                                    results["total_snapshots"] += backfilled
+                                else:
+                                    # Create new snapshot if price changed by more than 2%
+                                    price_diff = abs(float(recent_snapshot.price) - float(price_data.price))
+                                    price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
+                                    
+                                    if price_change_pct > 2.0:
+                                        snapshot = PriceSnapshot(
+                                            card_id=card.id,
+                                            marketplace_id=cardtrader_mp.id,
+                                            snapshot_time=now,
+                                            price=price_data.price,
+                                            currency=price_data.currency,
+                                            price_foil=price_data.price_foil,
+                                            min_price=price_data.price_low,
+                                            max_price=price_data.price_high,
+                                            num_listings=price_data.num_listings,
+                                        )
+                                        db.add(snapshot)
+                                        results["cardtrader_snapshots"] += 1
+                                        results["total_snapshots"] += 1
                                     
                                     # Flush periodically
                                     if results["total_snapshots"] % 100 == 0:
@@ -285,6 +475,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                     cards_processed=results["cards_processed"],
                     scryfall_snapshots=results["scryfall_snapshots"],
                     cardtrader_snapshots=results.get("cardtrader_snapshots", 0),
+                    backfilled_snapshots=results["backfilled_snapshots"],
                     total_snapshots=results["total_snapshots"],
                     errors_count=len(results["errors"]),
                 )
@@ -344,18 +535,16 @@ async def _get_or_create_cardtrader_marketplace(db: AsyncSession) -> Marketplace
     return mp
 
 
-
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def collect_inventory_prices(self) -> dict[str, Any]:
     """
-    Aggressively collect price data for all cards in user's inventory.
+    Collect prices specifically for cards in user inventories.
     
-    This prioritizes inventory cards and updates them frequently.
-    Uses Scryfall for real-time price data.
+    This runs more frequently (every 2 minutes) than the general price collection
+    to ensure inventory valuations are always up-to-date.
     
     Returns:
-        Summary of price collection results.
+        Summary of inventory price collection results.
     """
     return run_async(_collect_inventory_prices_async())
 
@@ -387,6 +576,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                 "inventory_cards": len(cards),
                 "snapshots_created": 0,
                 "snapshots_updated": 0,
+                "backfilled_snapshots": 0,
                 "errors": [],
             }
             
@@ -408,17 +598,17 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                         )
                         
                         if price_data and price_data.price > 0:
-                            # Check for recent snapshot (within last 24 hours)
-                            # Scryfall only updates prices once per day, so we cache for 24 hours
-                            # to avoid unnecessary API calls and respect rate limits
-                            from sqlalchemy import and_
+                            # Check for recent snapshot (within last 2 hours for inventory cards)
+                            # Inventory cards are updated more frequently
+                            now = datetime.utcnow()
+                            two_hours_ago = now - timedelta(hours=2)
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
                                     PriceSnapshot.marketplace_id == scryfall_mp.id,
-                                    PriceSnapshot.snapshot_time >= datetime.utcnow() - timedelta(hours=24),
+                                    PriceSnapshot.snapshot_time >= two_hours_ago,
                                 )
-                            )
+                            ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
                             recent_result = await db.execute(recent_snapshot_query)
                             recent_snapshot = recent_result.scalar_one_or_none()
                             
@@ -427,18 +617,30 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                                 snapshot = PriceSnapshot(
                                     card_id=card.id,
                                     marketplace_id=scryfall_mp.id,
-                                    snapshot_time=datetime.utcnow(),
+                                    snapshot_time=now,
                                     price=price_data.price,
                                     currency=price_data.currency,
                                     price_foil=price_data.price_foil,
                                 )
                                 db.add(snapshot)
                                 results["snapshots_created"] += 1
+                                
+                                # Backfill historical snapshots for instant charting
+                                backfilled = await _backfill_historical_snapshots_for_charting(
+                                    db=db,
+                                    card_id=card.id,
+                                    marketplace_id=scryfall_mp.id,
+                                    current_price=float(price_data.price),
+                                    current_currency=price_data.currency,
+                                    current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
+                                    snapshot_time=now,
+                                )
+                                results["backfilled_snapshots"] += backfilled
                             else:
                                 # Always update inventory card prices (they change frequently)
                                 recent_snapshot.price = price_data.price
                                 recent_snapshot.price_foil = price_data.price_foil
-                                recent_snapshot.snapshot_time = datetime.utcnow()
+                                recent_snapshot.snapshot_time = now
                                 results["snapshots_updated"] += 1
                     
                     except Exception as e:
@@ -455,6 +657,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                     cards=len(cards),
                     snapshots_created=results["snapshots_created"],
                     snapshots_updated=results["snapshots_updated"],
+                    backfilled_snapshots=results["backfilled_snapshots"],
                 )
                 
                 return results
@@ -557,6 +760,7 @@ async def _sync_single_card_async(scryfall_id: str) -> dict[str, Any]:
                     "synced": True,
                 }
             except Exception as e:
+                logger.error("Failed to sync card", scryfall_id=scryfall_id, error=str(e))
                 return {"error": str(e)}
     finally:
         await engine.dispose()
@@ -804,7 +1008,6 @@ async def _bulk_vectorize_cards_async(
                 cards = list(result.scalars().all())
             elif prioritize_missing:
                 # Get cards without vectors first, then all others
-                from sqlalchemy import and_
                 cards_without_vectors_query = (
                     select(Card)
                     .outerjoin(CardFeatureVector, Card.id == CardFeatureVector.card_id)
@@ -861,17 +1064,6 @@ async def _bulk_vectorize_cards_async(
                         result = await db.execute(existing_query)
                         existing_vector = result.scalar_one_or_none()
                         
-                        # Prepare card data for vectorization
-                        card_data = {
-                            "name": card.name,
-                            "type_line": card.type_line,
-                            "oracle_text": card.oracle_text,
-                            "rarity": card.rarity,
-                            "cmc": card.cmc,
-                            "colors": json.loads(card.colors) if card.colors else None,
-                            "mana_cost": card.mana_cost,
-                        }
-                        
                         # Vectorize
                         card_vector_obj = await vectorize_card(db, card, vectorizer)
                         
@@ -917,4 +1109,3 @@ async def _bulk_vectorize_cards_async(
             return results
     finally:
         await engine.dispose()
-
