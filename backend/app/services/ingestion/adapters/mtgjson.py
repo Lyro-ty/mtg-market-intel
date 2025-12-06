@@ -49,7 +49,8 @@ class MTGJSONAdapter(MarketplaceAdapter):
         self._client: httpx.AsyncClient | None = None
         self._cache_dir = Path("data/mtgjson_cache")
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-        self._cached_data: dict | None = None  # Cache loaded JSON data in memory
+        self._cached_data: dict | None = None  # Cache loaded AllPrintings JSON data in memory
+        self._cached_allprices_data: dict | None = None  # Cache loaded AllPrices JSON data in memory
     
     @property
     def marketplace_name(self) -> str:
@@ -83,6 +84,7 @@ class MTGJSONAdapter(MarketplaceAdapter):
         Download and cache a file from MTGJSON.
         
         MTGJSON updates weekly, so we cache files for 7 days to avoid unnecessary downloads.
+        Also uses in-memory cache to avoid reloading from disk.
         
         Args:
             url: URL to download from.
@@ -91,17 +93,34 @@ class MTGJSONAdapter(MarketplaceAdapter):
         Returns:
             Parsed JSON data or None if download fails.
         """
-        # Check cache first (if less than 7 days old, since MTGJSON updates weekly)
+        # Check in-memory cache first (fastest)
+        if "AllPrintings.json.gz" in str(cache_file) and self._cached_data is not None:
+            logger.debug("Using in-memory cached AllPrintings data")
+            return self._cached_data
+        if "AllPrices.json.gz" in str(cache_file) and self._cached_allprices_data is not None:
+            logger.debug("Using in-memory cached AllPrices data")
+            return self._cached_allprices_data
+        
+        # Check disk cache (if less than 7 days old, since MTGJSON updates weekly)
         if cache_file.exists():
             cache_age = datetime.utcnow() - datetime.fromtimestamp(cache_file.stat().st_mtime)
             if cache_age < timedelta(days=7):
                 logger.debug("Using cached MTGJSON file", file=str(cache_file), age_hours=cache_age.total_seconds() / 3600)
                 try:
                     with open(cache_file, "rb") as f:
+                        data = None
                         if cache_file.suffix == ".gz":
-                            return json.loads(gzip.decompress(f.read()))
+                            data = json.loads(gzip.decompress(f.read()))
                         else:
-                            return json.load(f)
+                            data = json.load(f)
+                        
+                        # Store in in-memory cache for future use
+                        if "AllPrintings.json.gz" in str(cache_file):
+                            self._cached_data = data
+                        elif "AllPrices.json.gz" in str(cache_file):
+                            self._cached_allprices_data = data
+                        
+                        return data
                 except Exception as e:
                     logger.warning("Failed to read cache", file=str(cache_file), error=str(e))
         
@@ -120,10 +139,19 @@ class MTGJSONAdapter(MarketplaceAdapter):
                 f.write(response.content)
             
             # Parse JSON
+            data = None
             if url.endswith(".gz") or cache_file.suffix == ".gz":
-                return json.loads(gzip.decompress(response.content))
+                data = json.loads(gzip.decompress(response.content))
             else:
-                return response.json()
+                data = response.json()
+            
+            # Store in in-memory cache
+            if "AllPrintings.json.gz" in str(cache_file):
+                self._cached_data = data
+            elif "AllPrices.json.gz" in str(cache_file):
+                self._cached_allprices_data = data
+            
+            return data
                 
         except httpx.HTTPStatusError as e:
             logger.error("MTGJSON download failed", url=url, status=e.response.status_code)
@@ -174,16 +202,17 @@ class MTGJSONAdapter(MarketplaceAdapter):
         """
         # Try AllPrices.json first (price-only, more efficient)
         # Fallback to AllPrintings.json if AllPrices is not available
-        allprices_cache = self._cache_dir / "AllPrices.json.gz"
-        allprices_url = f"{self.MTGJSON_DOWNLOAD_BASE}/AllPrices.json.gz"
-        
-        allprices_data = await self._download_file(allprices_url, allprices_cache)
-        
-        if allprices_data:
-            # AllPrices.json structure: { "uuid": { "paper": { "tcgplayer": {...}, "cardmarket": {...} } } }
-            # We need to find the card by UUID, but we don't have UUID - need to use AllPrintings to map
-            # For now, fall through to AllPrintings for card lookup, but could optimize later
-            logger.debug("AllPrices.json downloaded, but using AllPrintings for card lookup")
+        # Only download once and cache in memory
+        if self._cached_allprices_data is None:
+            allprices_cache = self._cache_dir / "AllPrices.json.gz"
+            allprices_url = f"{self.MTGJSON_DOWNLOAD_BASE}/AllPrices.json.gz"
+            allprices_data = await self._download_file(allprices_url, allprices_cache)
+            if allprices_data:
+                self._cached_allprices_data = allprices_data
+                logger.debug("AllPrices.json downloaded and cached in memory")
+        else:
+            allprices_data = self._cached_allprices_data
+            logger.debug("Using in-memory cached AllPrices data")
         
         # Download AllPrintings file (contains price data and card metadata for lookup)
         cache_file = self._cache_dir / "AllPrintings.json.gz"
