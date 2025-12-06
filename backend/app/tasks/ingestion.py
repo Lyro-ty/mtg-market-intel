@@ -12,6 +12,7 @@ from typing import Any
 import structlog
 from celery import shared_task
 from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import Card, Marketplace, Listing, PriceSnapshot, InventoryItem, CardFeatureVector
