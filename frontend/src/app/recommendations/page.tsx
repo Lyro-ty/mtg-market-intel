@@ -7,7 +7,9 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingPage } from '@/components/ui/Loading';
+import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { RecommendationCard } from '@/components/recommendations/RecommendationCard';
+import { useQueryClient } from '@tanstack/react-query';
 import { getRecommendations } from '@/lib/api';
 import type { ActionType } from '@/types';
 
@@ -19,6 +21,7 @@ const ACTION_FILTERS: { value: ActionType | 'ALL'; label: string; icon: React.Co
 ];
 
 export default function RecommendationsPage() {
+  const queryClient = useQueryClient();
   const [actionFilter, setActionFilter] = useState<ActionType | 'ALL'>('ALL');
   const [page, setPage] = useState(1);
 
@@ -98,11 +101,11 @@ export default function RecommendationsPage() {
       {isLoading ? (
         <LoadingPage />
       ) : error ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-red-500">Failed to load recommendations</p>
-          </CardContent>
-        </Card>
+        <ErrorDisplay
+          message={error instanceof Error ? error.message : 'Failed to load recommendations'}
+          status={error instanceof Error && 'status' in error ? (error as any).status : undefined}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ['recommendations', actionFilter, page] })}
+        />
       ) : data?.recommendations.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

@@ -6,9 +6,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Search as SearchIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { LoadingPage } from '@/components/ui/Loading';
+import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { CardGrid } from '@/components/cards/CardGrid';
 import { SearchBar } from '@/components/cards/SearchBar';
 import { Button } from '@/components/ui/Button';
+import { useQueryClient } from '@tanstack/react-query';
 import { searchCards } from '@/lib/api';
 
 export default function CardsPage() {
@@ -22,6 +24,7 @@ export default function CardsPage() {
 function CardsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const initialQuery = searchParams.get('q') ?? '';
   const initialPage = Number(searchParams.get('page') ?? '1') || 1;
   
@@ -74,11 +77,11 @@ function CardsPageContent() {
       {isLoading ? (
         <LoadingPage />
       ) : error ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-red-500">Failed to search cards</p>
-          </CardContent>
-        </Card>
+        <ErrorDisplay
+          message={error instanceof Error ? error.message : 'Failed to search cards'}
+          status={error instanceof Error && 'status' in error ? (error as any).status : undefined}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ['cards', 'search', query, page] })}
+        />
       ) : data?.cards.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

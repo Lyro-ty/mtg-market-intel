@@ -23,6 +23,13 @@ from app.models import (
     Marketplace,
 )
 from app.schemas.dashboard import TopCard
+from app.api.utils.error_handling import (
+    handle_database_query,
+    get_empty_market_overview_response,
+    get_empty_market_index_response,
+    get_empty_top_movers_response,
+    get_empty_volume_by_format_response,
+)
 
 router = APIRouter()
 cache = get_dashboard_cache()
@@ -173,10 +180,41 @@ async def get_market_diagnostics(
         select(func.count(func.distinct(PriceSnapshot.card_id)))
     ) or 0
     
+    # Count total cards
+    total_cards = await db.scalar(
+        select(func.count(Card.id))
+    ) or 0
+    
     # Get sample snapshot
     sample_query = select(PriceSnapshot).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
     sample_result = await db.execute(sample_query)
     sample = sample_result.scalar_one_or_none()
+    
+    # Get oldest and newest snapshots
+    oldest_query = select(PriceSnapshot).order_by(PriceSnapshot.snapshot_time.asc()).limit(1)
+    oldest_result = await db.execute(oldest_query)
+    oldest = oldest_result.scalar_one_or_none()
+    
+    # Test the actual query that the index uses (7d range, no filters)
+    test_start_date = now - timedelta(days=7)
+    test_bucket_seconds = 30 * 60  # 30 minutes
+    test_bucket_expr = func.to_timestamp(
+        func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / test_bucket_seconds) * test_bucket_seconds
+    )
+    test_query = select(
+        test_bucket_expr.label("bucket_time"),
+        func.avg(PriceSnapshot.price).label("avg_price"),
+        func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
+    ).where(
+        and_(
+            PriceSnapshot.snapshot_time >= test_start_date,
+            PriceSnapshot.price.isnot(None),
+            PriceSnapshot.price > 0,
+        )
+    ).group_by(test_bucket_expr).order_by(test_bucket_expr)
+    
+    test_result = await db.execute(test_query)
+    test_rows = test_result.all()
     
     return {
         "total_snapshots": total_snapshots,
@@ -185,6 +223,8 @@ async def get_market_diagnostics(
         "usd_snapshots": usd_count,
         "eur_snapshots": eur_count,
         "cards_with_snapshots": cards_with_snapshots,
+        "total_cards": total_cards,
+        "test_query_rows": len(test_rows),
         "sample_snapshot": {
             "card_id": sample.card_id if sample else None,
             "marketplace_id": sample.marketplace_id if sample else None,
@@ -192,7 +232,12 @@ async def get_market_diagnostics(
             "price": float(sample.price) if sample else None,
             "currency": sample.currency if sample else None,
         } if sample else None,
+        "oldest_snapshot": {
+            "snapshot_time": oldest.snapshot_time.isoformat() if oldest else None,
+            "price": float(oldest.price) if oldest else None,
+        } if oldest else None,
         "current_time": now.isoformat(),
+        "seed_status": "No data - seed process may not have run yet" if total_snapshots == 0 else "Data exists",
     }
 
 
@@ -211,131 +256,98 @@ async def get_market_overview(
     if cached is not None:
         return cached
     
-    try:
-        # Total cards tracked
-        total_cards = await asyncio.wait_for(
-            db.scalar(select(func.count(Card.id))),
-            timeout=QUERY_TIMEOUT
-        ) or 0
-    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
-        logger.error(
-            "Database query timeout or pool exhaustion in market overview",
-            error=str(e),
-            error_type=type(e).__name__
-        )
-        # Return cached or default values instead of failing
-        return {
-            "totalCardsTracked": 0,
-            "totalListings": 0,
-            "volume24hUsd": 0.0,
-            "avgPriceChange24hPct": None,
-            "activeFormatsTracked": 10,
-        }
-    except Exception as e:
-        logger.error("Error fetching total cards", error=str(e), error_type=type(e).__name__)
-        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
-            return {
-                "totalCardsTracked": 0,
-                "totalListings": 0,
-                "volume24hUsd": 0.0,
-                "avgPriceChange24hPct": None,
-                "activeFormatsTracked": 10,
-            }
-        raise HTTPException(status_code=500, detail="Failed to fetch market overview")
+    # Total cards tracked
+    total_cards = await handle_database_query(
+        lambda: db.scalar(select(func.count(Card.id))),
+        default_value=0,
+        error_context={"endpoint": "market_overview", "operation": "count_cards"},
+        timeout=QUERY_TIMEOUT,
+    ) or 0
+    
+    if total_cards == 0:
+        # If we got 0 due to error, return empty response
+        return get_empty_market_overview_response()
     
     # Total price snapshots (active price data from last 24h)
     # Note: We no longer collect individual listings - using price snapshots from Scryfall/MTGJSON
     day_ago = datetime.now(timezone.utc) - timedelta(days=1)
-    try:
-        total_snapshots = await asyncio.wait_for(
-            db.scalar(
-                select(func.count(PriceSnapshot.id)).where(
-                    PriceSnapshot.snapshot_time >= day_ago
+    
+    total_snapshots = await handle_database_query(
+        lambda: db.scalar(
+            select(func.count(PriceSnapshot.id)).where(
+                PriceSnapshot.snapshot_time >= day_ago
+            )
+        ),
+        default_value=0,
+        error_context={"endpoint": "market_overview", "operation": "count_snapshots"},
+        timeout=QUERY_TIMEOUT,
+    ) or 0
+    
+    # 24h trade volume (USD) - estimate from price snapshots
+    # Estimate: sum of prices * estimated quantity (using num_listings if available, else 1)
+    # This is a rough approximation since we don't have exact listing quantities
+    volume_24h = await handle_database_query(
+        lambda: db.scalar(
+            select(
+                func.sum(
+                    PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)
                 )
-            ),
-            timeout=QUERY_TIMEOUT
-        ) or 0
-        
-        # 24h trade volume (USD) - estimate from price snapshots
-        # Estimate: sum of prices * estimated quantity (using num_listings if available, else 1)
-        # This is a rough approximation since we don't have exact listing quantities
-        volume_24h = await asyncio.wait_for(
-            db.scalar(
+            ).where(
+                PriceSnapshot.snapshot_time >= day_ago,
+                PriceSnapshot.currency == "USD",
+                PriceSnapshot.price > 0
+            )
+        ),
+        default_value=0,
+        error_context={"endpoint": "market_overview", "operation": "volume_24h_usd"},
+        timeout=QUERY_TIMEOUT,
+    ) or 0
+    
+    # If no USD snapshots, try to estimate from other currencies
+    if volume_24h == 0:
+        volume_24h = await handle_database_query(
+            lambda: db.scalar(
                 select(
                     func.sum(
                         PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)
                     )
                 ).where(
                     PriceSnapshot.snapshot_time >= day_ago,
-                    PriceSnapshot.currency == "USD",
                     PriceSnapshot.price > 0
                 )
             ),
-            timeout=QUERY_TIMEOUT
+            default_value=0,
+            error_context={"endpoint": "market_overview", "operation": "volume_24h_all"},
+            timeout=QUERY_TIMEOUT,
         ) or 0
-        
-        # If no USD snapshots, try to estimate from other currencies
-        if volume_24h == 0:
-            volume_24h = await asyncio.wait_for(
-                db.scalar(
-                    select(
-                        func.sum(
-                            PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)
-                        )
-                    ).where(
-                        PriceSnapshot.snapshot_time >= day_ago,
-                        PriceSnapshot.price > 0
-                    )
-                ),
-                timeout=QUERY_TIMEOUT
-            ) or 0
-        
-        # 24h average price change
-        latest_date = await asyncio.wait_for(
-            db.scalar(select(func.max(MetricsCardsDaily.date))),
-            timeout=QUERY_TIMEOUT
+    
+    # 24h average price change
+    latest_date = await handle_database_query(
+        lambda: db.scalar(select(func.max(MetricsCardsDaily.date))),
+        default_value=None,
+        error_context={"endpoint": "market_overview", "operation": "latest_date"},
+        timeout=QUERY_TIMEOUT,
+    )
+    
+    avg_price_change_24h = None
+    if latest_date:
+        result = await handle_database_query(
+            lambda: db.execute(
+                select(
+                    func.avg(MetricsCardsDaily.price_change_pct_1d).label("avg_change")
+                ).where(
+                    MetricsCardsDaily.date == latest_date,
+                    MetricsCardsDaily.price_change_pct_1d.isnot(None),
+                )
+            ),
+            default_value=None,
+            error_context={"endpoint": "market_overview", "operation": "avg_price_change"},
+            timeout=QUERY_TIMEOUT,
         )
-        avg_price_change_24h = None
-        if latest_date:
-            result = await asyncio.wait_for(
-                db.execute(
-                    select(
-                        func.avg(MetricsCardsDaily.price_change_pct_1d).label("avg_change")
-                    ).where(
-                        MetricsCardsDaily.date == latest_date,
-                        MetricsCardsDaily.price_change_pct_1d.isnot(None),
-                    )
-                ),
-                timeout=QUERY_TIMEOUT
-            )
+        if result:
             row = result.first()
             if row and row.avg_change:
                 avg_price_change_24h = float(row.avg_change)
-    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
-        logger.error(
-            "Database query timeout or pool exhaustion in market overview",
-            error=str(e),
-            error_type=type(e).__name__
-        )
-        # Return default values instead of failing
-        return {
-            "totalCardsTracked": 0,
-            "totalListings": 0,
-            "volume24hUsd": 0.0,
-            "avgPriceChange24hPct": None,
-            "activeFormatsTracked": 10,
-        }
-    except Exception as e:
-        logger.error("Error fetching market overview data", error=str(e), error_type=type(e).__name__)
-        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
-            return {
-                "totalCardsTracked": 0,
-                "totalListings": 0,
-                "volume24hUsd": 0.0,
-                "avgPriceChange24hPct": None,
-                "activeFormatsTracked": 10,
-            }
-        raise HTTPException(status_code=500, detail="Failed to fetch market overview")
     
     # Active formats tracked - use a more efficient approach
     # Instead of parsing 1000 cards, use a smaller sample and cache the result
@@ -657,33 +669,15 @@ async def get_market_index(
             "isMockData": False,
         }
     except Exception as e:
+        from app.api.utils.error_handling import is_database_connection_error
+        
         logger.error("Error fetching market index", error=str(e), error_type=type(e).__name__, range=range)
+        
         # Check if it's a connection pool error
-        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
-            # Return mock data on pool exhaustion
-            points = []
-            base_value = 100.0
-            num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
-            if range == "7d":
-                num_points = 7 * 24 * 2
-            elif range == "30d":
-                num_points = 30 * 24
-            elif range == "90d":
-                num_points = 90 * 6
-            
-            for i in range(min(num_points, 1000)):
-                date = start_date + timedelta(minutes=i * bucket_minutes)
-                value = base_value + (i % 10 - 5) * 0.5
-                points.append({
-                    "timestamp": date.isoformat(),
-                    "indexValue": round(value, 2),
-                })
-            return {
-                "range": range,
-                "currency": currency or "ALL",
-                "points": points,
-                "isMockData": False,
-            }
+        if is_database_connection_error(e):
+            # Return empty data on pool exhaustion
+            return get_empty_market_index_response(range, currency)
+        
         raise HTTPException(status_code=500, detail="Failed to fetch market index")
     
     if not rows:
@@ -699,14 +693,48 @@ async def get_market_index(
             )
         ) or 0
         
-        logger.info(
+        # Check snapshots with price conditions
+        price_field_name = "price_foil" if is_foil_bool is True else "price"
+        if is_foil_bool is True:
+            price_condition_check = PriceSnapshot.price_foil.isnot(None)
+        elif is_foil_bool is False:
+            price_condition_check = PriceSnapshot.price_foil.is_(None)
+        else:
+            price_condition_check = PriceSnapshot.price.isnot(None)
+        
+        snapshots_with_price = await db.scalar(
+            select(func.count(PriceSnapshot.id)).where(
+                and_(
+                    PriceSnapshot.snapshot_time >= start_date,
+                    price_condition_check,
+                )
+            )
+        ) or 0
+        
+        # Check by currency if specified
+        currency_snapshots = recent_snapshots
+        if currency:
+            currency_snapshots = await db.scalar(
+                select(func.count(PriceSnapshot.id)).where(
+                    and_(
+                        PriceSnapshot.snapshot_time >= start_date,
+                        PriceSnapshot.currency == currency,
+                    )
+                )
+            ) or 0
+        
+        logger.warning(
             "No market index data found",
             range=range,
             currency=currency or "ALL",
             is_foil=is_foil_bool,
             total_snapshots_in_db=total_snapshots,
             recent_snapshots_in_range=recent_snapshots,
+            snapshots_with_price_condition=snapshots_with_price,
+            currency_snapshots=currency_snapshots if currency else recent_snapshots,
             start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            price_field=price_field_name,
         )
         
         # Return empty data if no real data available
@@ -719,9 +747,20 @@ async def get_market_index(
     
     # Calculate normalized index using fixed base point (improved normalization)
     points = []
-    avg_prices = [float(row.avg_price) for row in rows if row.avg_price]
+    avg_prices = [float(row.avg_price) for row in rows if row.avg_price and row.avg_price > 0]
     
     if not avg_prices:
+        # Log why we have no valid prices
+        rows_with_none = sum(1 for row in rows if row.avg_price is None)
+        rows_with_zero = sum(1 for row in rows if row.avg_price == 0)
+        logger.warning(
+            "No valid average prices in query results",
+            range=range,
+            total_rows=len(rows),
+            rows_with_none_price=rows_with_none,
+            rows_with_zero_price=rows_with_zero,
+            valid_avg_prices=len(avg_prices),
+        )
         # No data available
         return {
             "range": range,
@@ -864,22 +903,14 @@ async def get_top_movers(
             window=window
         )
         # Return empty data on timeout or pool exhaustion
-        return {
-            "window": window,
-            "gainers": [],
-            "losers": [],
-            "isMockData": False,
-        }
+        return get_empty_top_movers_response(window)
     except Exception as e:
+        from app.api.utils.error_handling import is_database_connection_error
+        
         logger.error("Error fetching top movers", error=str(e), error_type=type(e).__name__, window=window)
         # Check if it's a connection pool error
-        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
-            return {
-                "window": window,
-                "gainers": [],
-                "losers": [],
-                "isMockData": False,
-            }
+        if is_database_connection_error(e):
+            return get_empty_top_movers_response(window)
         raise HTTPException(status_code=500, detail="Failed to fetch top movers")
     
     # Format gainers
@@ -1024,19 +1055,13 @@ async def get_volume_by_format(
             error_type=type(e).__name__,
             days=days
         )
-        return {
-            "days": days,
-            "formats": [],
-            "isMockData": False,
-        }
+        return get_empty_volume_by_format_response(days)
     except Exception as e:
+        from app.api.utils.error_handling import is_database_connection_error
+        
         logger.error("Error fetching volume by format", error=str(e), error_type=type(e).__name__, days=days)
-        if "QueuePool" in str(e) or "connection timed out" in str(e).lower():
-            return {
-                "days": days,
-                "formats": [],
-                "isMockData": False,
-            }
+        if is_database_connection_error(e):
+            return get_empty_volume_by_format_response(days)
         raise HTTPException(status_code=500, detail="Failed to fetch volume by format")
     
     if not rows:

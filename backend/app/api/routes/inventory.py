@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentUser
 from app.db.session import get_db
 from app.models import Card, InventoryItem, InventoryRecommendation, MetricsCardsDaily, PriceSnapshot, Marketplace
+from app.api.utils.error_handling import is_database_connection_error
 from pydantic import BaseModel
 from app.schemas.inventory import (
     InventoryImportRequest,
@@ -1114,13 +1115,16 @@ async def get_inventory_market_index(
         
     except Exception as e:
         logger.error("Error fetching inventory market index", error=str(e), error_type=type(e).__name__, range=range)
-        # Return empty data on error
-        return {
-            "range": range,
-            "currency": currency or "ALL",
-            "points": [],
-            "isMockData": False,
-        }
+        # Return empty data on error (connection errors handled gracefully)
+        if is_database_connection_error(e):
+            return {
+                "range": range,
+                "currency": currency or "ALL",
+                "points": [],
+                "isMockData": False,
+            }
+        # For other errors, re-raise to get proper HTTP error response
+        raise HTTPException(status_code=500, detail="Failed to fetch inventory market index")
 
 
 async def _get_inventory_currency_index(
@@ -1335,12 +1339,15 @@ async def get_inventory_top_movers(
         
     except Exception as e:
         logger.error("Error fetching inventory top movers", error=str(e), error_type=type(e).__name__, window=window)
-        return {
-            "window": window,
-            "gainers": [],
-            "losers": [],
-            "isMockData": False,
-        }
+        # Return empty data on connection errors, raise for other errors
+        if is_database_connection_error(e):
+            return {
+                "window": window,
+                "gainers": [],
+                "losers": [],
+                "isMockData": False,
+            }
+        raise HTTPException(status_code=500, detail="Failed to fetch inventory top movers")
     
     # Format gainers
     gainers = []
