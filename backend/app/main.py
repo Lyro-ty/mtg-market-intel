@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     # Trigger initial tasks on startup
     try:
         from app.tasks.data_seeding import seed_comprehensive_price_data
-        from app.tasks.ingestion import collect_price_data
+        from app.tasks.ingestion import collect_price_data, import_mtgjson_historical_prices
         from app.tasks.analytics import run_analytics
         from app.tasks.recommendations import generate_recommendations
         
@@ -56,6 +56,12 @@ async def lifespan(app: FastAPI):
         # This pulls current prices from Scryfall + historical from MTGJSON
         seeding_task = seed_comprehensive_price_data.delay()
         logger.info("Comprehensive data seeding task queued", task_id=str(seeding_task.id))
+        
+        # Phase 1.5: Import MTGJSON historical data for inventory cards (30 days)
+        # This ensures inventory cards have chart data immediately
+        # Prioritizes inventory cards over all cards for faster chart availability
+        mtgjson_task = import_mtgjson_historical_prices.delay(card_ids=None, days=30)
+        logger.info("MTGJSON historical import for inventory cards queued", task_id=str(mtgjson_task.id))
         
         # Phase 2: Regular price collection (runs in background, continues after seeding)
         price_task = collect_price_data.delay()
