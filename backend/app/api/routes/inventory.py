@@ -999,6 +999,17 @@ async def get_inventory_market_index(
         )
         rows = result.all()
         
+        # Log diagnostic info
+        logger.info(
+            "Inventory market index query results",
+            range=range,
+            currency=currency or "ALL",
+            card_ids_count=len(card_ids),
+            rows_returned=len(rows),
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
+        
         # Group by time bucket and calculate weighted average
         bucket_data = {}
         for row in rows:
@@ -1082,14 +1093,29 @@ async def get_inventory_market_index(
                 select(func.count(PriceSnapshot.id))
             ) or 0
             
+            # Check for snapshots with proper conditions
+            recent_snapshot_conditions = [
+                PriceSnapshot.snapshot_time >= start_date,
+            ]
+            if card_ids:
+                recent_snapshot_conditions.append(PriceSnapshot.card_id.in_(card_ids))
+            if currency:
+                recent_snapshot_conditions.append(PriceSnapshot.currency == currency)
+            
             recent_snapshots = await db.scalar(
                 select(func.count(PriceSnapshot.id)).where(
-                    PriceSnapshot.snapshot_time >= start_date,
+                    and_(*recent_snapshot_conditions) if recent_snapshot_conditions else True
+                )
+            ) or 0
+            
+            # Also check snapshots for these cards regardless of date
+            all_card_snapshots = await db.scalar(
+                select(func.count(PriceSnapshot.id)).where(
                     PriceSnapshot.card_id.in_(card_ids) if card_ids else True
                 )
             ) or 0
             
-            logger.info(
+            logger.warning(
                 "No inventory market index data found",
                 range=range,
                 currency=currency or "ALL",
@@ -1097,7 +1123,10 @@ async def get_inventory_market_index(
                 inventory_card_count=len(card_ids) if card_ids else 0,
                 total_snapshots_in_db=total_snapshots,
                 recent_snapshots_in_range=recent_snapshots,
+                all_card_snapshots=all_card_snapshots,
                 start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+                card_ids_sample=card_ids[:5] if card_ids else [],
             )
             
             # Return empty data if no points
