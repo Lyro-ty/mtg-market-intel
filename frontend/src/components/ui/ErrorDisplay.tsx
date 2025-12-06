@@ -79,7 +79,7 @@ export function ErrorDisplay({
             {showRetry && onRetry && (
               <Button
                 onClick={onRetry}
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 className="mt-2"
               >
