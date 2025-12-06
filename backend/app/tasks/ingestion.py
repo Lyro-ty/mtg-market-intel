@@ -198,7 +198,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
             
             # PRIORITY 2: Get cards without recent data (within 24 hours) - prioritize these
             # Cards without data should be processed first to ensure all cards get data within 24 hours
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             stale_threshold = now - timedelta(hours=24)
             
             # Get cards that have no snapshots or only stale snapshots
@@ -243,7 +243,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
             )
             
             results = {
-                "started_at": datetime.utcnow().isoformat(),
+                "started_at": datetime.now(timezone.utc).isoformat(),
                 "scryfall_snapshots": 0,
                 "cardtrader_snapshots": 0,
                 "mtgjson_snapshots": 0,
@@ -288,7 +288,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                             # For charting, we need multiple snapshots over time
                             # Check if we have a snapshot within the last 2 hours (to avoid too many duplicates)
                             # But always create new snapshots for time-series data
-                            now = datetime.utcnow()
+                            now = datetime.now(timezone.utc)
                             two_hours_ago = now - timedelta(hours=2)
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
@@ -382,7 +382,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                             if price_data and price_data.price > 0:
                                 # For charting, we need multiple snapshots over time
                                 # Check if we have a snapshot within the last 2 hours
-                                now = datetime.utcnow()
+                                now = datetime.now(timezone.utc)
                                 two_hours_ago = now - timedelta(hours=2)
                                 recent_snapshot_query = select(PriceSnapshot).where(
                                     and_(
@@ -468,7 +468,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                     logger.info("CardTrader API token not configured - skipping CardTrader collection")
                 
                 await db.commit()
-                results["completed_at"] = datetime.utcnow().isoformat()
+                results["completed_at"] = datetime.now(timezone.utc).isoformat()
                 
                 logger.info(
                     "Price data collection completed",
@@ -572,7 +572,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
             logger.info("Collecting prices for inventory cards", count=len(cards))
             
             results = {
-                "started_at": datetime.utcnow().isoformat(),
+                "started_at": datetime.now(timezone.utc).isoformat(),
                 "inventory_cards": len(cards),
                 "snapshots_created": 0,
                 "snapshots_updated": 0,
@@ -600,7 +600,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                         if price_data and price_data.price > 0:
                             # Check for recent snapshot (within last 2 hours for inventory cards)
                             # Inventory cards are updated more frequently
-                            now = datetime.utcnow()
+                            now = datetime.now(timezone.utc)
                             two_hours_ago = now - timedelta(hours=2)
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
@@ -650,7 +650,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                         continue
                 
                 await db.commit()
-                results["completed_at"] = datetime.utcnow().isoformat()
+                results["completed_at"] = datetime.now(timezone.utc).isoformat()
                 
                 logger.info(
                     "Inventory price collection completed",
@@ -863,7 +863,7 @@ async def _import_mtgjson_historical_prices_async(
             adapter = get_adapter("mtgjson", cached=False)
             
             results = {
-                "started_at": datetime.utcnow().isoformat(),
+                "started_at": datetime.now(timezone.utc).isoformat(),
                 "cards_processed": 0,
                 "snapshots_created": 0,
                 "snapshots_skipped": 0,
@@ -938,7 +938,7 @@ async def _import_mtgjson_historical_prices_async(
                         continue
                 
                 await db.commit()
-                results["completed_at"] = datetime.utcnow().isoformat()
+                results["completed_at"] = datetime.now(timezone.utc).isoformat()
                 
                 logger.info(
                     "MTGJSON historical price import completed",
