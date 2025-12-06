@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     cardmarket_app_secret: str = ""
     cardmarket_access_token: str = ""
     cardmarket_access_secret: str = ""
-    cardtrader_api_token: str = "REDACTED_CARDTRADER_TOKEN"  # CardTrader API JWT token for Full API access
+    cardtrader_api_token: str = ""  # CardTrader API JWT token - set via CARDTRADER_API_TOKEN env var
     cardtrader_secret_key: str = ""
     
     # Scraping Configuration

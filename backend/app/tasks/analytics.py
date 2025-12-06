@@ -1,52 +1,18 @@
 """
 Analytics tasks for computing metrics and generating signals.
 """
-import asyncio
 from datetime import date
 from typing import Any
 
 import structlog
 from celery import shared_task
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
 
-from app.core.config import settings
 from app.models import Card
 from app.services.agents.analytics import AnalyticsAgent
+from app.tasks.utils import create_task_session_maker, run_async
 
 logger = structlog.get_logger()
-
-
-def create_task_session_maker():
-    """Create a new async engine and session maker for the current event loop."""
-    engine = create_async_engine(
-        settings.database_url_computed,
-        echo=settings.api_debug,
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
-    )
-    return async_sessionmaker(
-        engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autocommit=False,
-        autoflush=False,
-    ), engine
-
-
-def run_async(coro):
-    """Run async function in sync context."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
