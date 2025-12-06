@@ -49,6 +49,7 @@ class MTGJSONAdapter(MarketplaceAdapter):
         self._client: httpx.AsyncClient | None = None
         self._cache_dir = Path("data/mtgjson_cache")
         self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._cached_data: dict | None = None  # Cache loaded JSON data in memory
     
     @property
     def marketplace_name(self) -> str:
@@ -188,10 +189,18 @@ class MTGJSONAdapter(MarketplaceAdapter):
         cache_file = self._cache_dir / "AllPrintings.json.gz"
         url = f"{self.MTGJSON_DOWNLOAD_BASE}/AllPrintings.json.gz"
         
-        data = await self._download_file(url, cache_file)
-        if not data:
-            logger.warning("Failed to download MTGJSON data")
-            return []
+        # Use cached data if available, otherwise download
+        if self._cached_data is None:
+            data = await self._download_file(url, cache_file)
+            if not data:
+                logger.warning("Failed to download MTGJSON data")
+                return []
+            # Cache the data in memory for subsequent lookups
+            self._cached_data = data
+        else:
+            # Use cached data
+            data = self._cached_data
+            logger.debug("Using in-memory cached MTGJSON data")
         
         # Find the card in the data
         set_data = data.get("data", {}).get(set_code.upper())
