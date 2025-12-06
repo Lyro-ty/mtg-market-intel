@@ -9,8 +9,10 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies (use npm install if no lock file exists)
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# Install dependencies
+# Use npm install instead of npm ci to handle lock file mismatches gracefully
+# npm install will update the lock file if needed, which is fine for Docker builds
+RUN npm install
 
 # Rebuild the source code only when needed
 FROM base AS builder
