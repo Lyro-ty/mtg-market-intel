@@ -21,6 +21,10 @@ COPY . .
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Build arg for backend URL (used in next.config.js rewrites)
+ARG BACKEND_URL=http://backend:8000
+ENV BACKEND_URL=${BACKEND_URL}
+
 # Build the application
 RUN npm run build
 
