@@ -966,22 +966,25 @@ async def get_inventory_market_index(
             price_field = PriceSnapshot.price
             price_condition = PriceSnapshot.price.isnot(None)
         
+        # Build query conditions
+        query_conditions = [
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.card_id.in_(card_ids),
+            price_condition,
+            price_field > 0,
+        ]
+        
+        # Filter by currency if specified
+        if currency:
+            query_conditions.append(PriceSnapshot.currency == currency)
+        
         query = select(
             bucket_expr.label("bucket_time"),
             PriceSnapshot.card_id,
             func.avg(price_field).label("avg_price"),
         ).where(
-            and_(
-                PriceSnapshot.snapshot_time >= start_date,
-                PriceSnapshot.card_id.in_(card_ids),
-                price_condition,
-                price_field > 0,
-            )
+            and_(*query_conditions)
         )
-        
-        # Filter by currency if specified
-        if currency:
-            query = query.where(PriceSnapshot.currency == currency)
         
         query = query.group_by(
             bucket_expr,
@@ -1033,20 +1036,22 @@ async def get_inventory_market_index(
             else_=1
         )
         
+        base_conditions = [
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.snapshot_time < base_date,
+            PriceSnapshot.card_id.in_(card_ids),
+            base_condition,
+            base_price_field > 0,
+        ]
+        if currency:
+            base_conditions.append(PriceSnapshot.currency == currency)
+        
         base_query = select(
             func.sum(base_price_field * quantity_case).label("total_value"),
             func.sum(quantity_case).label("total_quantity")
         ).where(
-            and_(
-                PriceSnapshot.snapshot_time >= start_date,
-                PriceSnapshot.snapshot_time < base_date,
-                PriceSnapshot.card_id.in_(card_ids),
-                base_condition,
-                base_price_field > 0,
-            )
+            and_(*base_conditions)
         )
-        if currency:
-            base_query = base_query.where(PriceSnapshot.currency == currency)
         
         base_result = await db.execute(base_query)
         base_row = base_result.first()
