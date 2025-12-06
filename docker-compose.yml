@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - ${NETWORK_NAME:-dualcaster-network}
+      - dualcaster-network
 
   # Redis for Celery
   redis:
@@ -37,7 +37,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - ${NETWORK_NAME:-dualcaster-network}
+      - dualcaster-network
 
   # FastAPI Backend
   backend:
@@ -91,7 +91,7 @@ services:
       timeout: 10s
       retries: 3
     networks:
-      - ${NETWORK_NAME:-dualcaster-network}
+      - dualcaster-network
 
   # Celery Worker
   worker:
@@ -133,7 +133,7 @@ services:
     # volumes:
     #   - ./backend:/app
     networks:
-      - ${NETWORK_NAME:-dualcaster-network}
+      - dualcaster-network
 
   # Celery Beat Scheduler
   scheduler:
@@ -165,7 +165,7 @@ services:
     # volumes:
     #   - ./backend:/app
     networks:
-      - ${NETWORK_NAME:-dualcaster-network}
+      - dualcaster-network
 
   # Next.js Frontend
   frontend:
@@ -186,12 +186,12 @@ services:
       backend:
         condition: service_healthy
     networks:
-      - ${NETWORK_NAME:-dualcaster-network}
+      - dualcaster-network
 
 volumes:
   postgres_data:
   redis_data:
 
 networks:
-  ${NETWORK_NAME:-dualcaster-network}:
+  dualcaster-network:
     driver: bridge
