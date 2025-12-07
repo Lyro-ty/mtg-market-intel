@@ -87,7 +87,9 @@ def interpolate_missing_points(
                 ts = point['timestamp']
             # Validate indexValue is a number
             index_val = float(point['indexValue'])
-            if index_val < 0 or index_val > 10000:  # Reasonable bounds for index values
+            # Use more reasonable bounds: 0.1% to 1000% (0.1 to 1000)
+            # This allows for significant changes but prevents extreme outliers
+            if index_val < 0.1 or index_val > 1000:
                 logger.warning(
                     "Suspicious index value detected in inventory index, skipping",
                     value=index_val,
@@ -1221,47 +1223,46 @@ async def get_inventory_market_index(
                 "isMockData": False,
             }
         
-        # Use improved base point: median of first 25% of weighted averages
-        # This is more robust than using first day's data and less affected by outliers
-        num_points_for_base = max(4, len(weighted_averages) // 4)
-        base_values = sorted([avg for _, avg in weighted_averages[:num_points_for_base]])
-        
-        # Calculate median
-        if len(base_values) % 2 == 0:
-            # Even number of points: average of two middle values
-            mid = len(base_values) // 2
-            base_value = (base_values[mid - 1] + base_values[mid]) / 2.0
-        else:
-            # Odd number of points: middle value
-            mid = len(base_values) // 2
-            base_value = base_values[mid]
+        # For inventory index, use the first point as base value for consistency
+        # Inventory weighted averages can vary dramatically if composition changes,
+        # so using a fixed reference point (first point) is more reliable
+        base_value = weighted_averages[0][1] if weighted_averages else 100.0
         
         # Validate base value is reasonable
         if not base_value or base_value <= 0:
-            # Fallback to first point if median calculation failed
-            base_value = weighted_averages[0][1] if weighted_averages else 100.0
             logger.warning(
-                "Base value calculation failed in inventory index, using first point as fallback",
+                "Base value is invalid in inventory index, using fallback",
                 range=range,
                 currency=currency,
-                first_point_value=base_value
+                base_value=base_value
             )
+            base_value = 100.0  # Fallback to prevent division by zero
         
-        # Additional validation: ensure base value is within reasonable range
-        if weighted_averages and abs(base_value - weighted_averages[0][1]) / weighted_averages[0][1] > 10.0:
-            logger.warning(
-                "Base value seems like an outlier in inventory index, using first point instead",
-                range=range,
-                currency=currency,
-                base_value=base_value,
-                first_point=weighted_averages[0][1]
-            )
-            base_value = weighted_averages[0][1]
+        # Calculate all index values and check for outliers before adding to points
+        # This helps identify if there are data quality issues
+        max_reasonable_index = 1000.0  # Cap at 1000% (10x) to prevent extreme values
+        min_reasonable_index = 0.1  # Cap at 0.1% (100x decrease) to prevent extreme values
         
-        # Now create points with normalized values
         for timestamp_str, avg_value in weighted_averages:
             # Normalize to base 100
-            index_value = (avg_value / base_value) * 100.0 if base_value > 0 else 100.0
+            if base_value > 0:
+                index_value = (avg_value / base_value) * 100.0
+            else:
+                index_value = 100.0
+            
+            # Validate index value is within reasonable bounds
+            if index_value > max_reasonable_index or index_value < min_reasonable_index:
+                logger.warning(
+                    "Suspicious index value detected in inventory index, capping to reasonable range",
+                    value=index_value,
+                    avg_value=avg_value,
+                    base_value=base_value,
+                    timestamp=timestamp_str,
+                    range=range,
+                    currency=currency
+                )
+                # Cap the value instead of skipping it
+                index_value = max(min_reasonable_index, min(max_reasonable_index, index_value))
             
             points.append({
                 "timestamp": timestamp_str,
