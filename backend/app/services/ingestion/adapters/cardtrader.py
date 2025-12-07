@@ -1,7 +1,7 @@
 """
 CardTrader API adapter for marketplace price data.
 
-CardTrader provides European market data (EUR) with marketplace listings.
+CardTrader provides marketplace data in multiple currencies (USD, EUR) with marketplace listings.
 API Documentation: https://www.cardtrader.com/docs/api/full/reference
 """
 import asyncio
@@ -26,13 +26,13 @@ class CardTraderAdapter(MarketplaceAdapter):
     """
     Adapter for CardTrader marketplace API.
     
-    Provides current marketplace prices and listings for European market (EUR).
-    Rate limit: 200 requests per 10 seconds.
+    Provides current marketplace prices and listings for USD and EUR markets.
+    Rate limit: 10 requests per second.
     """
     
     BASE_URL = "https://api.cardtrader.com/api/v2"
-    RATE_LIMIT_REQUESTS = 200
-    RATE_LIMIT_WINDOW = 10  # seconds
+    RATE_LIMIT_REQUESTS = 10
+    RATE_LIMIT_WINDOW = 1  # seconds (10 requests per second)
     
     def __init__(self, config: AdapterConfig | None = None):
         # Get API token from settings (JWT token for Full API access)
@@ -43,7 +43,7 @@ class CardTraderAdapter(MarketplaceAdapter):
                 base_url=self.BASE_URL,
                 api_url=self.BASE_URL,
                 api_key=api_token,
-                rate_limit_seconds=self.RATE_LIMIT_WINDOW / self.RATE_LIMIT_REQUESTS,  # ~0.05s between requests
+                rate_limit_seconds=self.RATE_LIMIT_WINDOW / self.RATE_LIMIT_REQUESTS,  # 0.1s between requests (10 req/s)
                 timeout_seconds=30.0,
             )
         super().__init__(config)
@@ -79,11 +79,11 @@ class CardTraderAdapter(MarketplaceAdapter):
         return self._client
     
     async def _rate_limit(self) -> None:
-        """Enforce rate limiting (200 requests per 10 seconds)."""
+        """Enforce rate limiting (10 requests per second)."""
         now = datetime.utcnow()
         elapsed = (now - self._window_start).total_seconds()
         
-        # Reset window if 10 seconds have passed
+        # Reset window if 1 second has passed
         if elapsed >= self.RATE_LIMIT_WINDOW:
             self._request_count = 0
             self._window_start = now
@@ -402,13 +402,168 @@ class CardTraderAdapter(MarketplaceAdapter):
         limit: int = 100,
     ) -> list[CardListing]:
         """
-        Fetch current listings from CardTrader marketplace.
+        Fetch current listings from CardTrader marketplace in USD.
         
-        Note: Requires blueprint_id lookup first, which is not yet fully implemented.
+        Args:
+            card_name: Card name (required)
+            set_code: Set code (required)
+            scryfall_id: Scryfall ID (optional, for matching)
+            limit: Maximum number of listings to return (default: 100)
+            
+        Returns:
+            List of CardListing objects filtered to USD currency
         """
-        # For now, return empty list - requires blueprint mapping
-        logger.debug("CardTrader listings fetch requires blueprint mapping", card_name=card_name)
-        return []
+        if not card_name or not set_code:
+            logger.warning("CardTrader fetch_listings requires card_name and set_code")
+            return []
+        
+        # Find blueprint ID for the card
+        collector_number = None
+        if scryfall_id:
+            # Try to extract collector number from scryfall_id if possible
+            # For now, we'll rely on the blueprint lookup by name and set
+            pass
+        
+        blueprint_id = await self._find_blueprint(card_name, set_code, collector_number)
+        if not blueprint_id:
+            logger.debug(
+                "CardTrader blueprint not found for listings",
+                card_name=card_name,
+                set_code=set_code
+            )
+            return []
+        
+        # Get marketplace products filtered to USD
+        products = await self._get_marketplace_products(
+            blueprint_id,
+            language="en",  # English language
+            currency="USD"  # USD currency filter
+        )
+        
+        if not products:
+            logger.debug(
+                "No USD listings found for CardTrader card",
+                card_name=card_name,
+                set_code=set_code,
+                blueprint_id=blueprint_id
+            )
+            return []
+        
+        # Convert products to CardListing objects
+        listings = []
+        for product in products[:limit]:  # Respect limit
+            try:
+                # Extract price information
+                price = None
+                currency = "USD"
+                
+                if "seller_price" in product and product["seller_price"]:
+                    price_info = product["seller_price"]
+                    if isinstance(price_info, dict):
+                        price_cents = price_info.get("cents", 0)
+                        price = price_cents / 100.0
+                        currency = price_info.get("currency", "USD").upper()
+                elif "price" in product:
+                    price_val = product["price"]
+                    if isinstance(price_val, (int, float)):
+                        price = float(price_val)
+                    elif isinstance(price_val, dict) and "cents" in price_val:
+                        price = price_val["cents"] / 100.0
+                
+                if price is None or price <= 0:
+                    continue  # Skip products without valid price
+                
+                # Extract condition
+                condition = None
+                if "condition" in product:
+                    condition_str = str(product["condition"]).upper()
+                    condition = self.normalize_condition(condition_str)
+                elif "mtg_condition" in product:
+                    condition_str = str(product["mtg_condition"]).upper()
+                    condition = self.normalize_condition(condition_str)
+                
+                # Extract language
+                language = "English"
+                if "language" in product:
+                    lang_code = product["language"]
+                    if isinstance(lang_code, str):
+                        language = self.normalize_language(lang_code)
+                
+                # Extract foil status
+                is_foil = product.get("mtg_foil", False) or product.get("foil", False)
+                
+                # Extract quantity
+                quantity = product.get("quantity", 1)
+                if not isinstance(quantity, int):
+                    try:
+                        quantity = int(quantity)
+                    except (ValueError, TypeError):
+                        quantity = 1
+                
+                # Extract seller info
+                seller_name = None
+                seller_rating = None
+                if "seller" in product and isinstance(product["seller"], dict):
+                    seller = product["seller"]
+                    seller_name = seller.get("username") or seller.get("name")
+                    seller_rating = seller.get("rating")
+                elif "seller_name" in product:
+                    seller_name = product["seller_name"]
+                
+                # Extract external ID and URL
+                external_id = str(product.get("id", ""))
+                listing_url = None
+                if "url" in product:
+                    listing_url = product["url"]
+                elif "product_url" in product:
+                    listing_url = product["product_url"]
+                elif external_id:
+                    # Construct URL from base URL and product ID
+                    listing_url = f"https://www.cardtrader.com/products/{external_id}"
+                
+                # Extract collector number if available
+                collector_number_str = str(collector_number) if collector_number else ""
+                if "number" in product:
+                    collector_number_str = str(product["number"])
+                elif "collector_number" in product:
+                    collector_number_str = str(product["collector_number"])
+                
+                listing = CardListing(
+                    card_name=card_name,
+                    set_code=set_code,
+                    collector_number=collector_number_str,
+                    price=price,
+                    currency=currency,
+                    quantity=quantity,
+                    condition=condition,
+                    language=language,
+                    is_foil=is_foil,
+                    seller_name=seller_name,
+                    seller_rating=seller_rating,
+                    external_id=external_id,
+                    listing_url=listing_url,
+                    scryfall_id=scryfall_id,
+                    raw_data=product,  # Store raw data for debugging
+                )
+                listings.append(listing)
+                
+            except Exception as e:
+                logger.warning(
+                    "Error converting CardTrader product to listing",
+                    product_id=product.get("id"),
+                    error=str(e)
+                )
+                continue
+        
+        logger.debug(
+            "CardTrader listings fetched",
+            card_name=card_name,
+            set_code=set_code,
+            listings_count=len(listings),
+            blueprint_id=blueprint_id
+        )
+        
+        return listings
     
     async def fetch_price(
         self,
@@ -491,8 +646,8 @@ class CardTraderAdapter(MarketplaceAdapter):
         
         price_foil = sum(foil_prices) / len(foil_prices) if foil_prices else None
         
-        # Use the currency from prices (should match target_currency if filtering was applied)
-        result_currency = prices[0]["currency"] if prices else target_currency
+        # Use the currency from prices (should match currency parameter if filtering was applied)
+        result_currency = prices[0]["currency"] if prices else currency
         
         return CardPrice(
             card_name=card_name,
