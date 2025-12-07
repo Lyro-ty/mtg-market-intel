@@ -40,6 +40,7 @@ export interface MarketplacePrice {
   price_foil?: number;
   num_listings?: number;
   last_updated: string;
+  condition?: string;  // Card condition (Near Mint, Lightly Played, etc.)
 }
 
 export interface CardPrices {
@@ -62,6 +63,7 @@ export interface PricePoint {
   num_listings?: number;
   snapshot_time?: string;  // When this price was collected
   data_age_minutes?: number;  // Minutes since collection
+  condition?: string;  // Card condition (Near Mint, Lightly Played, etc.)
 }
 
 export interface CardHistory {
