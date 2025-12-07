@@ -17,10 +17,24 @@ export function SearchBar({
 }: SearchBarProps) {
   const [value, setValue] = useState(controlledValue ?? '');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSearchRef = useRef<string | null>(null);
   
+  // Sync from parent only if we're not waiting for a debounced search
+  // This prevents the parent from overwriting user input while they're typing
   useEffect(() => {
-    if (controlledValue !== undefined && controlledValue !== value) {
-      setValue(controlledValue);
+    if (controlledValue !== undefined) {
+      // If we have a pending search, only accept parent updates that match what we're waiting for
+      // This means the parent update is from our own onSearch callback
+      // If pending is null or the values don't match, it's a programmatic change (e.g., clearing filters)
+      if (pendingSearchRef.current === null) {
+        // No pending search, safe to sync from parent
+        setValue(controlledValue);
+      } else if (controlledValue === pendingSearchRef.current) {
+        // Parent value matches what we're waiting for, this is from our own callback
+        // Don't update state (it's already correct), but clear pending
+        pendingSearchRef.current = null;
+      }
+      // If pending exists and doesn't match, ignore the parent update (user is still typing)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controlledValue]);
@@ -28,6 +42,7 @@ export function SearchBar({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setValue(newValue);
+    pendingSearchRef.current = newValue; // Mark that we're waiting for this value to be searched
     
     // Debounce the search
     if (timeoutRef.current) {
@@ -35,6 +50,9 @@ export function SearchBar({
     }
     timeoutRef.current = setTimeout(() => {
       onSearch(newValue);
+      // Clear pending after search is executed
+      // The parent will update and pass the value back, which we'll accept since pending is cleared
+      pendingSearchRef.current = null;
     }, 300);
   };
 
