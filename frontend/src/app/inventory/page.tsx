@@ -56,6 +56,7 @@ function InventoryPageContent(): JSX.Element {
   
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchKey, setSearchKey] = useState(0); // Key to reset SearchBar
   const [filterFoil, setFilterFoil] = useState<boolean | undefined>(undefined);
   const [filterCondition, setFilterCondition] = useState<InventoryCondition | undefined>(undefined);
   
@@ -73,6 +74,7 @@ function InventoryPageContent(): JSX.Element {
       isFoil: filterFoil,
       condition: filterCondition,
     }),
+    staleTime: 30 * 1000, // Consider data fresh for 30 seconds
     refetchInterval: 15 * 60 * 1000,
   });
   
@@ -154,6 +156,7 @@ function InventoryPageContent(): JSX.Element {
   
   const handleClearFilters = () => {
     setSearchQuery('');
+    setSearchKey((k) => k + 1); // Reset SearchBar component
     setFilterFoil(undefined);
     setFilterCondition(undefined);
     setPage(1);
@@ -576,7 +579,7 @@ function InventoryPageContent(): JSX.Element {
                   <div className="space-y-4">
                     {/* Search Bar */}
                     <SearchBar
-                      value={searchQuery}
+                      key={searchKey}
                       onSearch={(query) => {
                         setSearchQuery(query);
                         setPage(1);
