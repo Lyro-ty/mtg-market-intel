@@ -282,6 +282,7 @@ export async function getCardHistory(
     days?: number;
     marketplaceId?: number;
     condition?: string;
+    isFoil?: boolean;
   } = {}
 ): Promise<CardHistory> {
   const params = new URLSearchParams();
@@ -294,6 +295,9 @@ export async function getCardHistory(
   }
   if (options.condition) {
     params.set('condition', options.condition);
+  }
+  if (options.isFoil !== undefined) {
+    params.set('is_foil', String(options.isFoil));
   }
   
   const queryString = params.toString();

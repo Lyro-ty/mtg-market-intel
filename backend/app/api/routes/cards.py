@@ -203,6 +203,7 @@ async def get_card_history(
     days: int = Query(30, ge=1, le=365),
     marketplace_id: Optional[int] = None,
     condition: Optional[str] = Query(None, description="Filter by condition (NM, LP, MP, HP, DMG)"),
+    is_foil: Optional[bool] = Query(None, description="Filter by foil status (True for foil, False for non-foil, None for both)"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -211,6 +212,7 @@ async def get_card_history(
     Returns daily price points for the specified time range.
     If condition is specified, uses Listing data grouped by condition.
     Otherwise, uses PriceSnapshot aggregated data.
+    If is_foil is specified, filters by foil status.
     """
     card = await db.get(Card, card_id)
     if not card:
@@ -271,6 +273,9 @@ async def get_card_history(
         
         if marketplace_id:
             query = query.where(Listing.marketplace_id == marketplace_id)
+        
+        if is_foil is not None:
+            query = query.where(Listing.is_foil == is_foil)
         
         query = query.group_by(
             bucket_expr,
@@ -349,20 +354,53 @@ async def get_card_history(
             # Keep other names as-is
             return marketplace_name
         
-        history = [
-            PricePoint(
-                date=snapshot.snapshot_time,
-                price=float(snapshot.price),
-                marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
-                currency=snapshot.currency,
-                min_price=float(snapshot.min_price) if snapshot.min_price else None,
-                max_price=float(snapshot.max_price) if snapshot.max_price else None,
-                num_listings=snapshot.num_listings,
-                snapshot_time=snapshot.snapshot_time,
-                data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
-            )
-            for snapshot, marketplace in rows
-        ]
+        # When is_foil is True, use price_foil if available, otherwise filter out entries without foil prices
+        # When is_foil is False, use regular price and filter out entries that only have foil prices
+        # When is_foil is None, prefer regular price but include foil if regular is not available
+        history = []
+        for snapshot, marketplace in rows:
+            if is_foil is True:
+                # Only include entries with foil prices
+                if snapshot.price_foil is not None:
+                    history.append(PricePoint(
+                        date=snapshot.snapshot_time,
+                        price=float(snapshot.price_foil),
+                        marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
+                        currency=snapshot.currency,
+                        min_price=None,  # Foil prices don't have min/max in snapshot
+                        max_price=None,
+                        num_listings=snapshot.num_listings,
+                        snapshot_time=snapshot.snapshot_time,
+                        data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
+                        price_foil=float(snapshot.price_foil),
+                    ))
+            elif is_foil is False:
+                # Only include entries with regular (non-foil) prices
+                history.append(PricePoint(
+                    date=snapshot.snapshot_time,
+                    price=float(snapshot.price),
+                    marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
+                    currency=snapshot.currency,
+                    min_price=float(snapshot.min_price) if snapshot.min_price else None,
+                    max_price=float(snapshot.max_price) if snapshot.max_price else None,
+                    num_listings=snapshot.num_listings,
+                    snapshot_time=snapshot.snapshot_time,
+                    data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
+                ))
+            else:
+                # Include both, prefer regular price
+                history.append(PricePoint(
+                    date=snapshot.snapshot_time,
+                    price=float(snapshot.price),
+                    marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
+                    currency=snapshot.currency,
+                    min_price=float(snapshot.min_price) if snapshot.min_price else None,
+                    max_price=float(snapshot.max_price) if snapshot.max_price else None,
+                    num_listings=snapshot.num_listings,
+                    snapshot_time=snapshot.snapshot_time,
+                    data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
+                    price_foil=float(snapshot.price_foil) if snapshot.price_foil else None,
+                ))
         
         latest_snapshot = max((snapshot.snapshot_time for snapshot, _ in rows), default=None) if rows else None
     

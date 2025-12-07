@@ -75,6 +75,7 @@ class PricePoint(BaseModel):
     snapshot_time: Optional[datetime] = None  # When this price was collected
     data_age_minutes: Optional[int] = None  # Minutes since collection
     condition: Optional[str] = None  # Card condition (Near Mint, Lightly Played, etc.)
+    price_foil: Optional[float] = None  # Foil price if available
 
 
 class CardPriceResponse(BaseModel):

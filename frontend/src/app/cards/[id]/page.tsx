@@ -32,6 +32,7 @@ export default function CardDetailPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAddInventory, setShowAddInventory] = useState(false);
   const [selectedCondition, setSelectedCondition] = useState<string>('');  // Empty = all conditions
+  const [selectedFoil, setSelectedFoil] = useState<string>('');  // Empty = all, 'false' = non-foil, 'true' = foil
   const [inventoryForm, setInventoryForm] = useState({
     quantity: 1,
     condition: 'NEAR_MINT' as InventoryCondition,
@@ -65,10 +66,11 @@ export default function CardDetailPage() {
   });
 
   const { data: history, refetch: refetchHistory } = useQuery({
-    queryKey: ['card', cardId, 'history', selectedCondition],
+    queryKey: ['card', cardId, 'history', selectedCondition, selectedFoil],
     queryFn: () => getCardHistory(cardId, { 
       days: 30,
-      condition: selectedCondition || undefined 
+      condition: selectedCondition || undefined,
+      isFoil: selectedFoil === '' ? undefined : selectedFoil === 'true'
     }),
     enabled: !!cardId,
     refetchInterval: 60000,  // Auto-refresh every 60 seconds for live data
@@ -229,28 +231,46 @@ export default function CardDetailPage() {
         <SpreadChart data={current_prices} title="Current Prices by Marketplace" />
       )}
 
-      {/* Price History with Condition Filter */}
+      {/* Price History with Condition and Foil Filters */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-4">
             <CardTitle>30-Day Price History</CardTitle>
-            {/* Condition Filter */}
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-[rgb(var(--foreground))] whitespace-nowrap">
-                Condition:
-              </label>
-              <select
-                value={selectedCondition}
-                onChange={(e) => setSelectedCondition(e.target.value)}
-                className="px-4 py-2 rounded-lg bg-[rgb(var(--secondary))] border border-[rgb(var(--border))] text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-amber-500/50 cursor-pointer hover:bg-[rgb(var(--secondary))]/80 transition-colors min-w-[160px]"
-              >
-                <option value="">All Conditions</option>
-                <option value="Near Mint">Near Mint</option>
-                <option value="Lightly Played">Lightly Played</option>
-                <option value="Moderately Played">Moderately Played</option>
-                <option value="Heavily Played">Heavily Played</option>
-                <option value="Damaged">Damaged</option>
-              </select>
+            {/* Filters */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Condition Filter */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-[rgb(var(--foreground))] whitespace-nowrap">
+                  Condition:
+                </label>
+                <select
+                  value={selectedCondition}
+                  onChange={(e) => setSelectedCondition(e.target.value)}
+                  className="px-4 py-2 rounded-lg bg-[rgb(var(--secondary))] border border-[rgb(var(--border))] text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-amber-500/50 cursor-pointer hover:bg-[rgb(var(--secondary))]/80 transition-colors min-w-[160px]"
+                >
+                  <option value="">All Conditions</option>
+                  <option value="Near Mint">Near Mint</option>
+                  <option value="Lightly Played">Lightly Played</option>
+                  <option value="Moderately Played">Moderately Played</option>
+                  <option value="Heavily Played">Heavily Played</option>
+                  <option value="Damaged">Damaged</option>
+                </select>
+              </div>
+              {/* Foil Filter */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-[rgb(var(--foreground))] whitespace-nowrap">
+                  Type:
+                </label>
+                <select
+                  value={selectedFoil}
+                  onChange={(e) => setSelectedFoil(e.target.value)}
+                  className="px-4 py-2 rounded-lg bg-[rgb(var(--secondary))] border border-[rgb(var(--border))] text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-amber-500/50 cursor-pointer hover:bg-[rgb(var(--secondary))]/80 transition-colors min-w-[140px]"
+                >
+                  <option value="">All Types</option>
+                  <option value="false">Non-Foil</option>
+                  <option value="true">Foil</option>
+                </select>
+              </div>
             </div>
           </div>
         </CardHeader>
