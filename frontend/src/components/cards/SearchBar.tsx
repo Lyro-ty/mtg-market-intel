@@ -18,6 +18,8 @@ export function SearchBar({
   const [value, setValue] = useState(controlledValue ?? '');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSearchRef = useRef<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wasFocusedRef = useRef(false);
   
   // Sync from parent only if we're not waiting for a debounced search
   // This prevents the parent from overwriting user input while they're typing
@@ -38,11 +40,26 @@ export function SearchBar({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controlledValue]);
+  
+  // Maintain focus after re-renders caused by parent updates
+  useEffect(() => {
+    // If the input was focused before and it's not focused now, restore focus
+    // This handles cases where parent re-renders cause the input to lose focus
+    if (wasFocusedRef.current && inputRef.current && document.activeElement !== inputRef.current) {
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (inputRef.current && wasFocusedRef.current && document.activeElement !== inputRef.current) {
+          inputRef.current.focus();
+        }
+      });
+    }
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setValue(newValue);
     pendingSearchRef.current = newValue; // Mark that we're waiting for this value to be searched
+    wasFocusedRef.current = document.activeElement === e.target;
     
     // Debounce the search
     if (timeoutRef.current) {
@@ -69,9 +86,16 @@ export function SearchBar({
     <div className="relative">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[rgb(var(--muted-foreground))]" />
       <Input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={handleChange}
+        onFocus={() => {
+          wasFocusedRef.current = true;
+        }}
+        onBlur={() => {
+          wasFocusedRef.current = false;
+        }}
         placeholder={placeholder}
         className="pl-10"
       />
