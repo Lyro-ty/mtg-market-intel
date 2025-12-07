@@ -44,18 +44,21 @@ async def _backfill_historical_snapshots_for_charting(
     Returns:
         Number of snapshots created.
     """
-    # Check if this is the first snapshot for this card/marketplace combination
-    existing_count = await db.scalar(
+    # Check how many snapshots we have in the last 30 days
+    thirty_days_ago = snapshot_time - timedelta(days=30)
+    existing_count_30d = await db.scalar(
         select(func.count(PriceSnapshot.id)).where(
             and_(
                 PriceSnapshot.card_id == card_id,
                 PriceSnapshot.marketplace_id == marketplace_id,
+                PriceSnapshot.snapshot_time >= thirty_days_ago,
             )
         )
     ) or 0
     
-    # Only backfill if this is the first snapshot (or we have very few snapshots)
-    if existing_count > 5:
+    # Only backfill if we have fewer than 15 snapshots in the last 30 days
+    # This ensures we create enough data points for 30-day charts
+    if existing_count_30d >= 15:
         return 0
     
     # Create snapshots going back 90 days
@@ -90,8 +93,9 @@ async def _backfill_historical_snapshots_for_charting(
             db.add(snapshot)
             created += 1
     
-    # For 30d range: create snapshots every 2 days (15 snapshots)
-    for day in range(30, 7, -2):
+    # For 30d range: create snapshots every 1-2 days to ensure good coverage
+    # Create daily snapshots for days 8-30 (23 snapshots) to ensure comprehensive 30-day history
+    for day in range(30, 7, -1):
         snapshot_date = now - timedelta(days=day)
         existing = await db.scalar(
             select(func.count(PriceSnapshot.id)).where(
@@ -636,8 +640,24 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                     await db.flush()
                 return mp
             
-            # Get Scryfall adapter
+            # Get adapters
             scryfall = ScryfallAdapter()
+            
+            # Get or create CardTrader marketplace if API token is available
+            cardtrader_mp = None
+            cardtrader = None
+            if settings.cardtrader_api_token:
+                from app.services.ingestion.adapters.cardtrader import CardTraderAdapter
+                from app.services.ingestion.base import AdapterConfig
+                cardtrader_config = AdapterConfig(
+                    base_url="https://api.cardtrader.com/api/v2",
+                    api_url="https://api.cardtrader.com/api/v2",
+                    api_key=settings.cardtrader_api_token,
+                    rate_limit_seconds=0.05,  # 200 requests per 10 seconds
+                    timeout_seconds=30.0,
+                )
+                cardtrader = CardTraderAdapter(cardtrader_config)
+                cardtrader_mp = await _get_or_create_cardtrader_marketplace(db)
             
             try:
                 for card in cards:
@@ -713,6 +733,75 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                                 recent_snapshot.price_foil = price_data.price_foil
                                 recent_snapshot.snapshot_time = now
                                 results["snapshots_updated"] += 1
+                        
+                        # Collect prices from CardTrader (European market data) for inventory cards
+                        if cardtrader and cardtrader_mp:
+                            try:
+                                # Fetch price data from CardTrader
+                                price_data = await cardtrader.fetch_price(
+                                    card_name=card.name,
+                                    set_code=card.set_code,
+                                    collector_number=card.collector_number,
+                                    scryfall_id=card.scryfall_id,
+                                )
+                                
+                                if price_data and price_data.price > 0:
+                                    # Check for recent snapshot (within last 2 hours for inventory cards)
+                                    recent_snapshot_query = select(PriceSnapshot).where(
+                                        and_(
+                                            PriceSnapshot.card_id == card.id,
+                                            PriceSnapshot.marketplace_id == cardtrader_mp.id,
+                                            PriceSnapshot.snapshot_time >= two_hours_ago,
+                                        )
+                                    ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+                                    recent_result = await db.execute(recent_snapshot_query)
+                                    recent_snapshot = recent_result.scalar_one_or_none()
+                                    
+                                    if not recent_snapshot:
+                                        # Create new snapshot
+                                        snapshot = PriceSnapshot(
+                                            card_id=card.id,
+                                            marketplace_id=cardtrader_mp.id,
+                                            snapshot_time=now,
+                                            price=price_data.price,
+                                            currency=price_data.currency,
+                                            price_foil=price_data.price_foil,
+                                            min_price=price_data.price_low,
+                                            max_price=price_data.price_high,
+                                            num_listings=price_data.num_listings,
+                                        )
+                                        db.add(snapshot)
+                                        results["snapshots_created"] += 1
+                                        
+                                        # Backfill historical snapshots for instant charting
+                                        backfilled = await _backfill_historical_snapshots_for_charting(
+                                            db=db,
+                                            card_id=card.id,
+                                            marketplace_id=cardtrader_mp.id,
+                                            current_price=float(price_data.price),
+                                            current_currency=price_data.currency,
+                                            current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
+                                            snapshot_time=now,
+                                        )
+                                        results["backfilled_snapshots"] += backfilled
+                                    else:
+                                        # Update existing snapshot if price changed significantly
+                                        price_diff = abs(float(recent_snapshot.price) - float(price_data.price))
+                                        price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
+                                        
+                                        if price_change_pct > 2.0:
+                                            recent_snapshot.price = price_data.price
+                                            recent_snapshot.price_foil = price_data.price_foil
+                                            recent_snapshot.snapshot_time = now
+                                            recent_snapshot.min_price = price_data.price_low
+                                            recent_snapshot.max_price = price_data.price_high
+                                            recent_snapshot.num_listings = price_data.num_listings
+                                            results["snapshots_updated"] += 1
+                            
+                            except Exception as e:
+                                # CardTrader errors are non-fatal (blueprint mapping may not exist)
+                                logger.debug("CardTrader price fetch failed for inventory card", card_id=card.id, error=str(e))
+                                # Don't add to errors list - CardTrader failures are expected for some cards
                     
                     except Exception as e:
                         error_msg = f"Card {card.id} ({card.name}): {str(e)}"
@@ -734,6 +823,8 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                 return results
             finally:
                 await scryfall.close()
+                if cardtrader:
+                    await cardtrader.close()
     finally:
         await engine.dispose()
 
