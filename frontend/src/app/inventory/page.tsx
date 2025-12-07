@@ -74,8 +74,7 @@ function InventoryPageContent(): JSX.Element {
       isFoil: filterFoil,
       condition: filterCondition,
     }),
-    staleTime: 30 * 1000, // Consider data fresh for 30 seconds
-    refetchInterval: 15 * 60 * 1000,
+    enabled: true,
   });
   
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
