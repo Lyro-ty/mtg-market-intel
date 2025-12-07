@@ -49,6 +49,12 @@ def interpolate_missing_points(
     """
     Fill gaps in time-series data using forward-fill and linear interpolation.
     
+    Improved with:
+    - Minimum data point requirements
+    - Validation of interpolated values
+    - Better handling of sparse data
+    - Maximum gap limits to prevent excessive interpolation
+    
     Args:
         points: List of points with 'timestamp' and 'indexValue' keys
         start_date: Start of the time range
@@ -61,14 +67,45 @@ def interpolate_missing_points(
     if not points:
         return []
     
+    # MINIMUM DATA REQUIREMENT: Need at least 2 points for meaningful interpolation
+    if len(points) < 2:
+        logger.warning(
+            "Insufficient data points for interpolation in inventory index",
+            point_count=len(points),
+            bucket_minutes=bucket_minutes
+        )
+        # Return original points if we have at least one, otherwise empty
+        return points if points else []
+    
     # Convert timestamps to datetime objects for easier manipulation
     point_dict = {}
     for point in points:
-        if isinstance(point['timestamp'], str):
-            ts = datetime.fromisoformat(point['timestamp'].replace('Z', '+00:00'))
-        else:
-            ts = point['timestamp']
-        point_dict[ts] = point['indexValue']
+        try:
+            if isinstance(point['timestamp'], str):
+                ts = datetime.fromisoformat(point['timestamp'].replace('Z', '+00:00'))
+            else:
+                ts = point['timestamp']
+            # Validate indexValue is a number
+            index_val = float(point['indexValue'])
+            if index_val < 0 or index_val > 10000:  # Reasonable bounds for index values
+                logger.warning(
+                    "Suspicious index value detected in inventory index, skipping",
+                    value=index_val,
+                    timestamp=ts.isoformat()
+                )
+                continue
+            point_dict[ts] = index_val
+        except (ValueError, KeyError, TypeError) as e:
+            logger.warning(
+                "Invalid point data in inventory interpolation",
+                error=str(e),
+                point=point
+            )
+            continue
+    
+    if not point_dict:
+        logger.warning("No valid points after validation in inventory index")
+        return []
     
     # Generate all expected bucket timestamps
     bucket_timedelta = timedelta(minutes=bucket_minutes)
@@ -78,26 +115,77 @@ def interpolate_missing_points(
         expected_times.append(current)
         current += bucket_timedelta
     
+    # Calculate maximum gap size (e.g., 10 buckets) to prevent excessive interpolation
+    max_gap_buckets = max(10, len(expected_times) // 10)  # At most 10% of range or 10 buckets
+    
     # Fill missing points using forward-fill, then linear interpolation
     filled_points = []
     last_value = None
+    last_time = None
+    gap_size = 0
     
     for i, expected_time in enumerate(expected_times):
         if expected_time in point_dict:
             # We have actual data for this bucket
             last_value = point_dict[expected_time]
+            last_time = expected_time
+            gap_size = 0
             filled_points.append({
                 'timestamp': expected_time.isoformat(),
                 'indexValue': last_value
             })
         elif last_value is not None:
-            # Forward-fill: use last known value
-            filled_points.append({
-                'timestamp': expected_time.isoformat(),
-                'indexValue': last_value
-            })
+            gap_size += 1
+            
+            # If gap is too large, don't interpolate (return empty or use last value with warning)
+            if gap_size > max_gap_buckets:
+                # Skip this bucket if gap is too large
+                continue
+            
+            # Forward-fill: use last known value for small gaps
+            if gap_size <= 3:  # Forward-fill for up to 3 buckets
+                filled_points.append({
+                    'timestamp': expected_time.isoformat(),
+                    'indexValue': last_value
+                })
+            else:
+                # For larger gaps, try linear interpolation
+                # Find next known value for interpolation
+                next_value = None
+                next_time = None
+                for future_time in expected_times[i+1:]:
+                    if future_time in point_dict:
+                        next_value = point_dict[future_time]
+                        next_time = future_time
+                        break
+                
+                if next_value is not None and last_time is not None:
+                    # Linear interpolation between last and next
+                    time_diff = (next_time - last_time).total_seconds()
+                    if time_diff > 0:
+                        interp_factor = (expected_time - last_time).total_seconds() / time_diff
+                        interp_value = last_value + (next_value - last_value) * interp_factor
+                        
+                        # Validate interpolated value is reasonable
+                        if 0 <= interp_value <= 10000:
+                            filled_points.append({
+                                'timestamp': expected_time.isoformat(),
+                                'indexValue': round(interp_value, 2)
+                            })
+                        else:
+                            # Use last value if interpolation produces unreasonable value
+                            filled_points.append({
+                                'timestamp': expected_time.isoformat(),
+                                'indexValue': last_value
+                            })
+                else:
+                    # No next value, use last value
+                    filled_points.append({
+                        'timestamp': expected_time.isoformat(),
+                        'indexValue': last_value
+                    })
         else:
-            # No data yet, find next known value for interpolation
+            # No data yet, find next known value
             next_value = None
             next_time = None
             for future_time in expected_times[i+1:]:
@@ -106,27 +194,27 @@ def interpolate_missing_points(
                     next_time = future_time
                     break
             
-            if next_value is not None and last_value is not None:
-                # Linear interpolation between last and next
-                time_diff = (next_time - expected_times[i-1]).total_seconds()
-                if time_diff > 0:
-                    interp_factor = (expected_time - expected_times[i-1]).total_seconds() / time_diff
-                    interp_value = last_value + (next_value - last_value) * interp_factor
-                    filled_points.append({
-                        'timestamp': expected_time.isoformat(),
-                        'indexValue': round(interp_value, 2)
-                    })
-                    last_value = interp_value
-            elif next_value is not None:
+            if next_value is not None:
                 # Use next value if no previous value
                 filled_points.append({
                     'timestamp': expected_time.isoformat(),
                     'indexValue': next_value
                 })
                 last_value = next_value
+                last_time = next_time
+                gap_size = 0
             else:
                 # No data available, skip this bucket
                 continue
+    
+    # Log if we had to interpolate a lot
+    if len(filled_points) > len(point_dict) * 2:
+        logger.info(
+            "Extensive interpolation performed in inventory index",
+            original_points=len(point_dict),
+            filled_points=len(filled_points),
+            bucket_minutes=bucket_minutes
+        )
     
     return filled_points
 
@@ -942,12 +1030,67 @@ async def get_inventory_market_index(
             usd_points = interpolate_missing_points(usd_points, start_date, end_date, bucket_minutes)
             eur_points = interpolate_missing_points(eur_points, start_date, end_date, bucket_minutes)
             
+            # Calculate data freshness for both currencies
+            latest_usd_conditions = [
+                PriceSnapshot.snapshot_time >= start_date,
+                PriceSnapshot.card_id.in_(card_ids),
+            ]
+            if is_foil_bool is True:
+                latest_usd_conditions.append(PriceSnapshot.price_foil.isnot(None))
+            elif is_foil_bool is False:
+                latest_usd_conditions.append(PriceSnapshot.price_foil.is_(None))
+            else:
+                latest_usd_conditions.append(PriceSnapshot.price.isnot(None))
+            latest_usd_conditions.append(PriceSnapshot.currency == "USD")
+            
+            latest_usd_query = select(func.max(PriceSnapshot.snapshot_time)).where(
+                and_(*latest_usd_conditions)
+            )
+            latest_usd_time = await db.scalar(latest_usd_query)
+            
+            latest_eur_conditions = [
+                PriceSnapshot.snapshot_time >= start_date,
+                PriceSnapshot.card_id.in_(card_ids),
+            ]
+            if is_foil_bool is True:
+                latest_eur_conditions.append(PriceSnapshot.price_foil.isnot(None))
+            elif is_foil_bool is False:
+                latest_eur_conditions.append(PriceSnapshot.price_foil.is_(None))
+            else:
+                latest_eur_conditions.append(PriceSnapshot.price.isnot(None))
+            latest_eur_conditions.append(PriceSnapshot.currency == "EUR")
+            
+            latest_eur_query = select(func.max(PriceSnapshot.snapshot_time)).where(
+                and_(*latest_eur_conditions)
+            )
+            latest_eur_time = await db.scalar(latest_eur_query)
+            
+            # Calculate freshness in minutes
+            usd_freshness = None
+            eur_freshness = None
+            if latest_usd_time:
+                age_delta = now - latest_usd_time
+                usd_freshness = int(age_delta.total_seconds() / 60)
+            if latest_eur_time:
+                age_delta = now - latest_eur_time
+                eur_freshness = int(age_delta.total_seconds() / 60)
+            
             return {
                 "range": range,
                 "separate_currencies": True,
                 "currencies": {
-                    "USD": {"currency": "USD", "points": usd_points},
-                    "EUR": {"currency": "EUR", "points": eur_points},
+                    "USD": {
+                        "currency": "USD",
+                        "points": usd_points,
+                        "data_freshness_minutes": usd_freshness,
+                        "latest_snapshot_time": latest_usd_time.isoformat() if latest_usd_time else None,
+                    },
+                    "EUR": {
+                        "currency": "EUR",
+                        "points": eur_points,
+                        "data_freshness_minutes": eur_freshness,
+                        "latest_snapshot_time": latest_eur_time.isoformat() if latest_eur_time else None,
+                    },
                 },
                 "isMockData": False,
             }
@@ -974,9 +1117,18 @@ async def get_inventory_market_index(
             price_field > 0,
         ]
         
-        # Filter by currency if specified
+        # CRITICAL FIX: Default to USD if currency not specified to avoid mixing currencies
+        # Mixing USD and EUR creates inaccurate charts due to different price scales
         if currency:
             query_conditions.append(PriceSnapshot.currency == currency)
+        else:
+            # Default to USD to prevent currency mixing issues
+            query_conditions.append(PriceSnapshot.currency == "USD")
+            currency = "USD"  # Update for response
+            logger.info(
+                "Currency not specified in inventory index, defaulting to USD to prevent currency mixing",
+                range=range
+            )
         
         query = select(
             bucket_expr.label("bucket_time"),
@@ -1027,65 +1179,72 @@ async def get_inventory_market_index(
             bucket_data[timestamp_str]["total_value"] += value
             bucket_data[timestamp_str]["total_quantity"] += quantity
         
-        # Convert to points and normalize to base 100 using fixed base point
+        # Convert to points and normalize to base 100 using improved base point calculation
         points = []
-        base_date = start_date + timedelta(days=1)
         
-        # Calculate base value from first day's data
-        if is_foil_bool is True:
-            base_price_field = PriceSnapshot.price_foil
-            base_condition = PriceSnapshot.price_foil.isnot(None)
-        elif is_foil_bool is False:
-            base_price_field = PriceSnapshot.price
-            base_condition = PriceSnapshot.price_foil.is_(None)
-        else:
-            base_price_field = PriceSnapshot.price
-            base_condition = PriceSnapshot.price.isnot(None)
-        # Build CASE statement for quantity mapping
-        quantity_case = case(
-            *[(PriceSnapshot.card_id == card_id, quantity) for card_id, quantity in quantity_map.items()],
-            else_=1
-        )
-        
-        base_conditions = [
-            PriceSnapshot.snapshot_time >= start_date,
-            PriceSnapshot.snapshot_time < base_date,
-            PriceSnapshot.card_id.in_(card_ids),
-            base_condition,
-            base_price_field > 0,
-        ]
-        if currency:
-            base_conditions.append(PriceSnapshot.currency == currency)
-        
-        base_query = select(
-            func.sum(base_price_field * quantity_case).label("total_value"),
-            func.sum(quantity_case).label("total_quantity")
-        ).where(
-            and_(*base_conditions)
-        )
-        
-        base_result = await db.execute(base_query)
-        base_row = base_result.first()
-        base_value = None
-        if base_row and base_row.total_quantity and base_row.total_quantity > 0:
-            base_value = float(base_row.total_value) / float(base_row.total_quantity)
-        
+        # Calculate weighted averages for all buckets first
+        weighted_averages = []
         for timestamp_str in sorted(bucket_data.keys()):
             data = bucket_data[timestamp_str]
             if data["total_quantity"] > 0:
                 avg_value = data["total_value"] / data["total_quantity"]
-                
-                # Use calculated base value or first point as fallback
-                if base_value is None:
-                    base_value = avg_value
-                
-                # Normalize to base 100
-                index_value = (avg_value / base_value) * 100.0 if base_value > 0 else 100.0
-                
-                points.append({
-                    "timestamp": timestamp_str,
-                    "indexValue": round(index_value, 2),
-                })
+                weighted_averages.append((timestamp_str, avg_value))
+        
+        if not weighted_averages:
+            # No data available
+            return {
+                "range": range,
+                "currency": currency or "ALL",
+                "points": [],
+                "isMockData": False,
+            }
+        
+        # Use improved base point: median of first 25% of weighted averages
+        # This is more robust than using first day's data and less affected by outliers
+        num_points_for_base = max(4, len(weighted_averages) // 4)
+        base_values = sorted([avg for _, avg in weighted_averages[:num_points_for_base]])
+        
+        # Calculate median
+        if len(base_values) % 2 == 0:
+            # Even number of points: average of two middle values
+            mid = len(base_values) // 2
+            base_value = (base_values[mid - 1] + base_values[mid]) / 2.0
+        else:
+            # Odd number of points: middle value
+            mid = len(base_values) // 2
+            base_value = base_values[mid]
+        
+        # Validate base value is reasonable
+        if not base_value or base_value <= 0:
+            # Fallback to first point if median calculation failed
+            base_value = weighted_averages[0][1] if weighted_averages else 100.0
+            logger.warning(
+                "Base value calculation failed in inventory index, using first point as fallback",
+                range=range,
+                currency=currency,
+                first_point_value=base_value
+            )
+        
+        # Additional validation: ensure base value is within reasonable range
+        if weighted_averages and abs(base_value - weighted_averages[0][1]) / weighted_averages[0][1] > 10.0:
+            logger.warning(
+                "Base value seems like an outlier in inventory index, using first point instead",
+                range=range,
+                currency=currency,
+                base_value=base_value,
+                first_point=weighted_averages[0][1]
+            )
+            base_value = weighted_averages[0][1]
+        
+        # Now create points with normalized values
+        for timestamp_str, avg_value in weighted_averages:
+            # Normalize to base 100
+            index_value = (avg_value / base_value) * 100.0 if base_value > 0 else 100.0
+            
+            points.append({
+                "timestamp": timestamp_str,
+                "indexValue": round(index_value, 2),
+            })
         
         if not points:
             # Log diagnostic info when no data found
@@ -1140,11 +1299,36 @@ async def get_inventory_market_index(
         # Apply interpolation to fill gaps
         points = interpolate_missing_points(points, start_date, end_date, bucket_minutes)
         
+        # Calculate data freshness - find the most recent snapshot timestamp for inventory cards
+        latest_snapshot_conditions = [
+            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.card_id.in_(card_ids),
+            base_condition,
+            base_price_field > 0,
+        ]
+        if currency:
+            latest_snapshot_conditions.append(PriceSnapshot.currency == currency)
+        
+        latest_snapshot_query = select(
+            func.max(PriceSnapshot.snapshot_time)
+        ).where(
+            and_(*latest_snapshot_conditions)
+        )
+        latest_snapshot_time = await db.scalar(latest_snapshot_query)
+        
+        # Calculate freshness in minutes
+        data_freshness_minutes = None
+        if latest_snapshot_time:
+            age_delta = now - latest_snapshot_time
+            data_freshness_minutes = int(age_delta.total_seconds() / 60)
+        
         return {
             "range": range,
             "currency": currency or "ALL",
             "points": points,
             "isMockData": False,
+            "data_freshness_minutes": data_freshness_minutes,
+            "latest_snapshot_time": latest_snapshot_time.isoformat() if latest_snapshot_time else None,
         }
         
     except Exception as e:
