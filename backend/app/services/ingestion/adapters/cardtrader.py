@@ -302,29 +302,86 @@ class CardTraderAdapter(MarketplaceAdapter):
             )
             return None
     
-    async def _get_marketplace_products(self, blueprint_id: int) -> list[dict[str, Any]]:
-        """Get marketplace products for a blueprint."""
+    async def _get_marketplace_products(
+        self, 
+        blueprint_id: int,
+        language: str = "en",
+        currency: str = "USD",
+    ) -> list[dict[str, Any]]:
+        """
+        Get marketplace products for a blueprint.
+        
+        Args:
+            blueprint_id: CardTrader blueprint ID
+            language: Language filter (2-letter code, e.g., "en" for English). Default: "en"
+            currency: Currency filter (e.g., "USD", "EUR"). Default: "USD"
+        """
         await self._rate_limit()
         client = await self._get_client()
         
         try:
+            # Build params - language filter is supported by API
+            params = {
+                "blueprint_id": blueprint_id,
+                "limit": 100,
+                "language": language,  # Filter by English language
+            }
+            
             response = await client.get(
                 "/marketplace/products",
-                params={"blueprint_id": blueprint_id, "limit": 100}
+                params=params
             )
             response.raise_for_status()
             data = response.json()
             
             # CardTrader API returns data in different formats
             # Check if it's a list or dict with 'data' key
+            products = []
             if isinstance(data, list):
-                return data
+                products = data
             elif isinstance(data, dict) and "data" in data:
-                return data["data"]
+                products = data["data"]
             elif isinstance(data, dict) and "products" in data:
-                return data["products"]
-            else:
-                return []
+                products = data["products"]
+            
+            # Store original count for logging
+            original_count = len(products)
+            
+            # Filter by currency (API doesn't support currency filter directly, so we filter results)
+            if products:
+                filtered_products = []
+                for product in products:
+                    # Check seller_price currency
+                    if "seller_price" in product and product["seller_price"]:
+                        price_info = product["seller_price"]
+                        if isinstance(price_info, dict):
+                            product_currency = price_info.get("currency", "EUR")
+                            if product_currency.upper() == currency.upper():
+                                filtered_products.append(product)
+                    # Also check direct currency field
+                    elif "currency" in product:
+                        if product["currency"].upper() == currency.upper():
+                            filtered_products.append(product)
+                    # If no currency info, skip (can't verify)
+                
+                products = filtered_products
+                if filtered_products:
+                    logger.debug(
+                        "Filtered CardTrader products by currency",
+                        blueprint_id=blueprint_id,
+                        currency=currency,
+                        total_before=original_count,
+                        total_after=len(filtered_products)
+                    )
+                elif original_count > 0:
+                    logger.debug(
+                        "No CardTrader products found matching currency filter",
+                        blueprint_id=blueprint_id,
+                        currency=currency,
+                        total_products=original_count
+                    )
+            
+            return products
                 
         except httpx.HTTPStatusError as e:
             logger.warning(
@@ -359,6 +416,8 @@ class CardTraderAdapter(MarketplaceAdapter):
         set_code: str,
         collector_number: str | None = None,
         scryfall_id: str | None = None,
+        language: str = "en",
+        currency: str = "USD",
     ) -> CardPrice | None:
         """
         Fetch current marketplace prices from CardTrader.
@@ -368,6 +427,8 @@ class CardTraderAdapter(MarketplaceAdapter):
             set_code: Set code
             collector_number: Collector number
             scryfall_id: Scryfall ID (optional, for matching)
+            language: Language filter (2-letter code, e.g., "en" for English). Default: "en"
+            currency: Currency filter (e.g., "USD", "EUR"). Default: "USD"
             
         Returns:
             CardPrice object or None if not found
@@ -377,12 +438,17 @@ class CardTraderAdapter(MarketplaceAdapter):
         if not blueprint_id:
             return None
         
-        # Get marketplace products
-        products = await self._get_marketplace_products(blueprint_id)
+        # Get marketplace products (filtered by language and currency)
+        products = await self._get_marketplace_products(
+            blueprint_id,
+            language=language,
+            currency=currency  # Filter by currency (defaults to USD)
+        )
         if not products:
             return None
         
         # Calculate prices from listings
+        # Note: Products are already filtered by currency if currency parameter was provided
         prices = []
         for product in products:
             # CardTrader product structure varies, check common fields
@@ -393,16 +459,16 @@ class CardTraderAdapter(MarketplaceAdapter):
                 price_info = product["seller_price"]
                 if isinstance(price_info, dict):
                     price_cents = price_info.get("cents", 0)
-                    currency = price_info.get("currency", "EUR")
+                    product_currency = price_info.get("currency", "EUR")
                     price = price_cents / 100.0
-                    prices.append({"price": price, "currency": currency})
+                    prices.append({"price": price, "currency": product_currency})
             
             # Alternative: check for price field directly
             elif "price" in product:
                 price_val = product["price"]
                 if isinstance(price_val, (int, float)):
-                    currency = product.get("currency", "EUR")
-                    prices.append({"price": float(price_val), "currency": currency})
+                    product_currency = product.get("currency", "EUR")
+                    prices.append({"price": float(price_val), "currency": product_currency})
         
         if not prices:
             return None
@@ -425,13 +491,16 @@ class CardTraderAdapter(MarketplaceAdapter):
         
         price_foil = sum(foil_prices) / len(foil_prices) if foil_prices else None
         
+        # Use the currency from prices (should match target_currency if filtering was applied)
+        result_currency = prices[0]["currency"] if prices else target_currency
+        
         return CardPrice(
             card_name=card_name,
             set_code=set_code,
             collector_number=collector_number or "",
             scryfall_id=scryfall_id,
             price=avg_price,
-            currency=prices[0]["currency"],  # Usually EUR
+            currency=result_currency,
             price_low=min_price,
             price_high=max_price,
             price_foil=price_foil,
