@@ -254,6 +254,7 @@ async def get_card_history(
             bucket_expr,
             Listing.marketplace_id,
             Marketplace.name.label('marketplace_name'),
+            Marketplace.slug.label('marketplace_slug'),
             func.avg(Listing.price).label('avg_price'),
             func.min(Listing.price).label('min_price'),
             func.max(Listing.price).label('max_price'),
@@ -265,6 +266,7 @@ async def get_card_history(
             Listing.card_id == card_id,
             Listing.last_seen_at >= from_date,
             Listing.condition == normalized_condition,
+            Marketplace.slug != "mtgo",  # Filter out MTGO
         )
         
         if marketplace_id:
@@ -273,17 +275,34 @@ async def get_card_history(
         query = query.group_by(
             bucket_expr,
             Listing.marketplace_id,
-            Marketplace.name
+            Marketplace.name,
+            Marketplace.slug
         ).order_by(bucket_expr)
         
         result = await db.execute(query)
         rows = result.all()
         
+        def normalize_marketplace_name(marketplace_name: str, marketplace_slug: str, currency: str) -> str:
+            """
+            Normalize marketplace names to consolidate duplicates.
+            - Consolidate "Scryfall (TCGPlayer)" and "Scryfall" (USD) to "TCGPlayer"
+            - Keep other marketplace names as-is
+            """
+            # Normalize Scryfall TCGPlayer variants to just "TCGPlayer"
+            if marketplace_slug == "scryfall" and currency == "USD":
+                return "TCGPlayer"
+            if "scryfall" in marketplace_name.lower() and "tcgplayer" in marketplace_name.lower() and currency == "USD":
+                return "TCGPlayer"
+            if marketplace_slug == "tcgplayer":
+                return "TCGPlayer"
+            # Keep other names as-is
+            return marketplace_name
+        
         history = [
             PricePoint(
                 date=row.bucket_time,
                 price=float(row.avg_price),
-                marketplace=row.marketplace_name,
+                marketplace=normalize_marketplace_name(row.marketplace_name, row.marketplace_slug, row.currency or "USD"),
                 currency=row.currency or "USD",
                 min_price=float(row.min_price) if row.min_price else None,
                 max_price=float(row.max_price) if row.max_price else None,
@@ -303,6 +322,7 @@ async def get_card_history(
         ).where(
             PriceSnapshot.card_id == card_id,
             PriceSnapshot.snapshot_time >= from_date,
+            Marketplace.slug != "mtgo",  # Filter out MTGO pricing
         )
         
         if marketplace_id:
@@ -313,11 +333,27 @@ async def get_card_history(
         result = await db.execute(query)
         rows = result.all()
         
+        def normalize_marketplace_name(marketplace_name: str, marketplace_slug: str, currency: str) -> str:
+            """
+            Normalize marketplace names to consolidate duplicates.
+            - Consolidate "Scryfall (TCGPlayer)" and "Scryfall" (USD) to "TCGPlayer"
+            - Keep other marketplace names as-is
+            """
+            # Normalize Scryfall TCGPlayer variants to just "TCGPlayer"
+            if marketplace_slug == "scryfall" and currency == "USD":
+                return "TCGPlayer"
+            if "scryfall" in marketplace_name.lower() and "tcgplayer" in marketplace_name.lower() and currency == "USD":
+                return "TCGPlayer"
+            if marketplace_slug == "tcgplayer":
+                return "TCGPlayer"
+            # Keep other names as-is
+            return marketplace_name
+        
         history = [
             PricePoint(
                 date=snapshot.snapshot_time,
                 price=float(snapshot.price),
-                marketplace=marketplace.name,
+                marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
                 currency=snapshot.currency,
                 min_price=float(snapshot.min_price) if snapshot.min_price else None,
                 max_price=float(snapshot.max_price) if snapshot.max_price else None,
