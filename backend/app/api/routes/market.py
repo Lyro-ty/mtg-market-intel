@@ -283,7 +283,7 @@ async def get_market_diagnostics(
     oldest_result = await db.execute(oldest_query)
     oldest = oldest_result.scalar_one_or_none()
     
-    # Test the actual query that the index uses (7d range, no filters)
+    # Test the actual query that the index uses (7d range, USD currency - what chart defaults to)
     test_start_date = now - timedelta(days=7)
     test_bucket_seconds = 30 * 60  # 30 minutes
     test_bucket_expr = func.to_timestamp(
@@ -296,6 +296,7 @@ async def get_market_diagnostics(
     ).where(
         and_(
             PriceSnapshot.snapshot_time >= test_start_date,
+            PriceSnapshot.currency == "USD",  # Chart defaults to USD
             PriceSnapshot.price.isnot(None),
             PriceSnapshot.price > 0,
         )
@@ -304,18 +305,39 @@ async def get_market_diagnostics(
     test_result = await db.execute(test_query)
     test_rows = test_result.all()
     
+    # Count USD snapshots in last 7 days (what chart needs)
+    usd_recent_7d = await db.scalar(
+        select(func.count(PriceSnapshot.id)).where(
+            and_(
+                PriceSnapshot.snapshot_time >= test_start_date,
+                PriceSnapshot.currency == "USD",
+                PriceSnapshot.price.isnot(None),
+                PriceSnapshot.price > 0,
+            )
+        )
+    ) or 0
+    
+    # Get marketplace info for sample
+    sample_marketplace = None
+    if sample:
+        marketplace_query = select(Marketplace).where(Marketplace.id == sample.marketplace_id)
+        marketplace_result = await db.execute(marketplace_query)
+        sample_marketplace = marketplace_result.scalar_one_or_none()
+    
     return {
         "total_snapshots": total_snapshots,
         "recent_7d": recent_7d,
         "recent_30d": recent_30d,
         "usd_snapshots": usd_count,
         "eur_snapshots": eur_count,
+        "usd_recent_7d": usd_recent_7d,  # What chart actually needs
         "cards_with_snapshots": cards_with_snapshots,
         "total_cards": total_cards,
         "test_query_rows": len(test_rows),
         "sample_snapshot": {
             "card_id": sample.card_id if sample else None,
             "marketplace_id": sample.marketplace_id if sample else None,
+            "marketplace_slug": sample_marketplace.slug if sample_marketplace else None,
             "snapshot_time": sample.snapshot_time.isoformat() if sample else None,
             "price": float(sample.price) if sample else None,
             "currency": sample.currency if sample else None,
@@ -323,9 +345,17 @@ async def get_market_diagnostics(
         "oldest_snapshot": {
             "snapshot_time": oldest.snapshot_time.isoformat() if oldest else None,
             "price": float(oldest.price) if oldest else None,
+            "currency": oldest.currency if oldest else None,
         } if oldest else None,
         "current_time": now.isoformat(),
         "seed_status": "No data - seed process may not have run yet" if total_snapshots == 0 else "Data exists",
+        "chart_issue": (
+            "No USD snapshots in last 7 days - chart will show 'No data available'" 
+            if usd_recent_7d == 0 and total_snapshots > 0 
+            else "No snapshots at all - run seed_comprehensive_price_data task" 
+            if total_snapshots == 0 
+            else "Data exists and should work"
+        ),
     }
 
 
@@ -741,12 +771,57 @@ async def get_market_index(
         query_conditions.append(PriceSnapshot.currency == currency)
     else:
         # Default to USD to prevent currency mixing issues
-        query_conditions.append(PriceSnapshot.currency == "USD")
-        currency = "USD"  # Update for response
-        logger.info(
-            "Currency not specified, defaulting to USD to prevent currency mixing",
-            range=range
-        )
+        # But first check if USD data exists, if not try EUR, then any available currency
+        usd_count = await db.scalar(
+            select(func.count(PriceSnapshot.id)).where(
+                and_(
+                    PriceSnapshot.snapshot_time >= start_date,
+                    PriceSnapshot.currency == "USD",
+                    price_condition,
+                    price_field > 0,
+                )
+            )
+        ) or 0
+        
+        if usd_count > 0:
+            query_conditions.append(PriceSnapshot.currency == "USD")
+            currency = "USD"
+            logger.info(
+                "Currency not specified, defaulting to USD (data available)",
+                range=range,
+                usd_snapshots=usd_count
+            )
+        else:
+            # Check for EUR data
+            eur_count = await db.scalar(
+                select(func.count(PriceSnapshot.id)).where(
+                    and_(
+                        PriceSnapshot.snapshot_time >= start_date,
+                        PriceSnapshot.currency == "EUR",
+                        price_condition,
+                        price_field > 0,
+                    )
+                )
+            ) or 0
+            
+            if eur_count > 0:
+                query_conditions.append(PriceSnapshot.currency == "EUR")
+                currency = "EUR"
+                logger.warning(
+                    "Currency not specified, USD not available, defaulting to EUR",
+                    range=range,
+                    eur_snapshots=eur_count
+                )
+            else:
+                # No USD or EUR, but still default to USD for query structure
+                # This will return empty but with better diagnostics
+                query_conditions.append(PriceSnapshot.currency == "USD")
+                currency = "USD"
+                logger.warning(
+                    "Currency not specified, no USD or EUR data available in range",
+                    range=range,
+                    start_date=start_date.isoformat()
+                )
     
     query = select(
         bucket_expr.label("bucket_time"),
@@ -859,6 +934,24 @@ async def get_market_index(
                 )
             ) or 0
         
+        # Check what currencies actually exist in the database
+        currency_distribution = await db.execute(
+            select(
+                PriceSnapshot.currency,
+                func.count(PriceSnapshot.id).label("count")
+            ).where(
+                PriceSnapshot.snapshot_time >= start_date
+            ).group_by(PriceSnapshot.currency)
+        )
+        available_currencies = {row.currency: row.count for row in currency_distribution.all()}
+        
+        # Additional diagnostic: check if there are ANY snapshots with this currency
+        any_currency_snapshots = await db.scalar(
+            select(func.count(PriceSnapshot.id)).where(
+                PriceSnapshot.currency == currency
+            )
+        ) or 0
+        
         logger.warning(
             "No market index data found",
             range=range,
@@ -868,9 +961,21 @@ async def get_market_index(
             recent_snapshots_in_range=recent_snapshots,
             snapshots_with_price_condition=snapshots_with_price,
             currency_snapshots=currency_snapshots if currency else recent_snapshots,
+            any_currency_snapshots=any_currency_snapshots,
+            available_currencies=available_currencies,
             start_date=start_date.isoformat(),
             end_date=end_date.isoformat(),
             price_field=price_field_name,
+            diagnostic_message=(
+                f"No {currency} snapshots in last {range}. "
+                f"Total {currency} snapshots: {any_currency_snapshots}. "
+                f"Available currencies in range: {available_currencies}. "
+                f"Run seed_comprehensive_price_data or collect_price_data tasks."
+            ) if any_currency_snapshots == 0 else (
+                f"No {currency} snapshots in date range {range}, but {any_currency_snapshots} exist outside range. "
+                f"Available currencies in range: {available_currencies}. "
+                f"Data may be too old or tasks not running frequently enough."
+            ),
         )
         
         # Return empty data if no real data available
@@ -879,6 +984,24 @@ async def get_market_index(
             "currency": currency or "ALL",
             "points": [],
             "isMockData": False,
+            "data_freshness_minutes": None,
+            "latest_snapshot_time": None,
+            "diagnostic": {
+                "total_snapshots": total_snapshots,
+                "currency_snapshots": any_currency_snapshots,
+                "recent_snapshots_in_range": recent_snapshots,
+                "available_currencies": available_currencies,
+                "message": (
+                    f"No {currency} snapshots found. "
+                    f"Total snapshots: {total_snapshots}, {currency} snapshots: {any_currency_snapshots}. "
+                    f"Available currencies in range: {list(available_currencies.keys())}. "
+                    f"Please run price collection tasks or try a different currency."
+                ) if any_currency_snapshots == 0 else (
+                    f"No {currency} snapshots in {range} range. "
+                    f"Data exists but is outside the requested time range. "
+                    f"Available currencies in range: {list(available_currencies.keys())}."
+                ),
+            },
         }
     
     # Calculate normalized index using fixed base point (improved normalization)
