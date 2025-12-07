@@ -64,6 +64,7 @@ export interface PricePoint {
   snapshot_time?: string;  // When this price was collected
   data_age_minutes?: number;  // Minutes since collection
   condition?: string;  // Card condition (Near Mint, Lightly Played, etc.)
+  price_foil?: number;  // Foil price if available
 }
 
 export interface CardHistory {
