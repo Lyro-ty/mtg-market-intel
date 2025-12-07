@@ -1,7 +1,7 @@
 """Add indexes for price snapshot chart queries
 
 Revision ID: 008_add_price_snapshot_indexes
-Revises: 005_feature_vectors
+Revises: 007_fix_profit_pct
 Create Date: 2024-12-04
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '008_add_price_snapshot_indexes'
-down_revision: Union[str, None] = '005_feature_vectors'
+down_revision: Union[str, None] = '007_fix_profit_pct'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
