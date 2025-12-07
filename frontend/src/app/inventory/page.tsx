@@ -15,7 +15,6 @@ import {
   DollarSign,
   BarChart3,
   Filter,
-  Search,
   X,
 } from 'lucide-react';
 import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
@@ -27,6 +26,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LoadingPage, Loading } from '@/components/ui/Loading';
+import { SearchBar } from '@/components/cards/SearchBar';
 import { InventoryImportModal } from '@/components/inventory/InventoryImportModal';
 import { InventoryItemCard } from '@/components/inventory/InventoryItemCard';
 import { InventoryRecommendationCard } from '@/components/inventory/InventoryRecommendationCard';
@@ -575,19 +575,14 @@ function InventoryPageContent(): JSX.Element {
                 <CardContent className="p-4">
                   <div className="space-y-4">
                     {/* Search Bar */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[rgb(var(--muted-foreground))]" />
-                      <Input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value);
-                          setPage(1);
-                        }}
-                        placeholder="Search by card name..."
-                        className="pl-10"
-                      />
-                    </div>
+                    <SearchBar
+                      value={searchQuery}
+                      onSearch={(query) => {
+                        setSearchQuery(query);
+                        setPage(1);
+                      }}
+                      placeholder="Search by card name..."
+                    />
                     
                     {/* Filters */}
                     <div className="flex items-center gap-2 flex-wrap">
