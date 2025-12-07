@@ -215,6 +215,8 @@ class CardTraderAdapter(MarketplaceAdapter):
             
             # Step 3: Match card by name and collector number
             card_name_normalized = card_name.upper().strip()
+            # Remove common suffixes that might differ between sources
+            card_name_clean = card_name_normalized.replace(" // ", " ").replace(" / ", " ")
             
             for blueprint in blueprints:
                 if not isinstance(blueprint, dict):
@@ -226,9 +228,10 @@ class CardTraderAdapter(MarketplaceAdapter):
                     continue
                 
                 blueprint_name_normalized = blueprint_name.upper().strip()
+                blueprint_name_clean = blueprint_name_normalized.replace(" // ", " ").replace(" / ", " ")
                 
-                # Exact name match
-                if blueprint_name_normalized == card_name_normalized:
+                # Exact name match (with cleaned names)
+                if blueprint_name_clean == card_name_clean or blueprint_name_normalized == card_name_normalized:
                     # If collector number provided, try to match it
                     if collector_number:
                         blueprint_collector = str(blueprint.get("number") or blueprint.get("collector_number") or "")
@@ -246,7 +249,15 @@ class CardTraderAdapter(MarketplaceAdapter):
                         return int(blueprint_id)
                 
                 # Partial name match (in case of slight variations)
-                elif card_name_normalized in blueprint_name_normalized or blueprint_name_normalized in card_name_normalized:
+                # Check both cleaned and original names
+                name_matches = (
+                    card_name_clean in blueprint_name_clean or 
+                    blueprint_name_clean in card_name_clean or
+                    card_name_normalized in blueprint_name_normalized or 
+                    blueprint_name_normalized in card_name_normalized
+                )
+                
+                if name_matches:
                     # Only use partial match if collector number matches
                     if collector_number:
                         blueprint_collector = str(blueprint.get("number") or blueprint.get("collector_number") or "")
@@ -261,13 +272,16 @@ class CardTraderAdapter(MarketplaceAdapter):
                                 )
                                 return int(blueprint_id)
             
+            # This is expected behavior - not all cards have CardTrader blueprints
+            # Log at debug level only (not warning) since this is normal
             logger.debug(
-                "Blueprint not found",
+                "CardTrader blueprint not found (expected for some cards)",
                 card_name=card_name,
                 set_code=set_code,
                 collector_number=collector_number,
                 expansion_id=expansion_id,
-                blueprints_checked=len(blueprints)
+                blueprints_checked=len(blueprints),
+                expansion_found=expansion_id is not None
             )
             return None
             
