@@ -886,7 +886,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
             if price_data and price_data.price > 0:
                 # Get or create CardTrader marketplace
                 cardtrader_mp = await _get_or_create_marketplace_by_slug(
-                    db, "cardtrader", "CardTrader", "https://www.cardtrader.com", "EUR"
+                    db, "cardtrader", "CardTrader", "https://www.cardtrader.com", "USD"
                 )
                 
                 # Check if we already have a recent snapshot (within last 24 hours)

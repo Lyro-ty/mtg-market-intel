@@ -288,7 +288,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                 base_url="https://api.cardtrader.com/api/v2",
                 api_url="https://api.cardtrader.com/api/v2",
                 api_key=settings.cardtrader_api_token,
-                rate_limit_seconds=0.05,  # 200 requests per 10 seconds
+                rate_limit_seconds=0.1,  # 10 requests per second
                 timeout_seconds=30.0,
             )
             cardtrader = CardTraderAdapter(cardtrader_config)
@@ -566,8 +566,8 @@ async def _get_or_create_cardtrader_marketplace(db: AsyncSession) -> Marketplace
             api_url="https://api.cardtrader.com/api/v2",
             is_enabled=True,
             supports_api=True,
-            default_currency="EUR",
-            rate_limit_seconds=0.05,  # 200 requests per 10 seconds
+            default_currency="USD",  # Default to USD for USD listings tracking
+            rate_limit_seconds=0.1,  # 10 requests per second
         )
         db.add(mp)
         await db.flush()
@@ -653,7 +653,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                     base_url="https://api.cardtrader.com/api/v2",
                     api_url="https://api.cardtrader.com/api/v2",
                     api_key=settings.cardtrader_api_token,
-                    rate_limit_seconds=0.05,  # 200 requests per 10 seconds
+                    rate_limit_seconds=0.1,  # 10 requests per second
                     timeout_seconds=30.0,
                 )
                 cardtrader = CardTraderAdapter(cardtrader_config)
