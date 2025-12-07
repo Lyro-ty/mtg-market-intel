@@ -3,7 +3,7 @@ Market API endpoints for market-wide analytics and charts.
 """
 import json
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date as date_class
 from typing import Optional, List, Dict, Any
 
 import structlog
@@ -1217,6 +1217,7 @@ async def get_top_movers(
         period = "7d"
     
     try:
+        # Get the latest date with metrics data
         latest_date = await asyncio.wait_for(
             db.scalar(select(func.max(MetricsCardsDaily.date))),
             timeout=QUERY_TIMEOUT
@@ -1230,13 +1231,44 @@ async def get_top_movers(
                 "isMockData": False,
             }
         
+        # If latest date is more than 2 days old, try to use a more recent date
+        # This handles cases where metrics haven't been computed for today yet
+        today = date_class.today()
+        days_old = (today - latest_date).days
+        
+        # Use latest date, but if it's more than 2 days old, try to find any recent date
+        query_date = latest_date
+        if days_old > 2:
+            # Try to find the most recent date within the last 7 days that has data
+            recent_date_query = select(func.max(MetricsCardsDaily.date)).where(
+                MetricsCardsDaily.date >= today - timedelta(days=7),
+                change_field.isnot(None),
+            )
+            recent_date = await db.scalar(recent_date_query)
+            if recent_date:
+                query_date = recent_date
+                logger.info(
+                    "Using recent date for top movers instead of stale latest date",
+                    latest_date=latest_date.isoformat(),
+                    query_date=query_date.isoformat(),
+                    window=window
+                )
+        
+        # Minimum thresholds to filter out noise
+        # Require at least 1% change and minimum volume of 3 listings
+        min_change_pct = 1.0  # At least 1% change
+        min_volume = 3  # At least 3 listings
+        
         # Get top gainers
         gainers_query = select(MetricsCardsDaily, Card).join(
             Card, MetricsCardsDaily.card_id == Card.id
         ).where(
-            MetricsCardsDaily.date == latest_date,
+            MetricsCardsDaily.date == query_date,
             change_field.isnot(None),
-            change_field > 0,  # Only positive changes
+            change_field >= min_change_pct,  # At least 1% gain
+            MetricsCardsDaily.total_listings >= min_volume,  # Minimum volume
+            MetricsCardsDaily.avg_price.isnot(None),
+            MetricsCardsDaily.avg_price > 0,  # Valid price
         ).order_by(
             desc(change_field)
         ).limit(10)
@@ -1251,9 +1283,12 @@ async def get_top_movers(
         losers_query = select(MetricsCardsDaily, Card).join(
             Card, MetricsCardsDaily.card_id == Card.id
         ).where(
-            MetricsCardsDaily.date == latest_date,
+            MetricsCardsDaily.date == query_date,
             change_field.isnot(None),
-            change_field < 0,  # Only negative changes
+            change_field <= -min_change_pct,  # At least 1% loss
+            MetricsCardsDaily.total_listings >= min_volume,  # Minimum volume
+            MetricsCardsDaily.avg_price.isnot(None),
+            MetricsCardsDaily.avg_price > 0,  # Valid price
         ).order_by(
             change_field.asc()  # Most negative first
         ).limit(10)

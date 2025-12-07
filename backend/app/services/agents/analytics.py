@@ -61,9 +61,12 @@ class AnalyticsAgent:
         target_date = target_date or date.today()
         
         # Get price snapshots for the target date
+        # Use a 2-day window to handle cases where data might be slightly off
+        # This makes metrics computation more robust with sparse data
         snapshots_query = select(PriceSnapshot).where(
             PriceSnapshot.card_id == card_id,
-            func.date(PriceSnapshot.snapshot_time) == target_date,
+            func.date(PriceSnapshot.snapshot_time) >= target_date - timedelta(days=1),
+            func.date(PriceSnapshot.snapshot_time) <= target_date,
         )
         result = await self.db.execute(snapshots_query)
         snapshots = result.scalars().all()
@@ -174,21 +177,26 @@ class AnalyticsAgent:
         """Compute price change over N days using closest available data."""
         past_date = target_date - timedelta(days=days)
         
-        # Get average price for target date (or closest available within 1 day)
+        # Get average price for target date (or closest available within 2 days)
+        # More lenient window to handle sparse data
         current_query = select(func.avg(PriceSnapshot.price)).where(
             PriceSnapshot.card_id == card_id,
-            func.date(PriceSnapshot.snapshot_time) >= target_date - timedelta(days=1),
+            func.date(PriceSnapshot.snapshot_time) >= target_date - timedelta(days=2),
             func.date(PriceSnapshot.snapshot_time) <= target_date,
+            PriceSnapshot.price.isnot(None),
+            PriceSnapshot.price > 0,
         )
         result = await self.db.execute(current_query)
         current_price = result.scalar()
         
-        # Get average price for past date (or closest available within 2 days window)
-        # Use a window to find the closest data point
+        # Get average price for past date (or closest available within 3 days window)
+        # More lenient window for past data since it's older
         past_query = select(func.avg(PriceSnapshot.price)).where(
             PriceSnapshot.card_id == card_id,
-            func.date(PriceSnapshot.snapshot_time) >= past_date - timedelta(days=1),
-            func.date(PriceSnapshot.snapshot_time) <= past_date + timedelta(days=1),
+            func.date(PriceSnapshot.snapshot_time) >= past_date - timedelta(days=2),
+            func.date(PriceSnapshot.snapshot_time) <= past_date + timedelta(days=2),
+            PriceSnapshot.price.isnot(None),
+            PriceSnapshot.price > 0,
         )
         result = await self.db.execute(past_query)
         past_price = result.scalar()

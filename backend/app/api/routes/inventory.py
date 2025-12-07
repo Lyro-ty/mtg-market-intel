@@ -9,7 +9,7 @@ import io
 import json
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date as date_class
 from typing import Optional, List, Dict, Any
 
 import structlog
@@ -1552,14 +1552,44 @@ async def get_inventory_top_movers(
                 "isMockData": False,
             }
         
+        # If latest date is more than 2 days old, try to use a more recent date
+        today = date_class.today()
+        days_old = (today - latest_date).days
+        
+        # Use latest date, but if it's more than 2 days old, try to find any recent date
+        query_date = latest_date
+        if days_old > 2:
+            # Try to find the most recent date within the last 7 days that has data for inventory cards
+            recent_date_query = select(func.max(MetricsCardsDaily.date)).where(
+                MetricsCardsDaily.date >= today - timedelta(days=7),
+                MetricsCardsDaily.card_id.in_(inventory_card_ids),
+                change_field.isnot(None),
+            )
+            recent_date = await db.scalar(recent_date_query)
+            if recent_date:
+                query_date = recent_date
+                logger.info(
+                    "Using recent date for inventory top movers instead of stale latest date",
+                    latest_date=latest_date.isoformat(),
+                    query_date=query_date.isoformat(),
+                    window=window
+                )
+        
+        # Minimum thresholds to filter out noise (lower for inventory since it's personalized)
+        min_change_pct = 0.5  # At least 0.5% change for inventory
+        min_volume = 1  # At least 1 listing (more lenient for inventory)
+        
         # Get top gainers from inventory
         gainers_query = select(MetricsCardsDaily, Card).join(
             Card, MetricsCardsDaily.card_id == Card.id
         ).where(
-            MetricsCardsDaily.date == latest_date,
+            MetricsCardsDaily.date == query_date,
             MetricsCardsDaily.card_id.in_(inventory_card_ids),
             change_field.isnot(None),
-            change_field > 0,
+            change_field >= min_change_pct,  # At least 0.5% gain
+            MetricsCardsDaily.total_listings >= min_volume,  # Minimum volume
+            MetricsCardsDaily.avg_price.isnot(None),
+            MetricsCardsDaily.avg_price > 0,  # Valid price
         ).order_by(
             desc(change_field)
         ).limit(10)
@@ -1574,10 +1604,13 @@ async def get_inventory_top_movers(
         losers_query = select(MetricsCardsDaily, Card).join(
             Card, MetricsCardsDaily.card_id == Card.id
         ).where(
-            MetricsCardsDaily.date == latest_date,
+            MetricsCardsDaily.date == query_date,
             MetricsCardsDaily.card_id.in_(inventory_card_ids),
             change_field.isnot(None),
-            change_field < 0,
+            change_field <= -min_change_pct,  # At least 0.5% loss
+            MetricsCardsDaily.total_listings >= min_volume,  # Minimum volume
+            MetricsCardsDaily.avg_price.isnot(None),
+            MetricsCardsDaily.avg_price > 0,  # Valid price
         ).order_by(
             change_field.asc()
         ).limit(10)
