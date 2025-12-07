@@ -78,6 +78,7 @@ def interpolate_missing_points(
     
     # Convert timestamps to datetime objects for easier manipulation
     point_dict = {}
+    skipped_count = 0
     for point in points:
         try:
             if isinstance(point['timestamp'], str):
@@ -86,12 +87,15 @@ def interpolate_missing_points(
                 ts = point['timestamp']
             # Validate indexValue is a number
             index_val = float(point['indexValue'])
-            if index_val < 0 or index_val > 10000:  # Reasonable bounds for index values
+            # Relaxed bounds: index values can be 0-10000 (normalized to base 100, so typically 50-200)
+            # But allow wider range to handle edge cases
+            if index_val < -1000 or index_val > 100000:  # Very wide bounds to catch only extreme outliers
                 logger.warning(
-                    "Suspicious index value detected, skipping",
+                    "Extreme index value detected, skipping",
                     value=index_val,
-                    timestamp=ts.isoformat()
+                    timestamp=ts.isoformat() if isinstance(ts, datetime) else str(ts)
                 )
+                skipped_count += 1
                 continue
             point_dict[ts] = index_val
         except (ValueError, KeyError, TypeError) as e:
@@ -100,7 +104,16 @@ def interpolate_missing_points(
                 error=str(e),
                 point=point
             )
+            skipped_count += 1
             continue
+    
+    if skipped_count > 0:
+        logger.warning(
+            "Skipped points during interpolation validation",
+            skipped=skipped_count,
+            total=len(points),
+            remaining=len(point_dict)
+        )
     
     if not point_dict:
         logger.warning("No valid points after validation")
@@ -114,8 +127,10 @@ def interpolate_missing_points(
         expected_times.append(current)
         current += bucket_timedelta
     
-    # Calculate maximum gap size (e.g., 10 buckets) to prevent excessive interpolation
-    max_gap_buckets = max(10, len(expected_times) // 10)  # At most 10% of range or 10 buckets
+    # Calculate maximum gap size - be very lenient for sparse data
+    # If we have data points, allow large gaps to ensure we return something
+    # Only skip if gap is larger than 90% of the range
+    max_gap_buckets = max(100, int(len(expected_times) * 0.9))  # Allow gaps up to 90% of range
     
     # Fill missing points using forward-fill, then linear interpolation
     filled_points = []
@@ -123,38 +138,54 @@ def interpolate_missing_points(
     last_time = None
     gap_size = 0
     
+    # Helper to find closest matching timestamp (handles timezone/precision differences)
+    def find_closest_timestamp(target_time, point_dict, tolerance_seconds=60):
+        """Find closest timestamp in point_dict within tolerance."""
+        # First try exact match
+        if target_time in point_dict:
+            return target_time, point_dict[target_time]
+        
+        # Try to find within tolerance (1 minute)
+        for ts, value in point_dict.items():
+            time_diff = abs((target_time - ts).total_seconds())
+            if time_diff <= tolerance_seconds:
+                return ts, value
+        return None, None
+    
     for i, expected_time in enumerate(expected_times):
-        if expected_time in point_dict:
-            # We have actual data for this bucket
-            last_value = point_dict[expected_time]
+        # Try exact match first, then closest match
+        matched_ts, matched_value = find_closest_timestamp(expected_time, point_dict)
+        
+        if matched_ts is not None:
+            # We have actual data for this bucket (exact or close match)
+            last_value = matched_value
             last_time = expected_time
             gap_size = 0
             filled_points.append({
                 'timestamp': expected_time.isoformat(),
-                'indexValue': last_value
+                'indexValue': matched_value
             })
+            # Remove from point_dict to avoid reusing
+            if matched_ts in point_dict:
+                del point_dict[matched_ts]
         elif last_value is not None:
             gap_size += 1
             
-            # If gap is too large, don't interpolate (return empty or use last value with warning)
-            if gap_size > max_gap_buckets:
-                # Skip this bucket if gap is too large
-                continue
-            
-            # Forward-fill: use last known value for small gaps
-            if gap_size <= 3:  # Forward-fill for up to 3 buckets
+            # Forward-fill: use last known value for small gaps (up to 3 buckets)
+            if gap_size <= 3:
                 filled_points.append({
                     'timestamp': expected_time.isoformat(),
                     'indexValue': last_value
                 })
-            else:
+            elif gap_size <= max_gap_buckets:
                 # For larger gaps, try linear interpolation
                 # Find next known value for interpolation
                 next_value = None
                 next_time = None
                 for future_time in expected_times[i+1:]:
-                    if future_time in point_dict:
-                        next_value = point_dict[future_time]
+                    matched_ts, matched_val = find_closest_timestamp(future_time, point_dict)
+                    if matched_ts is not None:
+                        next_value = matched_val
                         next_time = future_time
                         break
                 
@@ -166,7 +197,7 @@ def interpolate_missing_points(
                         interp_value = last_value + (next_value - last_value) * interp_factor
                         
                         # Validate interpolated value is reasonable
-                        if 0 <= interp_value <= 10000:
+                        if -1000 <= interp_value <= 100000:
                             filled_points.append({
                                 'timestamp': expected_time.isoformat(),
                                 'indexValue': round(interp_value, 2)
@@ -178,18 +209,21 @@ def interpolate_missing_points(
                                 'indexValue': last_value
                             })
                 else:
-                    # No next value, use last value
+                    # No next value found, use last value (forward-fill)
                     filled_points.append({
                         'timestamp': expected_time.isoformat(),
                         'indexValue': last_value
                     })
+            # If gap is too large (> max_gap_buckets), skip this bucket
+            # But we'll still return actual data points when we find them
         else:
             # No data yet, find next known value
             next_value = None
             next_time = None
             for future_time in expected_times[i+1:]:
-                if future_time in point_dict:
-                    next_value = point_dict[future_time]
+                matched_ts, matched_val = find_closest_timestamp(future_time, point_dict)
+                if matched_ts is not None:
+                    next_value = matched_val
                     next_time = future_time
                     break
             
@@ -214,6 +248,26 @@ def interpolate_missing_points(
             filled_points=len(filled_points),
             bucket_minutes=bucket_minutes
         )
+    
+    # CRITICAL FIX: If interpolation returned fewer points than original, something went wrong
+    # Return original points to ensure we don't lose data
+    if len(filled_points) < len(point_dict) and len(point_dict) > 0:
+        logger.warning(
+            "Interpolation returned fewer points than original data",
+            original_count=len(point_dict),
+            interpolated_count=len(filled_points),
+            bucket_minutes=bucket_minutes
+        )
+        # Return original points converted to the expected format
+        original_points_list = []
+        for ts, value in point_dict.items():
+            original_points_list.append({
+                'timestamp': ts.isoformat() if isinstance(ts, datetime) else str(ts),
+                'indexValue': value
+            })
+        # Sort by timestamp
+        original_points_list.sort(key=lambda x: x['timestamp'])
+        return original_points_list
     
     return filled_points
 
@@ -1008,6 +1062,15 @@ async def get_market_index(
     points = []
     avg_prices = [float(row.avg_price) for row in rows if row.avg_price and row.avg_price > 0]
     
+    logger.info(
+        "Market index query results",
+        range=range,
+        currency=currency,
+        total_rows=len(rows),
+        valid_avg_prices=len(avg_prices),
+        first_few_prices=avg_prices[:5] if len(avg_prices) > 0 else [],
+    )
+    
     if not avg_prices:
         # Log why we have no valid prices
         rows_with_none = sum(1 for row in rows if row.avg_price is None)
@@ -1088,8 +1151,25 @@ async def get_market_index(
                 "indexValue": round(index_value, 2),
             })
     
+    logger.info(
+        "Points created before interpolation",
+        range=range,
+        currency=currency,
+        points_count=len(points),
+        sample_points=points[:3] if len(points) > 0 else [],
+    )
+    
     # Apply interpolation to fill gaps
+    points_before_interp = len(points)
     points = interpolate_missing_points(points, start_date, end_date, bucket_minutes)
+    
+    logger.info(
+        "Points after interpolation",
+        range=range,
+        currency=currency,
+        points_before=points_before_interp,
+        points_after=len(points),
+    )
     
     # Calculate data freshness - find the most recent snapshot timestamp
     latest_snapshot_query = select(

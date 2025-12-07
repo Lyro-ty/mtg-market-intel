@@ -115,8 +115,10 @@ def interpolate_missing_points(
         expected_times.append(current)
         current += bucket_timedelta
     
-    # Calculate maximum gap size (e.g., 10 buckets) to prevent excessive interpolation
-    max_gap_buckets = max(10, len(expected_times) // 10)  # At most 10% of range or 10 buckets
+    # Calculate maximum gap size - be very lenient for sparse data
+    # If we have data points, allow large gaps to ensure we return something
+    # Only skip if gap is larger than 90% of the range
+    max_gap_buckets = max(100, int(len(expected_times) * 0.9))  # Allow gaps up to 90% of range
     
     # Fill missing points using forward-fill, then linear interpolation
     filled_points = []
@@ -215,6 +217,26 @@ def interpolate_missing_points(
             filled_points=len(filled_points),
             bucket_minutes=bucket_minutes
         )
+    
+    # CRITICAL FIX: If interpolation returned fewer points than original, something went wrong
+    # Return original points to ensure we don't lose data
+    if len(filled_points) < len(point_dict) and len(point_dict) > 0:
+        logger.warning(
+            "Interpolation returned fewer points than original data in inventory index",
+            original_count=len(point_dict),
+            interpolated_count=len(filled_points),
+            bucket_minutes=bucket_minutes
+        )
+        # Return original points converted to the expected format
+        original_points_list = []
+        for ts, value in point_dict.items():
+            original_points_list.append({
+                'timestamp': ts.isoformat() if isinstance(ts, datetime) else str(ts),
+                'indexValue': value
+            })
+        # Sort by timestamp
+        original_points_list.sort(key=lambda x: x['timestamp'])
+        return original_points_list
     
     return filled_points
 
@@ -1300,11 +1322,22 @@ async def get_inventory_market_index(
         points = interpolate_missing_points(points, start_date, end_date, bucket_minutes)
         
         # Calculate data freshness - find the most recent snapshot timestamp for inventory cards
+        # Determine which price field to use based on foil filter
+        if is_foil_bool is True:
+            freshness_price_field = PriceSnapshot.price_foil
+            freshness_price_condition = PriceSnapshot.price_foil.isnot(None)
+        elif is_foil_bool is False:
+            freshness_price_field = PriceSnapshot.price
+            freshness_price_condition = PriceSnapshot.price_foil.is_(None)
+        else:
+            freshness_price_field = PriceSnapshot.price
+            freshness_price_condition = PriceSnapshot.price.isnot(None)
+        
         latest_snapshot_conditions = [
             PriceSnapshot.snapshot_time >= start_date,
             PriceSnapshot.card_id.in_(card_ids),
-            base_condition,
-            base_price_field > 0,
+            freshness_price_condition,
+            freshness_price_field > 0,
         ]
         if currency:
             latest_snapshot_conditions.append(PriceSnapshot.currency == currency)
