@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Package,
   Upload,
+  Download,
   TrendingUp,
   TrendingDown,
   AlertTriangle,
@@ -37,6 +38,7 @@ import {
   runInventoryRecommendations,
   deleteInventoryItem,
   updateInventoryItem,
+  exportInventory,
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import type { InventoryCondition } from '@/types';
@@ -129,12 +131,20 @@ function InventoryPageContent(): JSX.Element {
     },
   });
   
+  const exportMutation = useMutation({
+    mutationFn: (format: 'csv' | 'txt' | 'cardtrader') => exportInventory(format),
+  });
+  
   const handleDelete = (itemId: number) => {
     deleteItemMutation.mutate(itemId);
   };
   
   const handleToggleFoil = (itemId: number, isFoil: boolean) => {
     toggleFoilMutation.mutate({ itemId, isFoil });
+  };
+  
+  const handleExport = (format: 'csv' | 'txt' | 'cardtrader') => {
+    exportMutation.mutate(format);
   };
   
   const handleClearFilters = () => {
@@ -211,6 +221,20 @@ function InventoryPageContent(): JSX.Element {
           >
             <Upload className="w-4 h-4 mr-1" />
             Import Cards
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => handleExport('cardtrader')}
+            disabled={exportMutation.isPending}
+            className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
+          >
+            {exportMutation.isPending ? (
+              <Loading size="sm" className="mr-1" />
+            ) : (
+              <Download className="w-4 h-4 mr-1" />
+            )}
+            Export to CardTrader
           </Button>
         </div>
       </div>

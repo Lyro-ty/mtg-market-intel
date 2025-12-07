@@ -615,6 +615,48 @@ export async function runInventoryRecommendations(itemIds?: number[]): Promise<{
   }, true);
 }
 
+export async function exportInventory(format: 'csv' | 'txt' | 'cardtrader' = 'csv'): Promise<void> {
+  const url = `${API_BASE}/inventory/export?format=${format}`;
+  const token = getStoredToken();
+  
+  if (!token) {
+    throw new ApiError('Authentication required', 401);
+  }
+  
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new ApiError(`Export failed: ${response.statusText}`, response.status);
+  }
+  
+  // Get the blob and trigger download
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  
+  // Get filename from Content-Disposition header or use default
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let filename = `inventory.${format === 'cardtrader' ? 'csv' : format}`;
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (filenameMatch) {
+      filename = filenameMatch[1];
+    }
+  }
+  
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
 // Export error class for use in components
 export { ApiError };
 

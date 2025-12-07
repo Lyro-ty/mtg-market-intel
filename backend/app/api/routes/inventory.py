@@ -2048,17 +2048,30 @@ async def run_inventory_recommendations(
     return result
 
 
+def map_condition_to_cardtrader(condition: str) -> str:
+    """Map our condition values to CardTrader format."""
+    condition_map = {
+        "MINT": "Near Mint",
+        "NEAR_MINT": "Near Mint",
+        "LIGHTLY_PLAYED": "Lightly Played",
+        "MODERATELY_PLAYED": "Moderately Played",
+        "HEAVILY_PLAYED": "Heavily Played",
+        "DAMAGED": "Damaged",
+    }
+    return condition_map.get(condition, "Near Mint")
+
+
 @router.get("/export")
 async def export_inventory(
     current_user: CurrentUser,
-    format: str = Query("csv", regex="^(csv|txt)$"),
+    format: str = Query("csv", regex="^(csv|txt|cardtrader)$"),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Export user's inventory to CSV or plain text.
+    Export user's inventory to CSV, plain text, or CardTrader format.
     
     Args:
-        format: Export format - 'csv' or 'txt'
+        format: Export format - 'csv', 'txt', or 'cardtrader'
     """
     query = select(InventoryItem, Card).join(
         Card, InventoryItem.card_id == Card.id
@@ -2067,7 +2080,52 @@ async def export_inventory(
     result = await db.execute(query)
     items = result.all()
     
-    if format == "csv":
+    if format == "cardtrader":
+        # CardTrader format: CSV with specific columns
+        # Required: name, expansion_code (minimum)
+        # Optional: quantity, language, condition, price_cents, foil
+        output = io.StringIO()
+        writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+        
+        # Header row with column names (CardTrader compatible)
+        writer.writerow([
+            "name",
+            "expansion_code",
+            "quantity",
+            "language",
+            "condition",
+            "foil",
+            "price_cents"
+        ])
+        
+        for item, card in items:
+            # Map condition to CardTrader format
+            cardtrader_condition = map_condition_to_cardtrader(item.condition)
+            
+            # Use current_value if available, otherwise acquisition_price, convert to cents
+            price_value = None
+            if item.current_value:
+                price_value = int(float(item.current_value) * 100)
+            elif item.acquisition_price:
+                price_value = int(float(item.acquisition_price) * 100)
+            
+            # Write the row
+            writer.writerow([
+                card.name,
+                card.set_code,
+                item.quantity,
+                item.language or "English",
+                cardtrader_condition,
+                "true" if item.is_foil else "false",
+                price_value if price_value else "",
+            ])
+        
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=inventory_cardtrader.csv"}
+        )
+    elif format == "csv":
         output = io.StringIO()
         # Use quoting to handle special characters in card names
         writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
