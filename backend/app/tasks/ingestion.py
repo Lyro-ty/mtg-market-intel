@@ -253,8 +253,27 @@ async def _collect_price_data_async() -> dict[str, Any]:
                 "errors": [],
             }
             
+            # Helper to get or create marketplace (shared across phases)
+            async def get_or_create_marketplace(slug: str, name: str, base_url: str, currency: str) -> Marketplace:
+                query = select(Marketplace).where(Marketplace.slug == slug)
+                result = await db.execute(query)
+                mp = result.scalar_one_or_none()
+                if not mp:
+                    mp = Marketplace(
+                        name=name,
+                        slug=slug,
+                        base_url=base_url,
+                        api_url=None,
+                        is_enabled=True,
+                        supports_api=False,
+                        default_currency=currency,
+                        rate_limit_seconds=1.0,
+                    )
+                    db.add(mp)
+                    await db.flush()
+                return mp
+            
             # Get or create marketplaces
-            scryfall_mp = await _get_or_create_scryfall_marketplace(db)
             cardtrader_mp = await _get_or_create_cardtrader_marketplace(db)
             
             # Get adapters
@@ -272,28 +291,45 @@ async def _collect_price_data_async() -> dict[str, Any]:
             
             try:
                 # Collect prices from Scryfall for all cards
+                # Use fetch_all_marketplace_prices to get TCGPlayer, Cardmarket, MTGO prices separately
                 logger.info("Collecting Scryfall price data", card_count=len(cards))
                 
                 for i, card in enumerate(cards):
                     try:
-                        # Fetch price data from Scryfall
-                        price_data = await scryfall.fetch_price(
+                        # Fetch all marketplace prices from Scryfall (TCGPlayer, Cardmarket, etc.)
+                        all_prices = await scryfall.fetch_all_marketplace_prices(
                             card_name=card.name,
                             set_code=card.set_code,
                             collector_number=card.collector_number,
                             scryfall_id=card.scryfall_id,
                         )
                         
-                        if price_data and price_data.price > 0:
-                            # For charting, we need multiple snapshots over time
+                        now = datetime.now(timezone.utc)
+                        two_hours_ago = now - timedelta(hours=2)
+                        
+                        for price_data in all_prices:
+                            if not price_data or price_data.price <= 0:
+                                continue
+                            
+                            # Map currency to marketplace (same as data_seeding.py)
+                            marketplace_map = {
+                                "USD": ("tcgplayer", "TCGPlayer", "https://www.tcgplayer.com"),
+                                "EUR": ("cardmarket", "Cardmarket", "https://www.cardmarket.com"),
+                                "TIX": ("mtgo", "MTGO", "https://www.mtgo.com"),
+                            }
+                            
+                            slug, name, base_url = marketplace_map.get(price_data.currency, (None, None, None))
+                            if not slug:
+                                continue
+                            
+                            # Get or create marketplace
+                            marketplace = await get_or_create_marketplace(slug, name, base_url, price_data.currency)
+                            
                             # Check if we have a snapshot within the last 2 hours (to avoid too many duplicates)
-                            # But always create new snapshots for time-series data
-                            now = datetime.now(timezone.utc)
-                            two_hours_ago = now - timedelta(hours=2)
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
-                                    PriceSnapshot.marketplace_id == scryfall_mp.id,
+                                    PriceSnapshot.marketplace_id == marketplace.id,
                                     PriceSnapshot.snapshot_time >= two_hours_ago,
                                 )
                             ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
@@ -306,7 +342,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                 # Create price snapshot
                                 snapshot = PriceSnapshot(
                                     card_id=card.id,
-                                    marketplace_id=scryfall_mp.id,
+                                    marketplace_id=marketplace.id,
                                     snapshot_time=now,
                                     price=price_data.price,
                                     currency=price_data.currency,
@@ -320,7 +356,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                 backfilled = await _backfill_historical_snapshots_for_charting(
                                     db=db,
                                     card_id=card.id,
-                                    marketplace_id=scryfall_mp.id,
+                                    marketplace_id=marketplace.id,
                                     current_price=float(price_data.price),
                                     current_currency=price_data.currency,
                                     current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
@@ -338,7 +374,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                 if price_change_pct > 2.0:
                                     snapshot = PriceSnapshot(
                                         card_id=card.id,
-                                        marketplace_id=scryfall_mp.id,
+                                        marketplace_id=marketplace.id,
                                         snapshot_time=now,
                                         price=price_data.price,
                                         currency=price_data.currency,
@@ -580,8 +616,25 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                 "errors": [],
             }
             
-            # Get or create Scryfall marketplace
-            scryfall_mp = await _get_or_create_scryfall_marketplace(db)
+            # Helper to get or create marketplace
+            async def get_or_create_marketplace(slug: str, name: str, base_url: str, currency: str) -> Marketplace:
+                query = select(Marketplace).where(Marketplace.slug == slug)
+                result = await db.execute(query)
+                mp = result.scalar_one_or_none()
+                if not mp:
+                    mp = Marketplace(
+                        name=name,
+                        slug=slug,
+                        base_url=base_url,
+                        api_url=None,
+                        is_enabled=True,
+                        supports_api=False,
+                        default_currency=currency,
+                        rate_limit_seconds=1.0,
+                    )
+                    db.add(mp)
+                    await db.flush()
+                return mp
             
             # Get Scryfall adapter
             scryfall = ScryfallAdapter()
@@ -589,23 +642,41 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
             try:
                 for card in cards:
                     try:
-                        # Fetch price data from Scryfall
-                        price_data = await scryfall.fetch_price(
+                        # Fetch all marketplace prices from Scryfall (TCGPlayer, Cardmarket, etc.)
+                        all_prices = await scryfall.fetch_all_marketplace_prices(
                             card_name=card.name,
                             set_code=card.set_code,
                             collector_number=card.collector_number,
                             scryfall_id=card.scryfall_id,
                         )
                         
-                        if price_data and price_data.price > 0:
+                        now = datetime.now(timezone.utc)
+                        two_hours_ago = now - timedelta(hours=2)
+                        
+                        for price_data in all_prices:
+                            if not price_data or price_data.price <= 0:
+                                continue
+                            
+                            # Map currency to marketplace (same as data_seeding.py)
+                            marketplace_map = {
+                                "USD": ("tcgplayer", "TCGPlayer", "https://www.tcgplayer.com"),
+                                "EUR": ("cardmarket", "Cardmarket", "https://www.cardmarket.com"),
+                                "TIX": ("mtgo", "MTGO", "https://www.mtgo.com"),
+                            }
+                            
+                            slug, name, base_url = marketplace_map.get(price_data.currency, (None, None, None))
+                            if not slug:
+                                continue
+                            
+                            # Get or create marketplace
+                            marketplace = await get_or_create_marketplace(slug, name, base_url, price_data.currency)
+                            
                             # Check for recent snapshot (within last 2 hours for inventory cards)
                             # Inventory cards are updated more frequently
-                            now = datetime.now(timezone.utc)
-                            two_hours_ago = now - timedelta(hours=2)
                             recent_snapshot_query = select(PriceSnapshot).where(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
-                                    PriceSnapshot.marketplace_id == scryfall_mp.id,
+                                    PriceSnapshot.marketplace_id == marketplace.id,
                                     PriceSnapshot.snapshot_time >= two_hours_ago,
                                 )
                             ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
@@ -616,7 +687,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                                 # Create new snapshot
                                 snapshot = PriceSnapshot(
                                     card_id=card.id,
-                                    marketplace_id=scryfall_mp.id,
+                                    marketplace_id=marketplace.id,
                                     snapshot_time=now,
                                     price=price_data.price,
                                     currency=price_data.currency,
@@ -629,7 +700,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                                 backfilled = await _backfill_historical_snapshots_for_charting(
                                     db=db,
                                     card_id=card.id,
-                                    marketplace_id=scryfall_mp.id,
+                                    marketplace_id=marketplace.id,
                                     current_price=float(price_data.price),
                                     current_currency=price_data.currency,
                                     current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
@@ -798,26 +869,25 @@ async def _import_mtgjson_historical_prices_async(
     session_maker, engine = create_task_session_maker()
     try:
         async with session_maker() as db:
-            # Get or create MTGJSON marketplace
-            mtgjson_query = select(Marketplace).where(Marketplace.slug == "mtgjson")
-            result = await db.execute(mtgjson_query)
-            mtgjson_marketplace = result.scalar_one_or_none()
-            
-            if not mtgjson_marketplace:
-                # Create MTGJSON marketplace entry
-                mtgjson_marketplace = Marketplace(
-                    name="MTGJSON",
-                    slug="mtgjson",
-                    base_url="https://mtgjson.com",
-                    api_url="https://mtgjson.com/api/v5",
-                    is_enabled=True,
-                    supports_api=True,
-                    default_currency="USD",
-                    rate_limit_seconds=1.0,
-                )
-                db.add(mtgjson_marketplace)
-                await db.flush()
-                logger.info("Created MTGJSON marketplace entry")
+            # Helper to get or create marketplace (map MTGJSON prices to actual marketplaces)
+            async def get_or_create_marketplace(slug: str, name: str, base_url: str, currency: str) -> Marketplace:
+                query = select(Marketplace).where(Marketplace.slug == slug)
+                result = await db.execute(query)
+                mp = result.scalar_one_or_none()
+                if not mp:
+                    mp = Marketplace(
+                        name=name,
+                        slug=slug,
+                        base_url=base_url,
+                        api_url=None,
+                        is_enabled=True,
+                        supports_api=False,
+                        default_currency=currency,
+                        rate_limit_seconds=1.0,
+                    )
+                    db.add(mp)
+                    await db.flush()
+                return mp
             
             # Get cards to import
             if card_ids:
@@ -886,12 +956,31 @@ async def _import_mtgjson_historical_prices_async(
                             continue
                         
                         # Create price snapshots for each historical price
+                        # Map MTGJSON prices to actual marketplaces (TCGPlayer, Cardmarket) based on currency
                         for price_data in historical_prices:
-                            # Check if snapshot already exists for this timestamp
+                            if not price_data or price_data.price <= 0:
+                                continue
+                            
+                            # Map currency to marketplace (same as Scryfall and data_seeding)
+                            marketplace_map = {
+                                "USD": ("tcgplayer", "TCGPlayer", "https://www.tcgplayer.com"),
+                                "EUR": ("cardmarket", "Cardmarket", "https://www.cardmarket.com"),
+                            }
+                            
+                            slug, name, base_url = marketplace_map.get(price_data.currency, (None, None, None))
+                            if not slug:
+                                continue
+                            
+                            # Get or create marketplace
+                            marketplace = await get_or_create_marketplace(slug, name, base_url, price_data.currency)
+                            
+                            # Check if snapshot already exists for this timestamp and marketplace
                             existing_query = select(PriceSnapshot).where(
-                                PriceSnapshot.card_id == card.id,
-                                PriceSnapshot.marketplace_id == mtgjson_marketplace.id,
-                                PriceSnapshot.snapshot_time == price_data.snapshot_time,
+                                and_(
+                                    PriceSnapshot.card_id == card.id,
+                                    PriceSnapshot.marketplace_id == marketplace.id,
+                                    PriceSnapshot.snapshot_time == price_data.snapshot_time,
+                                )
                             )
                             existing_result = await db.execute(existing_query)
                             existing = existing_result.scalar_one_or_none()
@@ -906,7 +995,7 @@ async def _import_mtgjson_historical_prices_async(
                                 # Create new snapshot
                                 snapshot = PriceSnapshot(
                                     card_id=card.id,
-                                    marketplace_id=mtgjson_marketplace.id,
+                                    marketplace_id=marketplace.id,
                                     snapshot_time=price_data.snapshot_time,
                                     price=price_data.price,
                                     currency=price_data.currency,
