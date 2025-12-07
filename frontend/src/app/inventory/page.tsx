@@ -580,6 +580,7 @@ function InventoryPageContent(): JSX.Element {
                     {/* Search Bar */}
                     <SearchBar
                       key={searchKey}
+                      value={searchQuery}
                       onSearch={(query) => {
                         setSearchQuery(query);
                         setPage(1);
