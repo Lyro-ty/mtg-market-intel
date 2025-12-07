@@ -31,6 +31,7 @@ export default function CardDetailPage() {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAddInventory, setShowAddInventory] = useState(false);
+  const [selectedCondition, setSelectedCondition] = useState<string>('');  // Empty = all conditions
   const [inventoryForm, setInventoryForm] = useState({
     quantity: 1,
     condition: 'NEAR_MINT' as InventoryCondition,
@@ -64,8 +65,11 @@ export default function CardDetailPage() {
   });
 
   const { data: history, refetch: refetchHistory } = useQuery({
-    queryKey: ['card', cardId, 'history'],
-    queryFn: () => getCardHistory(cardId, { days: 30 }),
+    queryKey: ['card', cardId, 'history', selectedCondition],
+    queryFn: () => getCardHistory(cardId, { 
+      days: 30,
+      condition: selectedCondition || undefined 
+    }),
     enabled: !!cardId,
     refetchInterval: 60000,  // Auto-refresh every 60 seconds for live data
     refetchIntervalInBackground: true,
@@ -225,17 +229,51 @@ export default function CardDetailPage() {
         <SpreadChart data={current_prices} title="Current Prices by Marketplace" />
       )}
 
-      {/* Price History */}
-      {history && history.history.length > 0 && (
-        <PriceChart 
-          data={history.history} 
-          history={history}
-          title="30-Day Price History" 
-          showFreshness={true}
-          autoRefresh={true}
-          refreshInterval={60}
-        />
-      )}
+      {/* Price History with Condition Filter */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <CardTitle>30-Day Price History</CardTitle>
+            {/* Condition Filter */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-[rgb(var(--foreground))] whitespace-nowrap">
+                Condition:
+              </label>
+              <select
+                value={selectedCondition}
+                onChange={(e) => setSelectedCondition(e.target.value)}
+                className="px-4 py-2 rounded-lg bg-[rgb(var(--secondary))] border border-[rgb(var(--border))] text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-amber-500/50 cursor-pointer hover:bg-[rgb(var(--secondary))]/80 transition-colors min-w-[160px]"
+              >
+                <option value="">All Conditions</option>
+                <option value="Near Mint">Near Mint</option>
+                <option value="Lightly Played">Lightly Played</option>
+                <option value="Moderately Played">Moderately Played</option>
+                <option value="Heavily Played">Heavily Played</option>
+                <option value="Damaged">Damaged</option>
+              </select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {history && history.history.length > 0 ? (
+            <PriceChart 
+              data={history.history} 
+              history={history}
+              title=""  // Title is now in CardHeader
+              showFreshness={true}
+              autoRefresh={true}
+              refreshInterval={60}
+            />
+          ) : (
+            <div className="text-center py-12 text-[rgb(var(--muted-foreground))]">
+              <p>No price history data available</p>
+              {selectedCondition && (
+                <p className="text-sm mt-2">Try selecting "All Conditions" or refresh the card data</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Add to Inventory Modal */}
       {showAddInventory && (

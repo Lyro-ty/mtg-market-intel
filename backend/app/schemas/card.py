@@ -74,6 +74,7 @@ class PricePoint(BaseModel):
     num_listings: Optional[int] = None
     snapshot_time: Optional[datetime] = None  # When this price was collected
     data_age_minutes: Optional[int] = None  # Minutes since collection
+    condition: Optional[str] = None  # Card condition (Near Mint, Lightly Played, etc.)
 
 
 class CardPriceResponse(BaseModel):
@@ -97,6 +98,7 @@ class MarketplacePriceDetail(BaseModel):
     price_foil: Optional[float] = None
     num_listings: Optional[int] = None
     last_updated: datetime
+    condition: Optional[str] = None  # Card condition (Near Mint, Lightly Played, etc.)
 
 
 class CardHistoryResponse(BaseModel):

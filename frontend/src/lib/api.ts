@@ -281,6 +281,7 @@ export async function getCardHistory(
   options: {
     days?: number;
     marketplaceId?: number;
+    condition?: string;
   } = {}
 ): Promise<CardHistory> {
   const params = new URLSearchParams();
@@ -290,6 +291,9 @@ export async function getCardHistory(
   }
   if (options.marketplaceId) {
     params.set('marketplace_id', String(options.marketplaceId));
+  }
+  if (options.condition) {
+    params.set('condition', options.condition);
   }
   
   const queryString = params.toString();
