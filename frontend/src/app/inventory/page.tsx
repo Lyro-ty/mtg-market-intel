@@ -6,6 +6,7 @@ import {
   Package,
   Upload,
   Download,
+  ChevronDown,
   TrendingUp,
   TrendingDown,
   AlertTriangle,
@@ -57,6 +58,9 @@ function InventoryPageContent(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterFoil, setFilterFoil] = useState<boolean | undefined>(undefined);
   const [filterCondition, setFilterCondition] = useState<InventoryCondition | undefined>(undefined);
+  
+  // Export dropdown state
+  const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   
   const queryClient = useQueryClient();
   
@@ -145,6 +149,7 @@ function InventoryPageContent(): JSX.Element {
   
   const handleExport = (format: 'csv' | 'txt' | 'cardtrader') => {
     exportMutation.mutate(format);
+    setIsExportDropdownOpen(false);
   };
   
   const handleClearFilters = () => {
@@ -222,20 +227,63 @@ function InventoryPageContent(): JSX.Element {
             <Upload className="w-4 h-4 mr-1" />
             Import Cards
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => handleExport('cardtrader')}
-            disabled={exportMutation.isPending}
-            className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
-          >
-            {exportMutation.isPending ? (
-              <Loading size="sm" className="mr-1" />
-            ) : (
-              <Download className="w-4 h-4 mr-1" />
+          <div className="relative">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+              disabled={exportMutation.isPending}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
+            >
+              {exportMutation.isPending ? (
+                <Loading size="sm" className="mr-1" />
+              ) : (
+                <Download className="w-4 h-4 mr-1" />
+              )}
+              Export
+              <ChevronDown className="w-4 h-4 ml-1" />
+            </Button>
+            {isExportDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setIsExportDropdownOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 w-56 bg-[rgb(var(--background))] border border-[rgb(var(--border))] rounded-md shadow-lg z-20">
+                  <button
+                    onClick={() => handleExport('cardtrader')}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-[rgb(var(--muted))] rounded-t-md flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    <div>
+                      <div className="font-medium">Export to CardTrader</div>
+                      <div className="text-xs text-[rgb(var(--muted-foreground))]">CSV format for CardTrader import</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleExport('csv')}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-[rgb(var(--muted))] flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    <div>
+                      <div className="font-medium">Export as CSV</div>
+                      <div className="text-xs text-[rgb(var(--muted-foreground))]">Standard CSV format</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleExport('txt')}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-[rgb(var(--muted))] rounded-b-md flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    <div>
+                      <div className="font-medium">Export as Plain Text</div>
+                      <div className="text-xs text-[rgb(var(--muted-foreground))]">Simple text format</div>
+                    </div>
+                  </button>
+                </div>
+              </>
             )}
-            Export to CardTrader
-          </Button>
+          </div>
         </div>
       </div>
       
