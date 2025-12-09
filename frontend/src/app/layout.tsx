@@ -9,6 +9,9 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-geist-sans' });
 export const metadata: Metadata = {
   title: 'Dualcaster Deals',
   description: 'Magic: The Gathering card market intelligence, analytics, and trading recommendations',
+  other: {
+    'impact-site-verification': '3b7dfe6f-b78f-491e-89fa-6de9fe51a333',
+  },
 };
 
 export default function RootLayout({
