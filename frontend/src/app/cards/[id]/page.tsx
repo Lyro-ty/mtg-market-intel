@@ -65,12 +65,15 @@ export default function CardDetailPage() {
     refetchIntervalInBackground: true,  // Continue refreshing when tab is in background
   });
 
+  // Parse foil filter value for consistent query key and API call
+  const isFoilValue = selectedFoil === '' ? undefined : selectedFoil === 'true';
+
   const { data: history, refetch: refetchHistory } = useQuery({
-    queryKey: ['card', cardId, 'history', selectedCondition, selectedFoil],
+    queryKey: ['card', cardId, 'history', selectedCondition, isFoilValue],
     queryFn: () => getCardHistory(cardId, { 
       days: 30,
       condition: selectedCondition || undefined,
-      isFoil: selectedFoil === '' ? undefined : selectedFoil === 'true'
+      isFoil: isFoilValue
     }),
     enabled: !!cardId,
     refetchInterval: 60000,  // Auto-refresh every 60 seconds for live data

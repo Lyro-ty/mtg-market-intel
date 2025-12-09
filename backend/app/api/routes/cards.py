@@ -212,7 +212,14 @@ async def get_card_history(
     Returns daily price points for the specified time range.
     If condition is specified, uses Listing data grouped by condition.
     Otherwise, uses PriceSnapshot aggregated data.
-    If is_foil is specified, filters by foil status.
+    
+    Foil Filter Behavior:
+    - is_foil=True: Returns only foil prices (price_foil field). Returns empty if no foil prices exist.
+    - is_foil=False: Returns only non-foil prices (price field). Excludes snapshots with foil prices.
+    - is_foil=None: Returns non-foil prices by default. Includes price_foil in response if available.
+    
+    Note: When using Listing data (condition specified), foil filter applies to individual listings.
+    When using PriceSnapshot data, foil filter applies to snapshot-level price fields.
     """
     card = await db.get(Card, card_id)
     if not card:
@@ -333,11 +340,6 @@ async def get_card_history(
         if marketplace_id:
             query = query.where(PriceSnapshot.marketplace_id == marketplace_id)
         
-        query = query.order_by(PriceSnapshot.snapshot_time)
-        
-        result = await db.execute(query)
-        rows = result.all()
-        
         def normalize_marketplace_name(marketplace_name: str, marketplace_slug: str, currency: str) -> str:
             """
             Normalize marketplace names to consolidate duplicates.
@@ -355,52 +357,98 @@ async def get_card_history(
             return marketplace_name
         
         # When is_foil is True, use price_foil if available, otherwise filter out entries without foil prices
-        # When is_foil is False, use regular price and filter out entries that only have foil prices
-        # When is_foil is None, prefer regular price but include foil if regular is not available
+        # When is_foil is False, use regular price and exclude entries that have foil prices (pure non-foil only)
+        # When is_foil is None, prefer regular price but include foil price in response if available
+        # Add foil filter to SQL query for efficiency
+        if is_foil is True:
+            query = query.where(PriceSnapshot.price_foil.isnot(None))
+        elif is_foil is False:
+            query = query.where(PriceSnapshot.price_foil.is_(None))
+        # else: no filter needed (include all)
+        
+        query = query.order_by(PriceSnapshot.snapshot_time)
+        
+        result = await db.execute(query)
+        rows = result.all()
+        
         history = []
         for snapshot, marketplace in rows:
             if is_foil is True:
-                # Only include entries with foil prices
-                if snapshot.price_foil is not None:
-                    history.append(PricePoint(
-                        date=snapshot.snapshot_time,
-                        price=float(snapshot.price_foil),
-                        marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
-                        currency=snapshot.currency,
-                        min_price=None,  # Foil prices don't have min/max in snapshot
-                        max_price=None,
-                        num_listings=snapshot.num_listings,
-                        snapshot_time=snapshot.snapshot_time,
-                        data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
-                        price_foil=float(snapshot.price_foil),
-                    ))
+                # Only include entries with foil prices (already filtered in query)
+                # Validate price is positive
+                if snapshot.price_foil is not None and snapshot.price_foil > 0:
+                    try:
+                        history.append(PricePoint(
+                            date=snapshot.snapshot_time,
+                            price=float(snapshot.price_foil),
+                            marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
+                            currency=snapshot.currency,
+                            min_price=None,  # Foil prices don't have min/max in snapshot
+                            max_price=None,
+                            num_listings=snapshot.num_listings,
+                            snapshot_time=snapshot.snapshot_time,
+                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
+                        ))
+                    except (ValueError, TypeError) as e:
+                        logger.warning(
+                            "Invalid price_foil value",
+                            card_id=card_id,
+                            snapshot_id=getattr(snapshot, 'id', None),
+                            price_foil=snapshot.price_foil,
+                            error=str(e),
+                        )
+                        continue
             elif is_foil is False:
-                # Only include entries with regular (non-foil) prices
-                history.append(PricePoint(
-                    date=snapshot.snapshot_time,
-                    price=float(snapshot.price),
-                    marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
-                    currency=snapshot.currency,
-                    min_price=float(snapshot.min_price) if snapshot.min_price else None,
-                    max_price=float(snapshot.max_price) if snapshot.max_price else None,
-                    num_listings=snapshot.num_listings,
-                    snapshot_time=snapshot.snapshot_time,
-                    data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
-                ))
+                # Only include entries with regular (non-foil) prices (already filtered in query)
+                # Validate price is positive
+                if snapshot.price > 0:
+                    try:
+                        history.append(PricePoint(
+                            date=snapshot.snapshot_time,
+                            price=float(snapshot.price),
+                            marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
+                            currency=snapshot.currency,
+                            min_price=float(snapshot.min_price) if snapshot.min_price and snapshot.min_price > 0 else None,
+                            max_price=float(snapshot.max_price) if snapshot.max_price and snapshot.max_price > 0 else None,
+                            num_listings=snapshot.num_listings,
+                            snapshot_time=snapshot.snapshot_time,
+                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
+                        ))
+                    except (ValueError, TypeError) as e:
+                        logger.warning(
+                            "Invalid price value",
+                            card_id=card_id,
+                            snapshot_id=getattr(snapshot, 'id', None),
+                            price=snapshot.price,
+                            error=str(e),
+                        )
+                        continue
             else:
                 # Include both, prefer regular price
-                history.append(PricePoint(
-                    date=snapshot.snapshot_time,
-                    price=float(snapshot.price),
-                    marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
-                    currency=snapshot.currency,
-                    min_price=float(snapshot.min_price) if snapshot.min_price else None,
-                    max_price=float(snapshot.max_price) if snapshot.max_price else None,
-                    num_listings=snapshot.num_listings,
-                    snapshot_time=snapshot.snapshot_time,
-                    data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
-                    price_foil=float(snapshot.price_foil) if snapshot.price_foil else None,
-                ))
+                # Validate price is positive
+                if snapshot.price > 0:
+                    try:
+                        history.append(PricePoint(
+                            date=snapshot.snapshot_time,
+                            price=float(snapshot.price),
+                            marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
+                            currency=snapshot.currency,
+                            min_price=float(snapshot.min_price) if snapshot.min_price and snapshot.min_price > 0 else None,
+                            max_price=float(snapshot.max_price) if snapshot.max_price and snapshot.max_price > 0 else None,
+                            num_listings=snapshot.num_listings,
+                            snapshot_time=snapshot.snapshot_time,
+                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
+                            price_foil=float(snapshot.price_foil) if snapshot.price_foil and snapshot.price_foil > 0 else None,
+                        ))
+                    except (ValueError, TypeError) as e:
+                        logger.warning(
+                            "Invalid price value",
+                            card_id=card_id,
+                            snapshot_id=getattr(snapshot, 'id', None),
+                            price=snapshot.price,
+                            error=str(e),
+                        )
+                        continue
         
         latest_snapshot = max((snapshot.snapshot_time for snapshot, _ in rows), default=None) if rows else None
     
