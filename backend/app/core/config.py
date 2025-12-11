@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     cardmarket_access_secret: str = ""
     cardtrader_api_token: str = ""  # CardTrader API JWT token - set via CARDTRADER_API_TOKEN env var
     cardtrader_secret_key: str = ""
+    manapool_api_token: str = ""  # Manapool API token - set via MANAPOOL_API_TOKEN env var
     
     # Scraping Configuration
     scraper_user_agent: str = "MTGMarketIntel/1.0"

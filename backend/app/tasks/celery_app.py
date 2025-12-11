@@ -15,6 +15,7 @@ celery_app = Celery(
         "app.tasks.ingestion",
         "app.tasks.analytics",
         "app.tasks.recommendations",
+        "app.tasks.tournament_news",
     ],
 )
 
@@ -76,10 +77,10 @@ celery_app.conf.update(
             "options": {"queue": "analytics"},
         },
         
-        # Generate recommendations every 6 hours
+        # Generate recommendations every 3 hours
         "generate-recommendations": {
             "task": "app.tasks.recommendations.generate_recommendations",
-            "schedule": crontab(minute=0, hour=f"*/{settings.recommendations_interval_hours}"),
+            "schedule": crontab(minute=0, hour="*/3"),  # Every 3 hours
             "options": {"queue": "recommendations"},
         },
         
@@ -105,6 +106,22 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=2),  # 2 AM UTC
             "options": {"queue": "ingestion"},
         },
+        
+        # Collect tournament data daily at 4 AM
+        # Tournament results provide popularity metrics for cards
+        "collect-tournament-data": {
+            "task": "app.tasks.tournament_news.collect_tournament_data",
+            "schedule": crontab(minute=0, hour=4),  # 4 AM UTC
+            "options": {"queue": "ingestion"},
+        },
+        
+        # Collect news articles every 6 hours
+        # News articles provide market signals and card mentions
+        "collect-news-data": {
+            "task": "app.tasks.tournament_news.collect_news_data",
+            "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
+            "options": {"queue": "ingestion"},
+        },
     },
     
     # Task routing
@@ -113,6 +130,7 @@ celery_app.conf.update(
         "app.tasks.ingestion.*": {"queue": "ingestion"},
         "app.tasks.analytics.*": {"queue": "analytics"},
         "app.tasks.recommendations.*": {"queue": "recommendations"},
+        "app.tasks.tournament_news.*": {"queue": "ingestion"},
     },
     
     # Default queue

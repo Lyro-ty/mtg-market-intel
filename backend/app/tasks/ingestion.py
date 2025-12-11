@@ -12,11 +12,13 @@ from typing import Any
 import structlog
 from celery import shared_task
 from sqlalchemy import select, and_, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import Card, Marketplace, Listing, PriceSnapshot, InventoryItem, CardFeatureVector
 from app.services.ingestion import get_adapter, get_all_adapters, ScryfallAdapter
+from app.services.ingestion.base import AdapterConfig
 from app.services.agents.normalization import NormalizationService
 from app.services.vectorization import get_vectorization_service
 from app.services.vectorization.service import VectorizationService
@@ -24,6 +26,76 @@ from app.services.vectorization.ingestion import vectorize_card, vectorize_listi
 from app.tasks.utils import create_task_session_maker, run_async
 
 logger = structlog.get_logger()
+
+
+async def _upsert_price_snapshot(
+    db: AsyncSession,
+    card_id: int,
+    marketplace_id: int,
+    snapshot_time: datetime,
+    price: float,
+    currency: str,
+    price_foil: float | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    num_listings: int | None = None,
+) -> PriceSnapshot:
+    """
+    Upsert a price snapshot using PostgreSQL ON CONFLICT.
+    
+    This prevents race conditions where multiple tasks try to create the same snapshot.
+    If a snapshot with the same (card_id, marketplace_id, snapshot_time) exists,
+    it updates the price fields if they're different.
+    
+    Returns:
+        The created or updated PriceSnapshot.
+    """
+    # Use PostgreSQL INSERT ... ON CONFLICT DO UPDATE
+    values_dict = {
+        'card_id': card_id,
+        'marketplace_id': marketplace_id,
+        'snapshot_time': snapshot_time,
+        'price': price,
+        'currency': currency,
+        'price_foil': price_foil,
+        'min_price': min_price,
+        'max_price': max_price,
+        'num_listings': num_listings,
+    }
+    
+    stmt = pg_insert(PriceSnapshot).values(**values_dict)
+    
+    # On conflict, update the price fields
+    # Note: constraint name will be available after migration 009 runs
+    update_dict = {
+        'price': stmt.excluded.price,
+        'currency': stmt.excluded.currency,
+        'price_foil': stmt.excluded.price_foil,
+        'min_price': stmt.excluded.min_price,
+        'max_price': stmt.excluded.max_price,
+        'num_listings': stmt.excluded.num_listings,
+        'updated_at': func.now(),
+    }
+    
+    stmt = stmt.on_conflict_do_update(
+        constraint='uq_price_snapshots_card_marketplace_time',
+        set_=update_dict
+    )
+    
+    await db.execute(stmt)
+    await db.flush()
+    
+    # Fetch the snapshot to return it
+    result = await db.execute(
+        select(PriceSnapshot).where(
+            and_(
+                PriceSnapshot.card_id == card_id,
+                PriceSnapshot.marketplace_id == marketplace_id,
+                PriceSnapshot.snapshot_time == snapshot_time,
+            )
+        )
+    )
+    return result.scalar_one()
 
 
 async def _backfill_historical_snapshots_for_charting(
@@ -250,6 +322,8 @@ async def _collect_price_data_async() -> dict[str, Any]:
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "scryfall_snapshots": 0,
                 "cardtrader_snapshots": 0,
+                "manapool_snapshots": 0,
+                "tcgplayer_snapshots": 0,
                 "mtgjson_snapshots": 0,
                 "total_snapshots": 0,
                 "backfilled_snapshots": 0,
@@ -342,9 +416,11 @@ async def _collect_price_data_async() -> dict[str, Any]:
                             
                             # Always create a new snapshot for charting (unless we just created one in the last 2 hours)
                             # This ensures we have time-series data for charts
+                            # Use upsert to prevent race conditions
                             if not recent_snapshot:
-                                # Create price snapshot
-                                snapshot = PriceSnapshot(
+                                # Create price snapshot using upsert (prevents duplicates from race conditions)
+                                await _upsert_price_snapshot(
+                                    db=db,
                                     card_id=card.id,
                                     marketplace_id=marketplace.id,
                                     snapshot_time=now,
@@ -352,22 +428,11 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                     currency=price_data.currency,
                                     price_foil=price_data.price_foil,
                                 )
-                                db.add(snapshot)
                                 results["scryfall_snapshots"] += 1
                                 results["total_snapshots"] += 1
                                 
-                                # Backfill historical snapshots for instant charting
-                                backfilled = await _backfill_historical_snapshots_for_charting(
-                                    db=db,
-                                    card_id=card.id,
-                                    marketplace_id=marketplace.id,
-                                    current_price=float(price_data.price),
-                                    current_currency=price_data.currency,
-                                    current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
-                                    snapshot_time=now,
-                                )
-                                results["backfilled_snapshots"] += backfilled
-                                results["total_snapshots"] += backfilled
+                                # Note: Historical data should come from MTGJSON, not synthetic backfill
+                                # Chart endpoints use interpolation for gaps in real data
                             else:
                                 # If we have a recent snapshot, only create a new one if price changed significantly
                                 # This prevents duplicate snapshots while still capturing price changes
@@ -375,8 +440,10 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                 price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
                                 
                                 # Create new snapshot if price changed by more than 2% (lower threshold for better charting)
+                                # Use upsert to prevent race conditions
                                 if price_change_pct > 2.0:
-                                    snapshot = PriceSnapshot(
+                                    await _upsert_price_snapshot(
+                                        db=db,
                                         card_id=card.id,
                                         marketplace_id=marketplace.id,
                                         snapshot_time=now,
@@ -384,7 +451,6 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                         currency=price_data.currency,
                                         price_foil=price_data.price_foil,
                                     )
-                                    db.add(snapshot)
                                     results["scryfall_snapshots"] += 1
                                     results["total_snapshots"] += 1
                         
@@ -435,9 +501,11 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                 recent_snapshot = recent_result.scalar_one_or_none()
                                 
                                 # Always create a new snapshot for charting (unless we just created one in the last 2 hours)
+                                # Use upsert to prevent race conditions
                                 if not recent_snapshot:
-                                    # Create price snapshot
-                                    snapshot = PriceSnapshot(
+                                    # Create price snapshot using upsert
+                                    await _upsert_price_snapshot(
+                                        db=db,
                                         card_id=card.id,
                                         marketplace_id=cardtrader_mp.id,
                                         snapshot_time=now,
@@ -448,29 +516,20 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                         max_price=price_data.price_high,
                                         num_listings=price_data.num_listings,
                                     )
-                                    db.add(snapshot)
                                     results["cardtrader_snapshots"] += 1
                                     results["total_snapshots"] += 1
                                     
-                                    # Backfill historical snapshots for instant charting
-                                    backfilled = await _backfill_historical_snapshots_for_charting(
-                                        db=db,
-                                        card_id=card.id,
-                                        marketplace_id=cardtrader_mp.id,
-                                        current_price=float(price_data.price),
-                                        current_currency=price_data.currency,
-                                        current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
-                                        snapshot_time=now,
-                                    )
-                                    results["backfilled_snapshots"] += backfilled
-                                    results["total_snapshots"] += backfilled
+                                    # Note: Historical data should come from MTGJSON, not synthetic backfill
+                                    # Chart endpoints use interpolation for gaps in real data
                                 else:
                                     # Create new snapshot if price changed by more than 2%
+                                    # Use upsert to prevent race conditions
                                     price_diff = abs(float(recent_snapshot.price) - float(price_data.price))
                                     price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
                                     
                                     if price_change_pct > 2.0:
-                                        snapshot = PriceSnapshot(
+                                        await _upsert_price_snapshot(
+                                            db=db,
                                             card_id=card.id,
                                             marketplace_id=cardtrader_mp.id,
                                             snapshot_time=now,
@@ -481,7 +540,6 @@ async def _collect_price_data_async() -> dict[str, Any]:
                                             max_price=price_data.price_high,
                                             num_listings=price_data.num_listings,
                                         )
-                                        db.add(snapshot)
                                         results["cardtrader_snapshots"] += 1
                                         results["total_snapshots"] += 1
                                     
@@ -507,6 +565,183 @@ async def _collect_price_data_async() -> dict[str, Any]:
                 else:
                     logger.info("CardTrader API token not configured - skipping CardTrader collection")
                 
+                # Collect prices from Manapool
+                if settings.manapool_api_token:
+                    from app.services.ingestion.adapters.manapool import ManapoolAdapter
+                    manapool_config = AdapterConfig(
+                        base_url="https://api.manapool.com",
+                        api_url="https://api.manapool.com",
+                        api_key=settings.manapool_api_token,
+                        rate_limit_seconds=0.1,  # 10 requests per second
+                        timeout_seconds=30.0,
+                    )
+                    manapool = ManapoolAdapter(manapool_config)
+                    manapool_mp = await _get_or_create_manapool_marketplace(db)
+                    
+                    logger.info("Collecting Manapool price data", card_count=len(cards))
+                    
+                    for i, card in enumerate(cards):
+                        try:
+                            price_data = await manapool.fetch_price(
+                                card_name=card.name,
+                                set_code=card.set_code,
+                                collector_number=card.collector_number,
+                                scryfall_id=card.scryfall_id,
+                            )
+                            
+                            if price_data and price_data.price > 0:
+                                now = datetime.now(timezone.utc)
+                                two_hours_ago = now - timedelta(hours=2)
+                                recent_snapshot_query = select(PriceSnapshot).where(
+                                    and_(
+                                        PriceSnapshot.card_id == card.id,
+                                        PriceSnapshot.marketplace_id == manapool_mp.id,
+                                        PriceSnapshot.snapshot_time >= two_hours_ago,
+                                    )
+                                ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+                                recent_result = await db.execute(recent_snapshot_query)
+                                recent_snapshot = recent_result.scalar_one_or_none()
+                                
+                                if not recent_snapshot:
+                                    await _upsert_price_snapshot(
+                                        db=db,
+                                        card_id=card.id,
+                                        marketplace_id=manapool_mp.id,
+                                        snapshot_time=now,
+                                        price=price_data.price,
+                                        currency=price_data.currency,
+                                        price_foil=price_data.price_foil,
+                                        min_price=price_data.price_low,
+                                        max_price=price_data.price_high,
+                                        num_listings=price_data.num_listings,
+                                    )
+                                    results["manapool_snapshots"] += 1
+                                    results["total_snapshots"] += 1
+                                else:
+                                    price_diff = abs(float(recent_snapshot.price) - float(price_data.price))
+                                    price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
+                                    
+                                    if price_change_pct > 2.0:
+                                        await _upsert_price_snapshot(
+                                            db=db,
+                                            card_id=card.id,
+                                            marketplace_id=manapool_mp.id,
+                                            snapshot_time=now,
+                                            price=price_data.price,
+                                            currency=price_data.currency,
+                                            price_foil=price_data.price_foil,
+                                            min_price=price_data.price_low,
+                                            max_price=price_data.price_high,
+                                            num_listings=price_data.num_listings,
+                                        )
+                                        results["manapool_snapshots"] += 1
+                                        results["total_snapshots"] += 1
+                        
+                        except Exception as e:
+                            if i < 5:
+                                logger.info(
+                                    "Manapool price fetch failed",
+                                    card_id=card.id,
+                                    card_name=card.name,
+                                    error=str(e),
+                                )
+                            else:
+                                logger.debug("Manapool price fetch failed", card_id=card.id, error=str(e))
+                            continue
+                    
+                    await manapool.close()
+                else:
+                    logger.info("Manapool API token not configured - skipping Manapool collection")
+                
+                # Collect prices from TCGPlayer
+                if settings.tcgplayer_api_key and settings.tcgplayer_api_secret:
+                    from app.services.ingestion.adapters.tcgplayer import TCGPlayerAdapter
+                    tcgplayer_config = AdapterConfig(
+                        base_url="https://api.tcgplayer.com",
+                        api_url="https://api.tcgplayer.com",
+                        api_key=settings.tcgplayer_api_key,
+                        api_secret=settings.tcgplayer_api_secret,
+                        rate_limit_seconds=0.6,  # 100 requests per minute
+                        timeout_seconds=30.0,
+                    )
+                    tcgplayer = TCGPlayerAdapter(tcgplayer_config)
+                    tcgplayer_mp = await _get_or_create_tcgplayer_marketplace(db)
+                    
+                    logger.info("Collecting TCGPlayer price data", card_count=len(cards))
+                    
+                    for i, card in enumerate(cards):
+                        try:
+                            price_data = await tcgplayer.fetch_price(
+                                card_name=card.name,
+                                set_code=card.set_code,
+                                collector_number=card.collector_number,
+                                scryfall_id=card.scryfall_id,
+                            )
+                            
+                            if price_data and price_data.price > 0:
+                                now = datetime.now(timezone.utc)
+                                two_hours_ago = now - timedelta(hours=2)
+                                recent_snapshot_query = select(PriceSnapshot).where(
+                                    and_(
+                                        PriceSnapshot.card_id == card.id,
+                                        PriceSnapshot.marketplace_id == tcgplayer_mp.id,
+                                        PriceSnapshot.snapshot_time >= two_hours_ago,
+                                    )
+                                ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+                                recent_result = await db.execute(recent_snapshot_query)
+                                recent_snapshot = recent_result.scalar_one_or_none()
+                                
+                                if not recent_snapshot:
+                                    await _upsert_price_snapshot(
+                                        db=db,
+                                        card_id=card.id,
+                                        marketplace_id=tcgplayer_mp.id,
+                                        snapshot_time=now,
+                                        price=price_data.price,
+                                        currency=price_data.currency,
+                                        price_foil=price_data.price_foil,
+                                        min_price=price_data.price_low,
+                                        max_price=price_data.price_high,
+                                        num_listings=price_data.num_listings,
+                                    )
+                                    results["tcgplayer_snapshots"] += 1
+                                    results["total_snapshots"] += 1
+                                else:
+                                    price_diff = abs(float(recent_snapshot.price) - float(price_data.price))
+                                    price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
+                                    
+                                    if price_change_pct > 2.0:
+                                        await _upsert_price_snapshot(
+                                            db=db,
+                                            card_id=card.id,
+                                            marketplace_id=tcgplayer_mp.id,
+                                            snapshot_time=now,
+                                            price=price_data.price,
+                                            currency=price_data.currency,
+                                            price_foil=price_data.price_foil,
+                                            min_price=price_data.price_low,
+                                            max_price=price_data.price_high,
+                                            num_listings=price_data.num_listings,
+                                        )
+                                        results["tcgplayer_snapshots"] += 1
+                                        results["total_snapshots"] += 1
+                        
+                        except Exception as e:
+                            if i < 5:
+                                logger.info(
+                                    "TCGPlayer price fetch failed",
+                                    card_id=card.id,
+                                    card_name=card.name,
+                                    error=str(e),
+                                )
+                            else:
+                                logger.debug("TCGPlayer price fetch failed", card_id=card.id, error=str(e))
+                            continue
+                    
+                    await tcgplayer.close()
+                else:
+                    logger.info("TCGPlayer API credentials not configured - skipping TCGPlayer collection")
+                
                 await db.commit()
                 results["completed_at"] = datetime.now(timezone.utc).isoformat()
                 
@@ -515,6 +750,8 @@ async def _collect_price_data_async() -> dict[str, Any]:
                     cards_processed=results["cards_processed"],
                     scryfall_snapshots=results["scryfall_snapshots"],
                     cardtrader_snapshots=results.get("cardtrader_snapshots", 0),
+                    manapool_snapshots=results.get("manapool_snapshots", 0),
+                    tcgplayer_snapshots=results.get("tcgplayer_snapshots", 0),
                     backfilled_snapshots=results["backfilled_snapshots"],
                     total_snapshots=results["total_snapshots"],
                     errors_count=len(results["errors"]),
@@ -568,6 +805,52 @@ async def _get_or_create_cardtrader_marketplace(db: AsyncSession) -> Marketplace
             supports_api=True,
             default_currency="USD",  # Default to USD for USD listings tracking
             rate_limit_seconds=0.1,  # 10 requests per second
+        )
+        db.add(mp)
+        await db.flush()
+    
+    return mp
+
+
+async def _get_or_create_manapool_marketplace(db: AsyncSession) -> Marketplace:
+    """Get or create Manapool marketplace entry."""
+    query = select(Marketplace).where(Marketplace.slug == "manapool")
+    result = await db.execute(query)
+    mp = result.scalar_one_or_none()
+    
+    if not mp:
+        mp = Marketplace(
+            name="Manapool",
+            slug="manapool",
+            base_url="https://manapool.com",
+            api_url="https://api.manapool.com",
+            is_enabled=True,
+            supports_api=True,
+            default_currency="USD",
+            rate_limit_seconds=0.1,  # 10 requests per second
+        )
+        db.add(mp)
+        await db.flush()
+    
+    return mp
+
+
+async def _get_or_create_tcgplayer_marketplace(db: AsyncSession) -> Marketplace:
+    """Get or create TCGPlayer marketplace entry."""
+    query = select(Marketplace).where(Marketplace.slug == "tcgplayer")
+    result = await db.execute(query)
+    mp = result.scalar_one_or_none()
+    
+    if not mp:
+        mp = Marketplace(
+            name="TCGPlayer",
+            slug="tcgplayer",
+            base_url="https://www.tcgplayer.com",
+            api_url="https://api.tcgplayer.com",
+            is_enabled=True,
+            supports_api=True,
+            default_currency="USD",
+            rate_limit_seconds=0.6,  # 100 requests per minute
         )
         db.add(mp)
         await db.flush()
@@ -704,8 +987,9 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                             recent_snapshot = recent_result.scalar_one_or_none()
                             
                             if not recent_snapshot:
-                                # Create new snapshot
-                                snapshot = PriceSnapshot(
+                                # Create new snapshot using upsert (prevents race conditions)
+                                await _upsert_price_snapshot(
+                                    db=db,
                                     card_id=card.id,
                                     marketplace_id=marketplace.id,
                                     snapshot_time=now,
@@ -713,25 +997,22 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                                     currency=price_data.currency,
                                     price_foil=price_data.price_foil,
                                 )
-                                db.add(snapshot)
                                 results["snapshots_created"] += 1
                                 
-                                # Backfill historical snapshots for instant charting
-                                backfilled = await _backfill_historical_snapshots_for_charting(
+                                # Note: Historical data should come from MTGJSON, not synthetic backfill
+                                # Chart endpoints use interpolation for gaps in real data
+                            else:
+                                # Always update inventory card prices (they change frequently)
+                                # Use upsert to update with new timestamp
+                                await _upsert_price_snapshot(
                                     db=db,
                                     card_id=card.id,
                                     marketplace_id=marketplace.id,
-                                    current_price=float(price_data.price),
-                                    current_currency=price_data.currency,
-                                    current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
                                     snapshot_time=now,
+                                    price=price_data.price,
+                                    currency=price_data.currency,
+                                    price_foil=price_data.price_foil,
                                 )
-                                results["backfilled_snapshots"] += backfilled
-                            else:
-                                # Always update inventory card prices (they change frequently)
-                                recent_snapshot.price = price_data.price
-                                recent_snapshot.price_foil = price_data.price_foil
-                                recent_snapshot.snapshot_time = now
                                 results["snapshots_updated"] += 1
                         
                         # Collect prices from CardTrader (European market data) for inventory cards
@@ -758,8 +1039,9 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                                     recent_snapshot = recent_result.scalar_one_or_none()
                                     
                                     if not recent_snapshot:
-                                        # Create new snapshot
-                                        snapshot = PriceSnapshot(
+                                        # Create new snapshot using upsert (prevents race conditions)
+                                        await _upsert_price_snapshot(
+                                            db=db,
                                             card_id=card.id,
                                             marketplace_id=cardtrader_mp.id,
                                             snapshot_time=now,
@@ -770,32 +1052,29 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                                             max_price=price_data.price_high,
                                             num_listings=price_data.num_listings,
                                         )
-                                        db.add(snapshot)
                                         results["snapshots_created"] += 1
                                         
-                                        # Backfill historical snapshots for instant charting
-                                        backfilled = await _backfill_historical_snapshots_for_charting(
-                                            db=db,
-                                            card_id=card.id,
-                                            marketplace_id=cardtrader_mp.id,
-                                            current_price=float(price_data.price),
-                                            current_currency=price_data.currency,
-                                            current_foil_price=float(price_data.price_foil) if price_data.price_foil else None,
-                                            snapshot_time=now,
-                                        )
-                                        results["backfilled_snapshots"] += backfilled
+                                        # Note: Historical data should come from MTGJSON, not synthetic backfill
+                                        # Chart endpoints use interpolation for gaps in real data
                                     else:
                                         # Update existing snapshot if price changed significantly
+                                        # Use upsert to prevent race conditions
                                         price_diff = abs(float(recent_snapshot.price) - float(price_data.price))
                                         price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
                                         
                                         if price_change_pct > 2.0:
-                                            recent_snapshot.price = price_data.price
-                                            recent_snapshot.price_foil = price_data.price_foil
-                                            recent_snapshot.snapshot_time = now
-                                            recent_snapshot.min_price = price_data.price_low
-                                            recent_snapshot.max_price = price_data.price_high
-                                            recent_snapshot.num_listings = price_data.num_listings
+                                            await _upsert_price_snapshot(
+                                                db=db,
+                                                card_id=card.id,
+                                                marketplace_id=cardtrader_mp.id,
+                                                snapshot_time=now,
+                                                price=price_data.price,
+                                                currency=price_data.currency,
+                                                price_foil=price_data.price_foil,
+                                                min_price=price_data.price_low,
+                                                max_price=price_data.price_high,
+                                                num_listings=price_data.num_listings,
+                                            )
                                             results["snapshots_updated"] += 1
                             
                             except Exception as e:

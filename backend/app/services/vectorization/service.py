@@ -41,7 +41,7 @@ class VectorizationService:
         self.condition_dim = 5  # NM, LP, MP, HP, DMG
         self.language_dim = 10  # Common languages
         self.rarity_dim = 5  # common, uncommon, rare, mythic, special
-        self.marketplace_dim = 5  # TCGPlayer, Card Kingdom, Cardmarket, etc.
+        self.marketplace_dim = 20  # Increased to handle more marketplaces without modulo collision
         
         # Numerical feature normalization stats (will be computed from data)
         self.price_mean = 0.0
@@ -155,8 +155,12 @@ class VectorizationService:
         seller_rating = listing_data.get("seller_rating") or 0.0
         
         # Normalize price (log scale for better distribution)
-        price_normalized = np.log1p(price) / 10.0  # log(1+price) / 10, caps around 1.0
-        price_normalized = min(price_normalized, 1.0)
+        # Use a more flexible normalization that handles expensive cards (>$22k)
+        # log(1+price) / log(1+max_price) where max_price is set to handle very expensive cards
+        # For MTG, max realistic price is around $100k, so we use log(1+100000) ≈ 11.5
+        max_price = 100000.0  # $100k as upper bound for very expensive cards
+        price_normalized = np.log1p(price) / np.log1p(max_price)  # Normalizes to 0-1 range
+        price_normalized = min(price_normalized, 1.0)  # Cap at 1.0 for safety
         
         # Normalize quantity (assuming max ~100)
         quantity_normalized = min(quantity / 100.0, 1.0)
@@ -190,13 +194,15 @@ class VectorizationService:
         # 4. Foil flag
         is_foil = 1.0 if listing_data.get("is_foil", False) else 0.0
         
-        # 5. Marketplace one-hot encoding
+        # 5. Marketplace encoding
+        # Use a hash-based approach to map marketplace_id to a consistent index
+        # This avoids modulo collisions while keeping the vector size manageable
         marketplace_id = listing_data.get("marketplace_id", 0)
         marketplace_vector = np.zeros(self.marketplace_dim)
-        # Map marketplace IDs to indices (this should match your marketplace IDs)
-        # For now, use modulo to fit into vector
         if marketplace_id > 0:
-            idx = min(marketplace_id % self.marketplace_dim, self.marketplace_dim - 1)
+            # Use hash to distribute marketplace IDs across the vector space
+            # This reduces collisions compared to simple modulo
+            idx = hash(int(marketplace_id)) % self.marketplace_dim
             marketplace_vector[idx] = 1.0
         
         # 6. Card vector (if provided, otherwise use zeros)

@@ -12,6 +12,8 @@ from app.models.settings import AppSettings
 from app.models.inventory import InventoryItem, InventoryRecommendation, InventoryCondition
 from app.models.user import User
 from app.models.feature_vector import CardFeatureVector, ListingFeatureVector
+from app.models.tournament import Tournament, Decklist, CardTournamentUsage
+from app.models.news import NewsArticle, CardNewsMention
 
 __all__ = [
     "Card",
@@ -29,5 +31,10 @@ __all__ = [
     "User",
     "CardFeatureVector",
     "ListingFeatureVector",
+    "Tournament",
+    "Decklist",
+    "CardTournamentUsage",
+    "NewsArticle",
+    "CardNewsMention",
 ]
 
