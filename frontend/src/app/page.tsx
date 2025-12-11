@@ -49,36 +49,39 @@ export default function LandingPage() {
           fill
           priority
           sizes="100vw"
-          className="object-cover object-center"
+          className="object-contain object-center"
           style={{ 
-            objectFit: 'cover',
+            objectFit: 'contain',
             objectPosition: 'center'
           }}
           unoptimized={false}
         />
+        {/* Fill remaining space with dark background matching image */}
+        <div className="absolute inset-0 bg-[#1a1612] -z-10" />
         {/* Overlay for readability - reduced opacity since image has text */}
         <div className="absolute inset-0 bg-black/20" />
       </div>
 
+      {/* Top Right Login Button - Fixed position */}
+      <div className="fixed top-4 right-4 z-50">
+        {isAuthenticated ? (
+          <Link href="/inventory">
+            <Button variant="primary" size="sm" className="bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg">
+              Go to Inventory
+            </Button>
+          </Link>
+        ) : (
+          <Link href="/login">
+            <Button variant="primary" size="sm" className="bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg">
+              <LogIn className="w-4 h-4 mr-2" />
+              Login
+            </Button>
+          </Link>
+        )}
+      </div>
+
       {/* Content */}
       <div className="relative z-10 w-full max-w-7xl mx-auto px-4 py-8">
-        {/* Top Right Login Button */}
-        <div className="absolute top-4 right-4 z-20">
-          {isAuthenticated ? (
-            <Link href="/inventory">
-              <Button variant="primary" size="sm">
-                Go to Inventory
-              </Button>
-            </Link>
-          ) : (
-            <Link href="/login">
-              <Button variant="primary" size="sm" className="bg-gradient-to-r from-amber-500 to-orange-600">
-                <LogIn className="w-4 h-4 mr-2" />
-                Login
-              </Button>
-            </Link>
-          )}
-        </div>
 
         {/* Centered Search Section */}
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
