@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { LogIn, TrendingUp } from 'lucide-react';
+import { LogIn, TrendingUp, Search } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { SearchBar } from '@/components/cards/SearchBar';
+import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Loading } from '@/components/ui/Loading';
 import { getTopMovers } from '@/lib/api';
@@ -25,10 +25,10 @@ export default function LandingPage() {
     queryFn: () => getTopMovers('24h'),
   });
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim()) {
-      router.push(`/cards?q=${encodeURIComponent(query.trim())}`);
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/cards?q=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 
@@ -93,13 +93,26 @@ export default function LandingPage() {
           </div>
 
           {/* Search Bar */}
-          <div className="w-full max-w-2xl">
-            <SearchBar
-              onSearch={handleSearch}
-              placeholder="Search for MTG cards..."
-              value={searchQuery}
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="w-full max-w-2xl">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70" />
+              <Input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search for MTG cards..."
+                className="pl-10 pr-24 bg-white/10 backdrop-blur-md border-white/20 text-white placeholder:text-white/60 focus:bg-white/15 focus:border-white/30"
+              />
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
+              >
+                Search
+              </Button>
+            </div>
+          </form>
 
           {/* Valued Cards Section */}
           {moversLoading ? (
