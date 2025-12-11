@@ -293,3 +293,4 @@ Processing time scales linearly with the number of cards. For most production sc
 
 The system is designed to handle incremental updates efficiently, so regular runs typically process only a small subset of cards, keeping actual runtime much lower than full database estimates.
 
+

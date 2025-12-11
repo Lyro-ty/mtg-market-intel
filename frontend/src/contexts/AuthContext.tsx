@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (credentials: LoginCredentials) => {
     await apiLogin(credentials);
     await refreshUser();
-    router.push('/');
+    router.push('/inventory');
   };
 
   const register = async (data: RegisterData) => {
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // After registration, automatically log in
       await apiLogin({ email: data.email, password: data.password });
       await refreshUser();
-      router.push('/');
+      router.push('/inventory');
     } catch (error) {
       // Re-throw with better error message
       const message = error instanceof Error ? error.message : 'Registration failed';

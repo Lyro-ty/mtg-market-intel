@@ -1,356 +1,162 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, DollarSign, Package, Activity, ArrowRight } from 'lucide-react';
+import { LogIn, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { LoadingPage } from '@/components/ui/Loading';
-import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
-import { ColorDistributionChart } from '@/components/charts/ColorDistributionChart';
-import {
-  getMarketOverview,
-  getMarketIndex,
-  getTopMovers,
-  getColorDistribution,
-} from '@/lib/api';
-import { formatCurrency, formatPercent, formatNumber } from '@/lib/utils';
-import type { MarketIndex, VolumeByFormat, ColorDistribution } from '@/types';
+import Image from 'next/image';
+import { SearchBar } from '@/components/cards/SearchBar';
+import { Button } from '@/components/ui/Button';
+import { Loading } from '@/components/ui/Loading';
+import { getTopMovers } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { formatCurrency, formatPercent } from '@/lib/utils';
+import type { TopMover } from '@/types';
 
-export default function DashboardPage() {
-  const [marketIndexRange, setMarketIndexRange] = useState<'7d' | '30d' | '90d' | '1y'>('7d');
-  const [marketIndexFoil, setMarketIndexFoil] = useState<boolean | undefined>(undefined);
+export default function LandingPage() {
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Market Overview Stats
-  // Refetch every 2 minutes for real-time data (matches price collection interval)
-  const { data: overview, isLoading: overviewLoading } = useQuery({
-    queryKey: ['market-overview'],
-    queryFn: getMarketOverview,
-    refetchInterval: 2 * 60 * 1000, // 2 minutes in milliseconds
-    refetchIntervalInBackground: true,
-  });
-
-  // Market Index Chart
-  // Refetch every 2 minutes for real-time data
-  const { data: marketIndex, isLoading: indexLoading } = useQuery({
-    queryKey: ['market-index', marketIndexRange, marketIndexFoil],
-    queryFn: () => getMarketIndex(marketIndexRange, undefined, false, marketIndexFoil),
-    refetchInterval: 2 * 60 * 1000, // 2 minutes in milliseconds
-    refetchIntervalInBackground: true,
-  });
-
-  // Top Movers (24h)
-  // Refetch every 2 minutes for real-time data
+  // Get top movers (valued cards) to display
   const { data: topMovers, isLoading: moversLoading } = useQuery({
     queryKey: ['top-movers', '24h'],
     queryFn: () => getTopMovers('24h'),
-    refetchInterval: 2 * 60 * 1000, // 2 minutes in milliseconds
-    refetchIntervalInBackground: true,
   });
 
-  // Color Distribution
-  // Refetch every 5 minutes
-  const { data: colorDistribution, isLoading: colorLoading } = useQuery({
-    queryKey: ['color-distribution', '7d'],
-    queryFn: () => getColorDistribution('7d'),
-    refetchInterval: 5 * 60 * 1000, // 5 minutes in milliseconds
-    refetchIntervalInBackground: true,
-  });
-
-  // Progressive loading - show content as it becomes available
-  const hasCriticalError = !overview && !overviewLoading;
-  
-  // Show loading only if we have no data at all
-  if (overviewLoading && !overview && !marketIndex && !topMovers && !colorDistribution) {
-    return <LoadingPage />;
-  }
-  
-  // Show error state only if critical data fails after loading completes
-  if (hasCriticalError) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-red-500 mb-2">Failed to load market data</p>
-        <p className="text-sm text-[rgb(var(--muted-foreground))]">
-          Please try refreshing the page
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-8 animate-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-[rgb(var(--foreground))]">Market Dashboard</h1>
-        <p className="text-[rgb(var(--muted-foreground))] mt-1">
-          MTG market overview and analytics
-        </p>
-      </div>
-
-      {/* Market Overview Stats Strip */}
-      {overviewLoading && !overview ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <div className="animate-pulse">
-                  <div className="h-4 bg-[rgb(var(--secondary))] rounded w-3/4 mb-2"></div>
-                  <div className="h-8 bg-[rgb(var(--secondary))] rounded w-1/2 mb-1"></div>
-                  <div className="h-3 bg-[rgb(var(--secondary))] rounded w-2/3"></div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : overview ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            title="Total Cards Tracked"
-            value={formatNumber(overview.totalCardsTracked)}
-            subtitle={`${formatNumber(overview.totalListings || 0)} active listings`}
-            icon={Package}
-          />
-          <StatCard
-            title="24h Trade Volume"
-            value={formatCurrency(overview.volume24hUsd)}
-            subtitle="USD trading volume"
-            icon={DollarSign}
-          />
-          <StatCard
-            title="24h Avg Price Change"
-            value={
-              overview.avgPriceChange24hPct !== null
-                ? formatPercent(overview.avgPriceChange24hPct)
-                : 'N/A'
-            }
-            subtitle="Across all tracked cards"
-            icon={TrendingUp}
-            valueColor={
-              overview.avgPriceChange24hPct !== null
-                ? overview.avgPriceChange24hPct > 0
-                  ? 'text-green-500'
-                  : overview.avgPriceChange24hPct < 0
-                  ? 'text-red-500'
-                  : undefined
-                : undefined
-            }
-            badge={
-              overview.avgPriceChange24hPct !== null
-                ? {
-                    value: overview.avgPriceChange24hPct > 0 ? '+' : '',
-                    label: formatPercent(overview.avgPriceChange24hPct),
-                  }
-                : undefined
-            }
-          />
-          <StatCard
-            title="Active Formats Tracked"
-            value={formatNumber(overview.activeFormatsTracked)}
-            subtitle="Different formats"
-            icon={Activity}
-          />
-        </div>
-      ) : null}
-
-      {/* Global MTG Market Index */}
-      {indexLoading && !marketIndex ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Market Index</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
-          </CardContent>
-        </Card>
-      ) : marketIndex ? (
-        <MarketIndexChart
-          data={marketIndex}
-          onRangeChange={(range) => setMarketIndexRange(range)}
-          onFoilChange={(isFoil) => setMarketIndexFoil(isFoil)}
-          showFoilToggle={true}
-        />
-      ) : null}
-
-      {/* Top Movers: Gainers & Losers */}
-      {moversLoading && !topMovers ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[1, 2].map((i) => (
-            <Card key={i}>
-              <CardHeader>
-                <CardTitle>Loading...</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[1, 2, 3].map((j) => (
-                    <div key={j} className="h-16 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : topMovers ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Gainers */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-500" />
-                <CardTitle>Top Gainers (24h)</CardTitle>
-              </div>
-              <Link
-                href="/cards?sort=gainers"
-                className="text-sm text-primary-500 hover:text-primary-400 flex items-center gap-1"
-              >
-                View all <ArrowRight className="w-4 h-4" />
-              </Link>
-            </CardHeader>
-            <CardContent>
-              {topMovers.gainers.length > 0 ? (
-                <div className="space-y-3">
-                  {topMovers.gainers.map((mover, index) => (
-                    <MoverItem key={`gainer-${index}`} mover={mover} type="gain" />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[rgb(var(--muted-foreground))] text-center py-4">
-                  No data available
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Top Losers */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="w-5 h-5 text-red-500" />
-                <CardTitle>Top Losers (24h)</CardTitle>
-              </div>
-              <Link
-                href="/cards?sort=losers"
-                className="text-sm text-primary-500 hover:text-primary-400 flex items-center gap-1"
-              >
-                View all <ArrowRight className="w-4 h-4" />
-              </Link>
-            </CardHeader>
-            <CardContent>
-              {topMovers.losers.length > 0 ? (
-                <div className="space-y-3">
-                  {topMovers.losers.map((mover, index) => (
-                    <MoverItem key={`loser-${index}`} mover={mover} type="loss" />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[rgb(var(--muted-foreground))] text-center py-4">
-                  No data available
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
-
-      {/* Color Distribution */}
-      {colorLoading && !colorDistribution ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Color Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 animate-pulse bg-[rgb(var(--secondary))] rounded"></div>
-          </CardContent>
-        </Card>
-      ) : colorDistribution ? (
-        <ColorDistributionChart data={colorDistribution} />
-      ) : null}
-    </div>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  valueColor,
-  badge,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-  icon: React.ComponentType<{ className?: string }>;
-  valueColor?: string;
-  badge?: { value: string; label: string };
-}) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <p className="text-sm text-[rgb(var(--muted-foreground))]">{title}</p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <p className={`text-2xl font-bold ${valueColor || 'text-[rgb(var(--foreground))]'}`}>
-                {value}
-              </p>
-              {badge && (
-                <Badge
-                  variant={badge.value.startsWith('+') ? 'success' : 'danger'}
-                  className="text-xs"
-                >
-                  {badge.label}
-                </Badge>
-              )}
-            </div>
-            <p className="text-xs text-[rgb(var(--muted-foreground))] mt-1">{subtitle}</p>
-          </div>
-          <div className="p-3 rounded-lg bg-[rgb(var(--secondary))]">
-            <Icon className="w-6 h-6 text-[rgb(var(--muted-foreground))]" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MoverItem({
-  mover,
-  type,
-}: {
-  mover: {
-    cardName: string;
-    setCode: string;
-    format: string;
-    currentPriceUsd: number;
-    changePct: number;
-    volume: number;
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim()) {
+      router.push(`/cards?q=${encodeURIComponent(query.trim())}`);
+    }
   };
-  type: 'gain' | 'loss';
-}) {
+
+  // Combine gainers and losers, take top 8 most valuable
+  const valuedCards = topMovers
+    ? [...topMovers.gainers, ...topMovers.losers]
+        .sort((a, b) => b.currentPriceUsd - a.currentPriceUsd)
+        .slice(0, 8)
+    : [];
+
   return (
-    <div className="flex items-center justify-between py-2 hover:bg-[rgb(var(--secondary))]/50 rounded-lg px-2 -mx-2 transition-colors">
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <p className="font-medium text-[rgb(var(--foreground))]">{mover.cardName}</p>
-          <Badge variant="default" className="text-xs">
-            {mover.setCode}
-          </Badge>
-          <Badge variant="info" className="text-xs">
-            {mover.format}
-          </Badge>
-        </div>
-        <p className="text-xs text-[rgb(var(--muted-foreground))] mt-1">
-          Volume: {formatNumber(mover.volume)}
-        </p>
+    <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
+      {/* Background Image */}
+      <div className="absolute inset-0 z-0">
+        <Image
+          src="/background.jpg"
+          alt="Dualcaster Deals Background"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-center"
+          style={{ 
+            objectFit: 'cover',
+            objectPosition: 'center'
+          }}
+          unoptimized={false}
+        />
+        {/* Overlay for readability - reduced opacity since image has text */}
+        <div className="absolute inset-0 bg-black/20" />
       </div>
-      <div className="text-right">
-        <p className="font-medium text-[rgb(var(--foreground))]">
-          {formatCurrency(mover.currentPriceUsd)}
-        </p>
-        <p className={`text-sm font-medium ${type === 'gain' ? 'text-green-500' : 'text-red-500'}`}>
-          {formatPercent(mover.changePct)}
-        </p>
+
+      {/* Content */}
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 py-8">
+        {/* Top Right Login Button */}
+        <div className="absolute top-4 right-4 z-20">
+          {isAuthenticated ? (
+            <Link href="/inventory">
+              <Button variant="primary" size="sm">
+                Go to Inventory
+              </Button>
+            </Link>
+          ) : (
+            <Link href="/login">
+              <Button variant="primary" size="sm" className="bg-gradient-to-r from-amber-500 to-orange-600">
+                <LogIn className="w-4 h-4 mr-2" />
+                Login
+              </Button>
+            </Link>
+          )}
+        </div>
+
+        {/* Centered Search Section */}
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
+          {/* Logo/Branding - Image already contains "DUALCASTERDEALS" text, so we show subtitle only */}
+          <div className="text-center space-y-4">
+            <p className="text-xl md:text-2xl text-white/90 drop-shadow-md font-medium">
+              MTG Market Intelligence & Trading Platform
+            </p>
+          </div>
+
+          {/* Search Bar */}
+          <div className="w-full max-w-2xl">
+            <SearchBar
+              onSearch={handleSearch}
+              placeholder="Search for MTG cards..."
+              value={searchQuery}
+            />
+          </div>
+
+          {/* Valued Cards Section */}
+          {moversLoading ? (
+            <div className="w-full max-w-6xl mt-12">
+              <Loading />
+            </div>
+          ) : valuedCards.length > 0 ? (
+            <div className="w-full max-w-6xl mt-12 space-y-6">
+              <div className="text-center">
+                <h2 className="text-2xl md:text-3xl font-bold text-white drop-shadow-lg mb-2 flex items-center justify-center gap-2">
+                  <TrendingUp className="w-6 h-6" />
+                  Valued Cards
+                </h2>
+                <p className="text-white/80 text-sm md:text-base">
+                  Top cards by value (24h)
+                </p>
+              </div>
+              
+              {/* Cards Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {valuedCards.map((card, index) => (
+                  <Link
+                    key={`${card.cardName}-${card.setCode}-${index}`}
+                    href={`/cards?q=${encodeURIComponent(card.cardName)}`}
+                    className="group"
+                  >
+                    <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20 hover:bg-white/20 transition-all cursor-pointer">
+                      <div className="space-y-2">
+                        <h3 className="font-semibold text-white text-sm truncate group-hover:text-amber-400 transition-colors">
+                          {card.cardName}
+                        </h3>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-white/70">{card.setCode}</span>
+                          <span className="text-sm font-bold text-white">
+                            {formatCurrency(card.currentPriceUsd)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-white/60">{card.format}</span>
+                          <span
+                            className={`text-xs font-medium ${
+                              card.changePct > 0
+                                ? 'text-green-400'
+                                : card.changePct < 0
+                                ? 'text-red-400'
+                                : 'text-white/70'
+                            }`}
+                          >
+                            {card.changePct > 0 ? '+' : ''}
+                            {formatPercent(card.changePct)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
