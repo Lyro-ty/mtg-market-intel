@@ -7,7 +7,9 @@ This task:
 3. Combines and stores in database
 4. Ensures data quality for ML training and dashboard charts
 """
+import tempfile
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -16,6 +18,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 import json
+import ijson
 
 from app.models import Card, Marketplace, PriceSnapshot
 from app.services.ingestion import ScryfallAdapter
@@ -108,31 +111,19 @@ async def _download_scryfall_bulk_data_async() -> dict[str, Any]:
                 updated_at=target_file.get("updated_at"),
             )
             
-            # Download file (this can be very large, so we stream it)
-            # NOTE: For very large files (100MB+), consider using a streaming JSON parser
-            # For now, we accumulate the entire file in memory which works for most cases
-            logger.info("Downloading bulk data file", uri=download_uri)
-            async with client.stream("GET", download_uri) as response:
-                response.raise_for_status()
-                
-                # Accumulate file content
-                buffer = b""
-                async for chunk in response.aiter_bytes(chunk_size=8192):
-                    buffer += chunk
-                
-                # Parse the complete file
-                # TODO: For very large files, consider using ijson for streaming JSON parsing
-                # to avoid loading entire file into memory
-                try:
-                    cards_data = json.loads(buffer.decode("utf-8"))
-                    logger.info("Parsed bulk data file", total_cards=len(cards_data))
-                except json.JSONDecodeError as e:
-                    logger.error("Failed to parse bulk data JSON", error=str(e))
-                    return results
-                except MemoryError as e:
-                    logger.error("Insufficient memory to parse bulk data file", error=str(e))
-                    results["errors"].append("File too large to process in memory. Consider using streaming parser.")
-                    return results
+            # Download to temp file, then stream parse using ijson to avoid loading entire file into memory
+            # This is critical for large files (100MB+) and prevents OOM errors
+            logger.info("Downloading bulk data file to temp file", uri=download_uri)
+            
+            # Download to temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.json') as tmp_file:
+                tmp_path = Path(tmp_file.name)
+                async with client.stream("GET", download_uri) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        tmp_file.write(chunk)
+            
+            logger.info("Download complete, starting stream parsing", size_mb=tmp_path.stat().st_size / (1024 * 1024))
             
             # Process cards
             async with session_maker() as db:
@@ -140,7 +131,7 @@ async def _download_scryfall_bulk_data_async() -> dict[str, Any]:
                 marketplace_map = {
                     "usd": ("tcgplayer", "TCGPlayer", "USD"),
                     "eur": ("cardmarket", "Cardmarket", "EUR"),
-                    "tix": ("mtgo", "MTGO", "TIX"),
+                    # Note: Excluding "tix" (MTGO) - only physical cards per requirements
                 }
                 
                 marketplaces = {}
@@ -161,31 +152,79 @@ async def _download_scryfall_bulk_data_async() -> dict[str, Any]:
                         await db.flush()
                     marketplaces[price_key] = marketplace
                 
-                # Process each card
+                # Stream parse JSON and process cards in batches
+                # This avoids loading the entire file into memory
                 processed = 0
                 snapshots_created = 0
-                for card_data in cards_data:
-                    try:
-                        # process_bulk_card returns number of snapshots created
-                        snapshots = await process_bulk_card(card_data, db, marketplaces)
-                        if snapshots > 0:
-                            snapshots_created += snapshots
-                        processed += 1
-                        results["cards_processed"] = processed
-                        results["snapshots_created"] = snapshots_created
-                        
-                        # Commit in batches to avoid memory issues
-                        if processed % 1000 == 0:
-                            await db.commit()
-                            logger.debug("Processed cards batch", count=processed, snapshots=snapshots_created)
-                    
-                    except Exception as e:
-                        error_msg = f"Card {card_data.get('name', 'unknown')}: {str(e)}"
-                        results["errors"].append(error_msg)
-                        logger.warning("Failed to process bulk card", error=str(e))
-                        continue
+                batch = []
+                batch_size = 1000
                 
-                await db.commit()
+                try:
+                    with open(tmp_path, 'rb') as f:
+                        # Use ijson to parse JSON array items as they stream in
+                        # ijson.items() parses each item in the array without loading the whole file
+                        parser = ijson.items(f, 'item')
+                        
+                        for card_data in parser:
+                            try:
+                                # Filter to physical cards only (exclude MTGO/digital)
+                                # Scryfall uses "games" field to indicate card availability
+                                games = card_data.get("games", [])
+                                if "paper" not in games:
+                                    continue  # Skip digital-only cards
+                                
+                                batch.append(card_data)
+                                
+                                # Process batch when it reaches batch_size
+                                if len(batch) >= batch_size:
+                                    for card_data_item in batch:
+                                        try:
+                                            snapshots = await process_bulk_card(card_data_item, db, marketplaces)
+                                            if snapshots > 0:
+                                                snapshots_created += snapshots
+                                            processed += 1
+                                        except Exception as e:
+                                            error_msg = f"Card {card_data_item.get('name', 'unknown')}: {str(e)}"
+                                            results["errors"].append(error_msg)
+                                            logger.warning("Failed to process bulk card", error=str(e))
+                                            processed += 1
+                                    
+                                    # Commit batch
+                                    await db.commit()
+                                    results["cards_processed"] = processed
+                                    results["snapshots_created"] = snapshots_created
+                                    logger.debug("Processed cards batch", count=processed, snapshots=snapshots_created)
+                                    batch = []
+                            
+                            except Exception as e:
+                                logger.warning("Failed to parse card from stream", error=str(e))
+                                continue
+                        
+                        # Process remaining batch
+                        if batch:
+                            for card_data_item in batch:
+                                try:
+                                    snapshots = await process_bulk_card(card_data_item, db, marketplaces)
+                                    if snapshots > 0:
+                                        snapshots_created += snapshots
+                                    processed += 1
+                                except Exception as e:
+                                    error_msg = f"Card {card_data_item.get('name', 'unknown')}: {str(e)}"
+                                    results["errors"].append(error_msg)
+                                    logger.warning("Failed to process bulk card", error=str(e))
+                                    processed += 1
+                            
+                            await db.commit()
+                            results["cards_processed"] = processed
+                            results["snapshots_created"] = snapshots_created
+                
+                finally:
+                    # Clean up temp file
+                    try:
+                        tmp_path.unlink()
+                    except Exception as e:
+                        logger.warning("Failed to delete temp file", path=str(tmp_path), error=str(e))
+                
                 logger.info("Completed bulk data processing", processed=processed, snapshots=snapshots_created)
         
     except Exception as e:
@@ -244,11 +283,11 @@ async def process_bulk_card(
         except Exception:
             pass
     
-    # Process each price type
+    # Process each price type (physical cards only - exclude MTGO/TIX)
     for price_key, (slug, name, currency) in [
         ("usd", ("tcgplayer", "TCGPlayer", "USD")),
         ("eur", ("cardmarket", "Cardmarket", "EUR")),
-        ("tix", ("mtgo", "MTGO", "TIX")),
+        # Note: Excluding "tix" (MTGO) - only physical cards per requirements
     ]:
         price_value = prices.get(price_key)
         if price_value and float(price_value) > 0:
@@ -628,8 +667,9 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                     logger.info("Phase 4: Collecting current prices from CardTrader", cards=len(all_cards))
                     
                     # Get or create CardTrader marketplace
+                    # Use USD to match adapter default and chart queries
                     cardtrader_mp = await get_or_create_marketplace(
-                        "cardtrader", "CardTrader", "https://www.cardtrader.com", "EUR"
+                        "cardtrader", "CardTrader", "https://www.cardtrader.com", "USD"
                     )
                     
                     now = datetime.now(timezone.utc)
