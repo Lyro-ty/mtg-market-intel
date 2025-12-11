@@ -1,7 +1,7 @@
 """Add unique constraint to prevent duplicate price snapshots
 
-Revision ID: 009_add_price_snapshot_unique_constraint
-Revises: 008_add_price_snapshot_indexes
+Revision ID: 009_price_snapshot_unique
+Revises: 008_price_snapshot_idx
 Create Date: 2024-12-05
 
 This migration adds a unique constraint on (card_id, marketplace_id, snapshot_time)

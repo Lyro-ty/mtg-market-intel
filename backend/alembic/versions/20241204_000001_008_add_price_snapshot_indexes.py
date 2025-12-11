@@ -1,6 +1,6 @@
 """Add indexes for price snapshot chart queries
 
-Revision ID: 008_add_price_snapshot_indexes
+Revision ID: 008_price_snapshot_idx
 Revises: 007_fix_profit_pct
 Create Date: 2024-12-04
 

@@ -7,9 +7,22 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
-    async_sessionmaker,
     create_async_engine,
 )
+
+# async_sessionmaker was added in SQLAlchemy 1.4+
+# Check if it's available, provide helpful error if not
+try:
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+except ImportError as e:
+    import sys
+    raise ImportError(
+        f"async_sessionmaker is not available in your SQLAlchemy installation. "
+        f"This requires SQLAlchemy 1.4+ (you have an older version).\n"
+        f"Error: {e}\n"
+        f"Please install the correct version: pip install 'sqlalchemy[asyncio]>=2.0.0'\n"
+        f"Or run migrations inside Docker: docker-compose exec backend alembic upgrade head"
+    ) from e
 
 from app.core.config import settings
 
