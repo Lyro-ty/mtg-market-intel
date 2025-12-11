@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '008_add_price_snapshot_indexes'
+revision: str = '008_price_snapshot_idx'
 down_revision: Union[str, None] = '007_fix_profit_pct'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

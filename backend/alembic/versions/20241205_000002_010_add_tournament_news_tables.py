@@ -14,8 +14,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '010_add_tournament_news_tables'
-down_revision: Union[str, None] = '009_add_price_snapshot_unique_constraint'
+revision: str = '010_tournament_news'
+down_revision: Union[str, None] = '009_price_snapshot_unique'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -14,8 +14,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '009_add_price_snapshot_unique_constraint'
-down_revision: Union[str, None] = '008_add_price_snapshot_indexes'
+revision: str = '009_price_snapshot_unique'
+down_revision: Union[str, None] = '008_price_snapshot_idx'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
