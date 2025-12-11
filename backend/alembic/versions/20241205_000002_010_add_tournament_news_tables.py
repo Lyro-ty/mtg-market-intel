@@ -1,7 +1,7 @@
 """Add tournament and news tables for RAG data sources
 
-Revision ID: 010_add_tournament_news_tables
-Revises: 009_add_price_snapshot_unique_constraint
+Revision ID: 010_tournament_news
+Revises: 009_price_snapshot_unique
 Create Date: 2024-12-05
 
 This migration adds tables for tournament results and news articles

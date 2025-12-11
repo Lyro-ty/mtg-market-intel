@@ -692,24 +692,36 @@ async def _get_currency_index(
 @router.get("/index")
 async def get_market_index(
     range: str = Query("7d", regex="^(7d|30d|90d|1y)$"),
-    currency: Optional[str] = Query(None, regex="^(USD|EUR)$"),
-    separate_currencies: bool = Query(False),
+    currency: str = Query("USD", regex="^USD$", description="Only USD is supported"),
+    separate_currencies: bool = Query(
+        False,
+        description="USD-only mode; EUR charts are no longer supported",
+    ),
     is_foil: Optional[str] = Query(None, description="Filter by foil pricing. 'true' uses price_foil, 'false' excludes foil prices, None uses regular prices."),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get market index data for charting using time-bucketed price snapshots.
     
-    The market index is a normalized aggregate of card prices over time.
+    The market index is a normalized aggregate of USD card prices over time.
     Uses price snapshots grouped by time intervals (30 minutes for recent data,
-    larger buckets for longer ranges to avoid too many data points).
+    larger buckets for longer ranges to avoid too many data points). Only USD
+    pricing is returned to avoid multi-currency mixing.
     
     Args:
         range: Time range (7d, 30d, 90d, 1y)
-        currency: Filter by currency (USD or EUR). If not specified, aggregates all currencies.
-        separate_currencies: If True, returns separate indices for USD and EUR.
+        currency: USD only
+        separate_currencies: Disabled; present for backward compatibility only
         is_foil: Filter by foil pricing ('true', 'false', or None)
     """
+    # Hard-enforce USD-only responses
+    if separate_currencies:
+        raise HTTPException(
+            status_code=400,
+            detail="Only USD currency is supported; separate currency charts are disabled.",
+        )
+    currency = "USD"
+    
     # Convert string query parameter to boolean
     is_foil_bool: Optional[bool] = None
     if is_foil is not None:
@@ -740,64 +752,6 @@ async def get_market_index(
         func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
     )
     
-    # Handle separate currencies mode
-    if separate_currencies:
-        usd_points = await _get_currency_index("USD", start_date, bucket_expr, bucket_minutes, db, is_foil_bool)
-        eur_points = await _get_currency_index("EUR", start_date, bucket_expr, bucket_minutes, db, is_foil_bool)
-        
-        # Apply interpolation to both currency series
-        usd_points = interpolate_missing_points(usd_points, start_date, end_date, bucket_minutes)
-        eur_points = interpolate_missing_points(eur_points, start_date, end_date, bucket_minutes)
-        
-        # Calculate data freshness for both currencies
-        latest_usd_query = select(func.max(PriceSnapshot.snapshot_time)).where(
-            and_(
-                PriceSnapshot.snapshot_time >= start_date,
-                PriceSnapshot.currency == "USD",
-                PriceSnapshot.price.isnot(None) if is_foil_bool is None else (PriceSnapshot.price_foil.isnot(None) if is_foil_bool else PriceSnapshot.price_foil.is_(None)),
-            )
-        )
-        latest_usd_time = await db.scalar(latest_usd_query)
-        
-        latest_eur_query = select(func.max(PriceSnapshot.snapshot_time)).where(
-            and_(
-                PriceSnapshot.snapshot_time >= start_date,
-                PriceSnapshot.currency == "EUR",
-                PriceSnapshot.price.isnot(None) if is_foil_bool is None else (PriceSnapshot.price_foil.isnot(None) if is_foil_bool else PriceSnapshot.price_foil.is_(None)),
-            )
-        )
-        latest_eur_time = await db.scalar(latest_eur_query)
-        
-        # Calculate freshness in minutes
-        usd_freshness = None
-        eur_freshness = None
-        if latest_usd_time:
-            age_delta = now - latest_usd_time
-            usd_freshness = int(age_delta.total_seconds() / 60)
-        if latest_eur_time:
-            age_delta = now - latest_eur_time
-            eur_freshness = int(age_delta.total_seconds() / 60)
-        
-        return {
-            "range": range,
-            "separate_currencies": True,
-            "currencies": {
-                "USD": {
-                    "currency": "USD",
-                    "points": usd_points,
-                    "data_freshness_minutes": usd_freshness,
-                    "latest_snapshot_time": latest_usd_time.isoformat() if latest_usd_time else None,
-                },
-                "EUR": {
-                    "currency": "EUR",
-                    "points": eur_points,
-                    "data_freshness_minutes": eur_freshness,
-                    "latest_snapshot_time": latest_eur_time.isoformat() if latest_eur_time else None,
-                },
-            },
-            "isMockData": False,
-        }
-    
     # Determine which price field to use based on foil filter
     if is_foil_bool is True:
         # Use foil prices only
@@ -817,65 +771,8 @@ async def get_market_index(
         PriceSnapshot.snapshot_time >= start_date,
         price_condition,
         price_field > 0,
+        PriceSnapshot.currency == "USD",
     ]
-    
-    # CRITICAL FIX: Default to USD if currency not specified to avoid mixing currencies
-    # Mixing USD and EUR creates inaccurate charts due to different price scales
-    if currency:
-        query_conditions.append(PriceSnapshot.currency == currency)
-    else:
-        # Default to USD to prevent currency mixing issues
-        # But first check if USD data exists, if not try EUR, then any available currency
-        usd_count = await db.scalar(
-            select(func.count(PriceSnapshot.id)).where(
-                and_(
-                    PriceSnapshot.snapshot_time >= start_date,
-                    PriceSnapshot.currency == "USD",
-                    price_condition,
-                    price_field > 0,
-                )
-            )
-        ) or 0
-        
-        if usd_count > 0:
-            query_conditions.append(PriceSnapshot.currency == "USD")
-            currency = "USD"
-            logger.info(
-                "Currency not specified, defaulting to USD (data available)",
-                range=range,
-                usd_snapshots=usd_count
-            )
-        else:
-            # Check for EUR data
-            eur_count = await db.scalar(
-                select(func.count(PriceSnapshot.id)).where(
-                    and_(
-                        PriceSnapshot.snapshot_time >= start_date,
-                        PriceSnapshot.currency == "EUR",
-                        price_condition,
-                        price_field > 0,
-                    )
-                )
-            ) or 0
-            
-            if eur_count > 0:
-                query_conditions.append(PriceSnapshot.currency == "EUR")
-                currency = "EUR"
-                logger.warning(
-                    "Currency not specified, USD not available, defaulting to EUR",
-                    range=range,
-                    eur_snapshots=eur_count
-                )
-            else:
-                # No USD or EUR, but still default to USD for query structure
-                # This will return empty but with better diagnostics
-                query_conditions.append(PriceSnapshot.currency == "USD")
-                currency = "USD"
-                logger.warning(
-                    "Currency not specified, no USD or EUR data available in range",
-                    range=range,
-                    start_date=start_date.isoformat()
-                )
     
     query = select(
         bucket_expr.label("bucket_time"),

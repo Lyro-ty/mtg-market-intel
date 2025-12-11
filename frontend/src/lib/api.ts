@@ -397,17 +397,9 @@ export async function getMarketOverview(): Promise<MarketOverview> {
 
 export async function getMarketIndex(
   range: '7d' | '30d' | '90d' | '1y' = '7d',
-  currency?: 'USD' | 'EUR',
-  separateCurrencies: boolean = false,
   isFoil?: boolean
 ): Promise<MarketIndex> {
-  const params = new URLSearchParams({ range });
-  if (currency) {
-    params.append('currency', currency);
-  }
-  if (separateCurrencies) {
-    params.append('separate_currencies', 'true');
-  }
+  const params = new URLSearchParams({ range, currency: 'USD' });
   if (isFoil !== undefined) {
     params.append('is_foil', String(isFoil));
   }
@@ -435,17 +427,9 @@ export async function getColorDistribution(
 // Inventory dashboard API
 export async function getInventoryMarketIndex(
   range: '7d' | '30d' | '90d' | '1y' = '7d',
-  currency?: 'USD' | 'EUR',
-  separateCurrencies: boolean = false,
   isFoil?: boolean
 ): Promise<MarketIndex> {
-  const params = new URLSearchParams({ range });
-  if (currency) {
-    params.append('currency', currency);
-  }
-  if (separateCurrencies) {
-    params.append('separate_currencies', 'true');
-  }
+  const params = new URLSearchParams({ range, currency: 'USD' });
   if (isFoil !== undefined) {
     params.append('is_foil', String(isFoil));
   }

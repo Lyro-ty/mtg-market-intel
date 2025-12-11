@@ -91,7 +91,7 @@ function InventoryPageContent(): JSX.Element {
   
   const { data: inventoryMarketIndex, isLoading: indexLoading } = useQuery({
     queryKey: ['inventory-market-index', marketIndexRange, marketIndexFoil],
-    queryFn: () => getInventoryMarketIndex(marketIndexRange, undefined, false, marketIndexFoil),
+    queryFn: () => getInventoryMarketIndex(marketIndexRange, marketIndexFoil),
     refetchInterval: 2 * 60 * 1000,
     refetchIntervalInBackground: true,
   });

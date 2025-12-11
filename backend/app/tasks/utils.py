@@ -8,9 +8,17 @@ from typing import Any, Callable, Coroutine
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
-    async_sessionmaker,
     create_async_engine,
 )
+
+# async_sessionmaker was added in SQLAlchemy 1.4+
+try:
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+except ImportError:
+    raise ImportError(
+        "async_sessionmaker requires SQLAlchemy 1.4+. "
+        "Please upgrade: pip install 'sqlalchemy[asyncio]>=1.4.0'"
+    )
 
 from app.core.config import settings
 
