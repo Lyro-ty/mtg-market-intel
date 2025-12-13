@@ -275,6 +275,7 @@ async def get_card_history(
             Listing.card_id == card_id,
             Listing.last_seen_at >= from_date,
             Listing.condition == normalized_condition,
+            Listing.currency == "USD",  # USD-only mode
             Marketplace.slug != "mtgo",  # Filter out MTGO
         )
         
@@ -328,12 +329,13 @@ async def get_card_history(
         
         latest_snapshot = max((row.bucket_time for row in rows), default=None) if rows else None
     else:
-        # Use PriceSnapshot data (aggregated, no condition filter)
+        # Use PriceSnapshot data (aggregated, no condition filter, USD only)
         query = select(PriceSnapshot, Marketplace).join(
             Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
         ).where(
             PriceSnapshot.card_id == card_id,
             PriceSnapshot.snapshot_time >= from_date,
+            PriceSnapshot.currency == "USD",  # USD-only mode
             Marketplace.slug != "mtgo",  # Filter out MTGO pricing
         )
         
@@ -890,12 +892,14 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
             if not price_data or price_data.price <= 0:
                 continue
             
-            # Map currency to marketplace slug
-            # USD = TCGPlayer, EUR = Cardmarket, TIX = MTGO
+            # USD-only mode: Only process USD prices
+            if price_data.currency != "USD":
+                continue
+            
+            # Map currency to marketplace slug (USD only)
+            # USD = TCGPlayer
             marketplace_map = {
                 "USD": ("tcgplayer", "TCGPlayer", "https://www.tcgplayer.com"),
-                "EUR": ("cardmarket", "Cardmarket", "https://www.cardmarket.com"),
-                "TIX": ("mtgo", "MTGO", "https://www.mtgo.com"),
             }
             
             slug, name, base_url = marketplace_map.get(price_data.currency, (None, None, None))
@@ -1011,15 +1015,15 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         finally:
             await cardtrader.close()
     
-    # 2. Fetch and store MTGJSON 30-day historical data by marketplace (skip in fast mode)
+    # 2. Fetch and store MTGJSON 30-day historical data (USD only)
     # Note: MTGJSON file is cached for 7 days (updates weekly), so we don't need to download it every time
+    # Always import MTGJSON for 30-day history to populate charts, even in fast mode
     mtgjson_snapshots_created = 0
-    if not fast_mode:  # Skip MTGJSON in fast mode for instant refresh
-        from app.services.ingestion import get_adapter
-        mtgjson = get_adapter("mtgjson", cached=True)
-        try:
-            # Fetch 30-day historical prices from MTGJSON
-            # MTGJSON returns prices for both TCGPlayer (USD) and Cardmarket (EUR)
+    # Always import MTGJSON historical data to populate charts with 30-day history
+    from app.services.ingestion import get_adapter
+    mtgjson = get_adapter("mtgjson", cached=True)
+    try:
+        # Fetch 30-day historical prices from MTGJSON (USD only)
             historical_prices = await mtgjson.fetch_price_history(
                 card_name=card_name,
                 set_code=card_set_code,
@@ -1028,17 +1032,20 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
                 days=30,  # 30-day historical data
             )
             
-            # Store MTGJSON historical prices if available
+            # Store MTGJSON historical prices if available (USD only)
             if historical_prices:
-                # Group prices by marketplace (based on currency)
+                # Group prices by marketplace (USD only)
                 for price_data in historical_prices:
                     if not price_data or price_data.price <= 0:
                         continue
                     
-                    # Map currency to marketplace (same as Scryfall)
+                    # USD-only mode: Only process USD prices
+                    if price_data.currency != "USD":
+                        continue
+                    
+                    # Map currency to marketplace (USD only)
                     marketplace_map = {
                         "USD": ("tcgplayer", "TCGPlayer", "https://www.tcgplayer.com"),
-                        "EUR": ("cardmarket", "Cardmarket", "https://www.cardmarket.com"),
                     }
                     
                     slug, name, base_url = marketplace_map.get(price_data.currency, (None, None, None))
@@ -1078,19 +1085,19 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
                     historical_points=len(historical_prices),
                     snapshots_created=mtgjson_snapshots_created,
                 )
-        except Exception as e:
-            # Rollback the session if there was an error during flush
-            try:
-                await db.rollback()
-            except Exception:
-                pass  # Ignore rollback errors
-            logger.warning(
-                "Failed to fetch MTGJSON historical data",
-                card_id=card_id,
-                error=str(e),
-            )
-        finally:
-            await mtgjson.close()
+    except Exception as e:
+        # Rollback the session if there was an error during flush
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Ignore rollback errors
+        logger.warning(
+            "Failed to fetch MTGJSON historical data",
+            card_id=card_id,
+            error=str(e),
+        )
+    finally:
+        await mtgjson.close()
     
     # 2.5. Ensure we have 30 days of historical data for charting
     # Always check and backfill if needed (even in fast mode, but only if data is missing)
