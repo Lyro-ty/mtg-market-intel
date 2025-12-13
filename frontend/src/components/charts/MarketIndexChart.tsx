@@ -78,21 +78,39 @@ export function MarketIndexChart({
   }
 
   // Transform data for chart
-  const chartData = data.points.map((point) => {
-    const date = new Date(point.timestamp);
-    // Use more detailed format for higher frequency data
-    // If we have many points (more than 50), show time as well
-    const dateFormat = data.points.length > 50 
-      ? format(date, 'MMM d HH:mm')
-      : format(date, 'MMM d');
-    return {
-      date: dateFormat,
-      fullDate: point.timestamp,
-      index: point.indexValue,
-      // Calculate % change from previous point
-      change: null as number | null,
-    };
-  });
+  const chartData = data.points
+    .filter((point) => point && point.timestamp && typeof point.indexValue === 'number')
+    .map((point) => {
+      const date = new Date(point.timestamp);
+      // Use more detailed format for higher frequency data
+      // If we have many points (more than 50), show time as well
+      const dateFormat = data.points.length > 50 
+        ? format(date, 'MMM d HH:mm')
+        : format(date, 'MMM d');
+      return {
+        date: dateFormat,
+        fullDate: point.timestamp,
+        index: point.indexValue,
+        // Calculate % change from previous point
+        change: null as number | null,
+      };
+    });
+
+  // If no valid data points after filtering, show empty state
+  if (chartData.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-64 text-[rgb(var(--muted-foreground))]">
+            No valid data points available
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // Calculate change from previous point
   for (let i = 1; i < chartData.length; i++) {
