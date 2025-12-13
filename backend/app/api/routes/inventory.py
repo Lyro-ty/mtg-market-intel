@@ -1048,7 +1048,7 @@ async def get_inventory_market_index(
             # Return empty data if no inventory
             return {
                 "range": range,
-                "currency": currency or "ALL",
+                "currency": "USD",
                 "points": [],
                 "isMockData": False,
             }
@@ -1111,7 +1111,7 @@ async def get_inventory_market_index(
         logger.info(
             "Inventory market index query results",
             range=range,
-            currency=currency or "ALL",
+            currency="USD",
             card_ids_count=len(card_ids),
             rows_returned=len(rows),
             start_date=start_date.isoformat(),
@@ -1150,7 +1150,7 @@ async def get_inventory_market_index(
             # No data available
             return {
                 "range": range,
-                "currency": currency or "ALL",
+                "currency": "USD",
                 "points": [],
                 "isMockData": False,
             }
@@ -1232,7 +1232,7 @@ async def get_inventory_market_index(
             logger.warning(
                 "No inventory market index data found",
                 range=range,
-                currency=currency or "ALL",
+                currency="USD",
                 is_foil=is_foil_bool,
                 inventory_card_count=len(card_ids) if card_ids else 0,
                 total_snapshots_in_db=total_snapshots,
@@ -1246,7 +1246,7 @@ async def get_inventory_market_index(
             # Return empty data if no points
             return {
                 "range": range,
-                "currency": currency or "ALL",
+                "currency": "USD",
                 "points": [],
                 "isMockData": False,
             }
@@ -1290,7 +1290,7 @@ async def get_inventory_market_index(
         
         return {
             "range": range,
-            "currency": currency or "ALL",
+            "currency": "USD",
             "points": points,
             "isMockData": False,
             "data_freshness_minutes": data_freshness_minutes,
@@ -1303,7 +1303,7 @@ async def get_inventory_market_index(
         if is_database_connection_error(e):
             return {
                 "range": range,
-                "currency": currency or "ALL",
+                "currency": "USD",
                 "points": [],
                 "isMockData": False,
             }
