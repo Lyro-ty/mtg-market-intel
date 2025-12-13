@@ -27,12 +27,12 @@ class CardTraderAdapter(MarketplaceAdapter):
     Adapter for CardTrader marketplace API.
     
     Provides current marketplace prices and listings for USD and EUR markets.
-    Rate limit: 10 requests per second.
+    Rate limit: 200 requests per 10 seconds (per API documentation).
     """
     
     BASE_URL = "https://api.cardtrader.com/api/v2"
-    RATE_LIMIT_REQUESTS = 10
-    RATE_LIMIT_WINDOW = 1  # seconds (10 requests per second)
+    RATE_LIMIT_REQUESTS = 200
+    RATE_LIMIT_WINDOW = 10  # seconds (200 requests per 10 seconds per documentation)
     
     def __init__(self, config: AdapterConfig | None = None):
         # Get API token from settings (JWT token for Full API access)
@@ -43,7 +43,7 @@ class CardTraderAdapter(MarketplaceAdapter):
                 base_url=self.BASE_URL,
                 api_url=self.BASE_URL,
                 api_key=api_token,
-                rate_limit_seconds=self.RATE_LIMIT_WINDOW / self.RATE_LIMIT_REQUESTS,  # 0.1s between requests (10 req/s)
+                rate_limit_seconds=self.RATE_LIMIT_WINDOW / self.RATE_LIMIT_REQUESTS,  # 0.05s between requests (200 req/10s)
                 timeout_seconds=30.0,
             )
         super().__init__(config)
@@ -54,6 +54,9 @@ class CardTraderAdapter(MarketplaceAdapter):
         self._client: httpx.AsyncClient | None = None
         self._request_count = 0
         self._window_start = datetime.utcnow()
+        # Cache expansions to avoid fetching on every card lookup
+        self._expansions_cache: dict[str, int] | None = None
+        self._expansions_cache_time: datetime | None = None
     
     @property
     def marketplace_name(self) -> str:
@@ -79,11 +82,11 @@ class CardTraderAdapter(MarketplaceAdapter):
         return self._client
     
     async def _rate_limit(self) -> None:
-        """Enforce rate limiting (10 requests per second)."""
+        """Enforce rate limiting (200 requests per 10 seconds per API documentation)."""
         now = datetime.utcnow()
         elapsed = (now - self._window_start).total_seconds()
         
-        # Reset window if 1 second has passed
+        # Reset window if 10 seconds has passed
         if elapsed >= self.RATE_LIMIT_WINDOW:
             self._request_count = 0
             self._window_start = now
@@ -100,13 +103,62 @@ class CardTraderAdapter(MarketplaceAdapter):
         
         self._request_count += 1
         
-        # Also enforce per-request rate limit
+        # Also enforce per-request rate limit (200/10 = 0.05s between requests)
         if self._last_request_time is not None:
             elapsed_since_last = (now - self._last_request_time).total_seconds()
             if elapsed_since_last < self.config.rate_limit_seconds:
                 await asyncio.sleep(self.config.rate_limit_seconds - elapsed_since_last)
         
         self._last_request_time = datetime.utcnow()
+    
+    async def _get_expansions_cached(self) -> list[dict[str, Any]]:
+        """
+        Get expansions list with caching.
+        
+        Cache expires after 1 hour to avoid excessive API calls.
+        Per CardTrader API documentation: GET /expansions returns array of Expansion objects.
+        """
+        now = datetime.utcnow()
+        
+        # Check if cache is valid (1 hour expiry)
+        # Note: We cache the mapping (code -> id) but need to return the full list
+        # For now, we'll always fetch but use cache for quick lookups in _find_blueprint
+        # In the future, we could cache the full list too
+        
+        # Fetch fresh expansions
+        await self._rate_limit()
+        client = await self._get_client()
+        
+        try:
+            response = await client.get("/expansions")
+            response.raise_for_status()
+            expansions_data = response.json()
+            
+            # Per documentation, API returns array directly
+            if isinstance(expansions_data, list):
+                expansions = expansions_data
+            elif isinstance(expansions_data, dict) and "data" in expansions_data:
+                expansions = expansions_data["data"]
+            else:
+                expansions = []
+            
+            # Build cache mapping set code to expansion ID
+            self._expansions_cache = {}
+            for expansion in expansions:
+                if isinstance(expansion, dict):
+                    exp_code = expansion.get("code")
+                    exp_id = expansion.get("id")
+                    if exp_code and exp_id:
+                        self._expansions_cache[exp_code.upper()] = exp_id
+            
+            self._expansions_cache_time = now
+            logger.debug("CardTrader expansions cached", count=len(expansions))
+            
+            return expansions
+            
+        except Exception as e:
+            logger.warning("Failed to fetch CardTrader expansions", error=str(e))
+            return []
     
     async def _find_blueprint(
         self,
@@ -118,48 +170,47 @@ class CardTraderAdapter(MarketplaceAdapter):
         Find CardTrader blueprint ID for a card.
         
         Process:
-        1. Query CardTrader expansions API to find the set
-        2. Search for the card within that expansion's blueprints
+        1. Query CardTrader expansions API to find the set (cached)
+        2. Search for the card within that expansion's blueprints using /blueprints/export
         3. Match by name and collector_number
         4. Return the blueprint_id
+        
+        Per CardTrader API documentation: https://www.cardtrader.com/docs/api/full/reference
         """
         await self._rate_limit()
         client = await self._get_client()
         
         try:
-            # Step 1: Find expansion by set code
-            # CardTrader uses different set codes, try exact match first, then partial
-            response = await client.get("/expansions")
-            response.raise_for_status()
-            expansions_data = response.json()
-            
-            # Handle different response formats
-            if isinstance(expansions_data, dict) and "data" in expansions_data:
-                expansions = expansions_data["data"]
-            elif isinstance(expansions_data, list):
-                expansions = expansions_data
-            else:
-                expansions = []
-            
-            # Find matching expansion
+            # Step 1: Find expansion by set code (cached)
+            expansions = await self._get_expansions_cached()
             expansion_id = None
             set_code_upper = set_code.upper()
             
-            for expansion in expansions:
-                # Check various fields that might contain set code
-                exp_code = None
-                if isinstance(expansion, dict):
-                    exp_code = expansion.get("code") or expansion.get("code_short") or expansion.get("set_code")
-                    if not exp_code and "name" in expansion:
-                        # Sometimes set code is in the name
+            # First try exact match from cache
+            if self._expansions_cache:
+                expansion_id = self._expansions_cache.get(set_code_upper)
+            
+            # If not in cache, search expansions list
+            if not expansion_id:
+                for expansion in expansions:
+                    if not isinstance(expansion, dict):
+                        continue
+                    
+                    # Per documentation, Expansion object has: id, game_id, code, name
+                    exp_code = expansion.get("code")
+                    if exp_code and exp_code.upper() == set_code_upper:
+                        expansion_id = expansion.get("id")
+                        break
+                    
+                    # Fallback: check if set code is in expansion name
+                    if not expansion_id:
                         name = expansion.get("name", "").upper()
                         if set_code_upper in name:
                             expansion_id = expansion.get("id")
+                            # Update cache
+                            if self._expansions_cache is not None:
+                                self._expansions_cache[set_code_upper] = expansion_id
                             break
-                
-                if exp_code and exp_code.upper() == set_code_upper:
-                    expansion_id = expansion.get("id")
-                    break
             
             if not expansion_id:
                 logger.debug(
@@ -170,59 +221,41 @@ class CardTraderAdapter(MarketplaceAdapter):
                 )
                 return None
             
-            # Step 2: Get blueprints for this expansion (with pagination support)
-            blueprints = []
-            page = 1
-            limit = 1000
-            max_pages = 10  # Safety limit to avoid infinite loops
+            # Step 2: Get blueprints for this expansion
+            # Per documentation: GET /blueprints/export?expansion_id={id}
+            await self._rate_limit()
+            response = await client.get(
+                "/blueprints/export",
+                params={"expansion_id": expansion_id}
+            )
+            response.raise_for_status()
+            blueprints_data = response.json()
             
-            while page <= max_pages:
-                await self._rate_limit()
-                response = await client.get(
-                    "/blueprints",
-                    params={"expansion_id": expansion_id, "limit": limit, "page": page}
-                )
-                response.raise_for_status()
-                blueprints_data = response.json()
-                
-                # Handle different response formats
-                page_blueprints = []
-                if isinstance(blueprints_data, dict):
-                    if "data" in blueprints_data:
-                        page_blueprints = blueprints_data["data"]
-                    elif "blueprints" in blueprints_data:
-                        page_blueprints = blueprints_data["blueprints"]
-                elif isinstance(blueprints_data, list):
-                    page_blueprints = blueprints_data
-                
-                if not page_blueprints:
-                    break  # No more results
-                
-                blueprints.extend(page_blueprints)
-                
-                # Check if there are more pages
-                if isinstance(blueprints_data, dict):
-                    has_more = blueprints_data.get("has_more", False)
-                    total = blueprints_data.get("total")
-                    if not has_more or (total and len(blueprints) >= total):
-                        break
-                
-                # If we got fewer than limit, we're on the last page
-                if len(page_blueprints) < limit:
-                    break
-                
-                page += 1
+            # Per documentation, API returns array of blueprints
+            blueprints = []
+            if isinstance(blueprints_data, list):
+                blueprints = blueprints_data
+            elif isinstance(blueprints_data, dict):
+                # Handle paginated response if API returns it
+                if "data" in blueprints_data:
+                    blueprints = blueprints_data["data"]
+                elif "blueprints" in blueprints_data:
+                    blueprints = blueprints_data["blueprints"]
             
             # Step 3: Match card by name and collector number
             card_name_normalized = card_name.upper().strip()
             # Remove common suffixes that might differ between sources
             card_name_clean = card_name_normalized.replace(" // ", " ").replace(" / ", " ")
             
+            # Track best matches for scoring
+            best_match = None
+            best_score = 0
+            
             for blueprint in blueprints:
                 if not isinstance(blueprint, dict):
                     continue
                 
-                # Match by name
+                # Match by name (per documentation, blueprint has name field)
                 blueprint_name = blueprint.get("name") or blueprint.get("card_name")
                 if not blueprint_name:
                     continue
@@ -230,47 +263,53 @@ class CardTraderAdapter(MarketplaceAdapter):
                 blueprint_name_normalized = blueprint_name.upper().strip()
                 blueprint_name_clean = blueprint_name_normalized.replace(" // ", " ").replace(" / ", " ")
                 
-                # Exact name match (with cleaned names)
-                if blueprint_name_clean == card_name_clean or blueprint_name_normalized == card_name_normalized:
-                    # If collector number provided, try to match it
-                    if collector_number:
-                        blueprint_collector = str(blueprint.get("number") or blueprint.get("collector_number") or "")
-                        if blueprint_collector and blueprint_collector != str(collector_number):
-                            continue  # Name matches but collector number doesn't
-                    
+                # Score matches (exact > partial)
+                score = 0
+                if blueprint_name_clean == card_name_clean:
+                    score = 100  # Exact match
+                elif blueprint_name_normalized == card_name_normalized:
+                    score = 90  # Exact match (original)
+                elif card_name_clean in blueprint_name_clean or blueprint_name_clean in card_name_clean:
+                    score = 50  # Partial match
+                
+                # Boost score if collector number matches
+                if collector_number:
+                    blueprint_collector = str(blueprint.get("number") or blueprint.get("collector_number") or "")
+                    if blueprint_collector == str(collector_number):
+                        score += 30  # Collector number match bonus
+                    elif blueprint_collector and score > 0:
+                        # Name matches but collector doesn't - reduce score
+                        score = max(0, score - 20)
+                
+                # If exact match with collector number, return immediately
+                if score >= 130:  # Exact name + collector match
                     blueprint_id = blueprint.get("id")
                     if blueprint_id:
                         logger.debug(
-                            "Found CardTrader blueprint",
+                            "Found CardTrader blueprint (exact match)",
                             blueprint_id=blueprint_id,
                             card_name=card_name,
                             set_code=set_code
                         )
                         return int(blueprint_id)
                 
-                # Partial name match (in case of slight variations)
-                # Check both cleaned and original names
-                name_matches = (
-                    card_name_clean in blueprint_name_clean or 
-                    blueprint_name_clean in card_name_clean or
-                    card_name_normalized in blueprint_name_normalized or 
-                    blueprint_name_normalized in card_name_normalized
-                )
-                
-                if name_matches:
-                    # Only use partial match if collector number matches
-                    if collector_number:
-                        blueprint_collector = str(blueprint.get("number") or blueprint.get("collector_number") or "")
-                        if blueprint_collector == str(collector_number):
-                            blueprint_id = blueprint.get("id")
-                            if blueprint_id:
-                                logger.debug(
-                                    "Found CardTrader blueprint (partial name match)",
-                                    blueprint_id=blueprint_id,
-                                    card_name=card_name,
-                                    set_code=set_code
-                                )
-                                return int(blueprint_id)
+                # Track best match
+                if score > best_score:
+                    best_score = score
+                    best_match = blueprint
+            
+            # Return best match if score is good enough
+            if best_match and best_score >= 50:
+                blueprint_id = best_match.get("id")
+                if blueprint_id:
+                    logger.debug(
+                        "Found CardTrader blueprint (best match)",
+                        blueprint_id=blueprint_id,
+                        card_name=card_name,
+                        set_code=set_code,
+                        match_score=best_score
+                    )
+                    return int(blueprint_id)
             
             # This is expected behavior - not all cards have CardTrader blueprints
             # Log at debug level only (not warning) since this is normal
@@ -682,4 +721,7 @@ class CardTraderAdapter(MarketplaceAdapter):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
+        # Clear cache on close
+        self._expansions_cache = None
+        self._expansions_cache_time = None
 

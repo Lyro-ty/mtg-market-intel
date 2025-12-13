@@ -362,7 +362,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                 base_url="https://api.cardtrader.com/api/v2",
                 api_url="https://api.cardtrader.com/api/v2",
                 api_key=settings.cardtrader_api_token,
-                rate_limit_seconds=0.1,  # 10 requests per second
+                rate_limit_seconds=0.05,  # 200 requests per 10 seconds (per CardTrader API docs)
                 timeout_seconds=30.0,
             )
             cardtrader = CardTraderAdapter(cardtrader_config)
@@ -572,7 +572,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                         base_url="https://api.manapool.com",
                         api_url="https://api.manapool.com",
                         api_key=settings.manapool_api_token,
-                        rate_limit_seconds=0.1,  # 10 requests per second
+                        rate_limit_seconds=0.05,  # 200 requests per 10 seconds (per CardTrader API docs)
                         timeout_seconds=30.0,
                     )
                     manapool = ManapoolAdapter(manapool_config)
@@ -936,7 +936,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                     base_url="https://api.cardtrader.com/api/v2",
                     api_url="https://api.cardtrader.com/api/v2",
                     api_key=settings.cardtrader_api_token,
-                    rate_limit_seconds=0.1,  # 10 requests per second
+                    rate_limit_seconds=0.05,  # 200 requests per 10 seconds (per CardTrader API docs)
                     timeout_seconds=30.0,
                 )
                 cardtrader = CardTraderAdapter(cardtrader_config)

@@ -181,12 +181,13 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         self,
         method: str,
         endpoint: str,
+        max_retries: int = 3,
         **kwargs
     ) -> httpx.Response:
         """
         Make an authenticated request to TCGPlayer API.
         
-        Automatically handles token refresh.
+        Automatically handles token refresh and retries for transient failures.
         """
         token = await self._get_auth_token()
         if not token:
@@ -199,19 +200,59 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         headers["Authorization"] = f"Bearer {token}"
         kwargs["headers"] = headers
         
-        response = await client.request(method, endpoint, **kwargs)
+        last_exception = None
         
-        # If token expired, refresh and retry once
-        if response.status_code == 401:
-            logger.debug("TCGPlayer token expired, refreshing")
-            self._auth_token = None
-            self._token_expires_at = None
-            token = await self._get_auth_token()
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
+        for attempt in range(max_retries):
+            try:
                 response = await client.request(method, endpoint, **kwargs)
+                
+                # If token expired, refresh and retry once
+                if response.status_code == 401:
+                    logger.debug("TCGPlayer token expired, refreshing")
+                    self._auth_token = None
+                    self._token_expires_at = None
+                    token = await self._get_auth_token()
+                    if token:
+                        headers["Authorization"] = f"Bearer {token}"
+                        kwargs["headers"] = headers
+                        response = await client.request(method, endpoint, **kwargs)
+                
+                # Retry on 5xx errors (server errors)
+                if response.status_code >= 500 and attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(
+                        "TCGPlayer server error, retrying",
+                        status=response.status_code,
+                        attempt=attempt + 1,
+                        wait_seconds=wait_time
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+                
+                return response
+                
+            except (httpx.NetworkError, httpx.TimeoutException) as e:
+                # Retry on network errors
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(
+                        "TCGPlayer network error, retrying",
+                        error=str(e),
+                        attempt=attempt + 1,
+                        wait_seconds=wait_time
+                    )
+                    await asyncio.sleep(wait_time)
+                    last_exception = e
+                    continue
+                else:
+                    raise
         
-        return response
+        # If we exhausted retries, raise the last exception
+        if last_exception:
+            raise last_exception
+        
+        # Should not reach here, but just in case
+        raise httpx.HTTPError("Failed to make request after retries")
     
     async def _find_product_id(
         self,
@@ -249,32 +290,75 @@ class TCGPlayerAdapter(MarketplaceAdapter):
             if not results:
                 return None
             
-            # Try to match by name and set
-            set_code_upper = set_code.upper()
+            # Try to match by name, collector number, and set
+            # Note: TCGPlayer uses groupId (numeric) for sets, not set codes
+            # We can't directly match set_code to groupId, so we prioritize name + collector number
+            card_name_upper = card_name.upper()
+            best_match = None
+            best_score = 0
+            
             for product in results:
                 product_name = product.get("name", "").upper()
-                product_set = product.get("groupId")  # TCGPlayer uses groupId for sets
+                product_id = product.get("productId")
+                product_number = str(product.get("number", ""))
                 
-                # Check if name matches (fuzzy match)
-                if card_name.upper() in product_name or product_name in card_name.upper():
-                    # If we have collector number, try to match it
-                    if collector_number:
-                        product_number = str(product.get("number", ""))
-                        if product_number == str(collector_number):
-                            return product.get("productId")
-                    else:
-                        # Return first match if no collector number
-                        return product.get("productId")
+                if not product_id:
+                    continue
+                
+                # Score matches (higher is better)
+                score = 0
+                
+                # Exact name match gets highest score
+                if product_name == card_name_upper:
+                    score = 100
+                # Partial match (name contains card name or vice versa)
+                elif card_name_upper in product_name or product_name in card_name_upper:
+                    score = 50
+                else:
+                    continue  # Skip if name doesn't match at all
+                
+                # Collector number match significantly boosts score
+                if collector_number:
+                    if product_number == str(collector_number):
+                        score += 50  # Exact collector match
+                    elif product_number and score > 0:
+                        # Name matches but collector doesn't - reduce score
+                        score = max(0, score - 30)
+                
+                # If we have an exact name + collector match, return immediately
+                if score >= 150:
+                    logger.debug(
+                        "TCGPlayer product found (exact match)",
+                        product_id=product_id,
+                        card_name=card_name,
+                        set_code=set_code
+                    )
+                    return product_id
+                
+                # Track best match
+                if score > best_score:
+                    best_score = score
+                    best_match = product
             
-            # If no exact match, return first result
-            if results:
+            # Return best match if score is good enough (at least partial name match)
+            if best_match and best_score >= 50:
+                product_id = best_match.get("productId")
                 logger.debug(
-                    "TCGPlayer product found (fuzzy match)",
-                    product_id=results[0].get("productId"),
-                    card_name=card_name
+                    "TCGPlayer product found (best match)",
+                    product_id=product_id,
+                    card_name=card_name,
+                    set_code=set_code,
+                    match_score=best_score
                 )
-                return results[0].get("productId")
+                return product_id
             
+            # No good match found
+            logger.debug(
+                "TCGPlayer product not found",
+                card_name=card_name,
+                set_code=set_code,
+                results_count=len(results)
+            )
             return None
             
         except Exception as e:
