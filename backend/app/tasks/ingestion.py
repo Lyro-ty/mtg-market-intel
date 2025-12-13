@@ -1325,16 +1325,19 @@ async def _import_mtgjson_historical_prices_async(
                         if not historical_prices:
                             continue
                         
-                        # Create price snapshots for each historical price
-                        # Map MTGJSON prices to actual marketplaces (TCGPlayer, Cardmarket) based on currency
+                        # Create price snapshots for each historical price (USD only)
+                        # Map MTGJSON prices to actual marketplaces (TCGPlayer) based on currency
                         for price_data in historical_prices:
                             if not price_data or price_data.price <= 0:
                                 continue
                             
-                            # Map currency to marketplace (same as Scryfall and data_seeding)
+                            # USD-only mode: Only process USD prices
+                            if price_data.currency != "USD":
+                                continue
+                            
+                            # Map currency to marketplace (USD only)
                             marketplace_map = {
                                 "USD": ("tcgplayer", "TCGPlayer", "https://www.tcgplayer.com"),
-                                "EUR": ("cardmarket", "Cardmarket", "https://www.cardmarket.com"),
                             }
                             
                             slug, name, base_url = marketplace_map.get(price_data.currency, (None, None, None))

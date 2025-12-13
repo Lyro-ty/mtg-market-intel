@@ -60,13 +60,14 @@ class AnalyticsAgent:
         """
         target_date = target_date or date.today()
         
-        # Get price snapshots for the target date
+        # Get price snapshots for the target date (USD only)
         # Use a 2-day window to handle cases where data might be slightly off
         # This makes metrics computation more robust with sparse data
         snapshots_query = select(PriceSnapshot).where(
             PriceSnapshot.card_id == card_id,
             func.date(PriceSnapshot.snapshot_time) >= target_date - timedelta(days=1),
             func.date(PriceSnapshot.snapshot_time) <= target_date,
+            PriceSnapshot.currency == "USD",  # USD-only mode
         )
         result = await self.db.execute(snapshots_query)
         snapshots = result.scalars().all()
@@ -177,7 +178,7 @@ class AnalyticsAgent:
         """Compute price change over N days using closest available data."""
         past_date = target_date - timedelta(days=days)
         
-        # Get average price for target date (or closest available within 2 days)
+        # Get average price for target date (or closest available within 2 days, USD only)
         # More lenient window to handle sparse data
         current_query = select(func.avg(PriceSnapshot.price)).where(
             PriceSnapshot.card_id == card_id,
@@ -185,11 +186,12 @@ class AnalyticsAgent:
             func.date(PriceSnapshot.snapshot_time) <= target_date,
             PriceSnapshot.price.isnot(None),
             PriceSnapshot.price > 0,
+            PriceSnapshot.currency == "USD",  # USD-only mode
         )
         result = await self.db.execute(current_query)
         current_price = result.scalar()
         
-        # Get average price for past date (or closest available within 3 days window)
+        # Get average price for past date (or closest available within 3 days window, USD only)
         # More lenient window for past data since it's older
         past_query = select(func.avg(PriceSnapshot.price)).where(
             PriceSnapshot.card_id == card_id,
@@ -197,6 +199,7 @@ class AnalyticsAgent:
             func.date(PriceSnapshot.snapshot_time) <= past_date + timedelta(days=2),
             PriceSnapshot.price.isnot(None),
             PriceSnapshot.price > 0,
+            PriceSnapshot.currency == "USD",  # USD-only mode
         )
         result = await self.db.execute(past_query)
         past_price = result.scalar()
@@ -218,6 +221,7 @@ class AnalyticsAgent:
             PriceSnapshot.card_id == card_id,
             func.date(PriceSnapshot.snapshot_time) >= start_date,
             func.date(PriceSnapshot.snapshot_time) <= target_date,
+            PriceSnapshot.currency == "USD",  # USD-only mode
         )
         result = await self.db.execute(query)
         avg = result.scalar()
@@ -233,7 +237,7 @@ class AnalyticsAgent:
         """Compute N-day volatility (standard deviation of daily returns)."""
         start_date = target_date - timedelta(days=days)
         
-        # Get daily average prices
+        # Get daily average prices (USD only)
         query = select(
             func.date(PriceSnapshot.snapshot_time).label('date'),
             func.avg(PriceSnapshot.price).label('avg_price'),
@@ -241,6 +245,7 @@ class AnalyticsAgent:
             PriceSnapshot.card_id == card_id,
             func.date(PriceSnapshot.snapshot_time) >= start_date,
             func.date(PriceSnapshot.snapshot_time) <= target_date,
+            PriceSnapshot.currency == "USD",  # USD-only mode
         ).group_by(func.date(PriceSnapshot.snapshot_time)).order_by('date')
         
         result = await self.db.execute(query)
