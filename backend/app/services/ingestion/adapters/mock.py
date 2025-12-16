@@ -5,7 +5,7 @@ Generates realistic fake data for system testing without
 hitting external APIs.
 """
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.services.ingestion.base import (
@@ -129,7 +129,7 @@ class MockMarketplaceAdapter(MarketplaceAdapter):
             price_foil=round(base_price * 2.5, 2) if random.random() < 0.8 else None,
             num_listings=random.randint(5, 50),
             total_quantity=random.randint(10, 200),
-            snapshot_time=datetime.utcnow(),
+            snapshot_time=datetime.now(timezone.utc),
         )
     
     async def fetch_price_history(
@@ -165,7 +165,7 @@ class MockMarketplaceAdapter(MarketplaceAdapter):
                 currency="USD",
                 num_listings=random.randint(5, 50),
                 total_quantity=random.randint(10, 200),
-                snapshot_time=datetime.utcnow() - timedelta(days=i),
+                snapshot_time=datetime.now(timezone.utc) - timedelta(days=i),
             ))
         
         return history

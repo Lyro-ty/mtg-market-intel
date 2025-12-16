@@ -113,28 +113,36 @@ def get_adapter(
 def get_all_adapters(
     exclude_scryfall: bool = True,
     enabled_only: list[str] | None = None,
+    include_unimplemented: bool = False,
 ) -> list[MarketplaceAdapter]:
     """
     Get all registered adapter instances.
-    
+
     Args:
         exclude_scryfall: Whether to exclude Scryfall (it's not a marketplace).
         enabled_only: If provided, only return adapters with these slugs.
-        
+        include_unimplemented: Whether to include adapters marked as not implemented.
+
     Returns:
         List of adapter instances.
     """
     adapters = []
-    
+
     for slug in _ADAPTER_REGISTRY:
         if exclude_scryfall and slug == "scryfall":
             continue
-        
+
         if enabled_only is not None and slug not in enabled_only:
             continue
-        
+
+        # Check if adapter is implemented
+        adapter_class = _ADAPTER_REGISTRY[slug]
+        if not include_unimplemented and hasattr(adapter_class, 'IS_IMPLEMENTED') and not adapter_class.IS_IMPLEMENTED:
+            logger.debug("Skipping unimplemented adapter", slug=slug)
+            continue
+
         adapters.append(get_adapter(slug))
-    
+
     return adapters
 
 

@@ -5,7 +5,7 @@ Generates more aggressive buy/sell/hold recommendations for inventory items.
 Uses lower thresholds and shorter time horizons than the standard market recommendations.
 """
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import structlog
@@ -213,7 +213,7 @@ class InventoryRecommendationAgent:
             InventoryRecommendation.inventory_item_id == inventory_item_id,
             InventoryRecommendation.is_active == True,
             or_(
-                InventoryRecommendation.valid_until < datetime.utcnow(),
+                InventoryRecommendation.valid_until < datetime.now(timezone.utc),
                 InventoryRecommendation.valid_until == None,
             ),
         )
@@ -266,7 +266,7 @@ class InventoryRecommendationAgent:
             roi_from_acquisition=roi_from_acquisition,
             rationale=rationale,
             suggested_listing_price=current_price * 0.98 if current_price else None,  # Slight discount for quick sale
-            valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+            valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
             is_active=True,
         )
     
@@ -317,7 +317,7 @@ class InventoryRecommendationAgent:
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
                 suggested_listing_price=float(metrics.max_price) * 0.95,
-                valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
                 is_active=True,
             )
         
@@ -369,7 +369,7 @@ class InventoryRecommendationAgent:
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
                 suggested_listing_price=current_price * 0.95 if current_price else None,
-                valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
                 is_active=True,
             )
         
@@ -401,7 +401,7 @@ class InventoryRecommendationAgent:
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
                 suggested_listing_price=current_price * 1.02 if current_price else None,
-                valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
                 is_active=True,
             )
         
@@ -450,7 +450,7 @@ class InventoryRecommendationAgent:
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
                 suggested_listing_price=current_price * 0.92 if current_price else None,  # Aggressive pricing to sell quickly
-                valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
                 is_active=True,
             )
         
@@ -476,7 +476,7 @@ class InventoryRecommendationAgent:
                 current_price=current_price,
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
-                valid_until=datetime.utcnow() + timedelta(days=self.horizon_days * 2),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days * 2),
                 is_active=True,
             )
         
@@ -528,7 +528,7 @@ class InventoryRecommendationAgent:
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
                 suggested_listing_price=current_price * 0.97 if current_price else None,
-                valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
                 is_active=True,
             )
         
@@ -566,7 +566,7 @@ class InventoryRecommendationAgent:
                 current_price=current_price,
                 roi_from_acquisition=roi_from_acquisition,
                 rationale=rationale,
-                valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
                 is_active=True,
             )
         

@@ -7,7 +7,7 @@ Authentication: OAuth 2.0 with client credentials flow
 """
 import asyncio
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -62,7 +62,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         self._auth_token: str | None = None
         self._token_expires_at: datetime | None = None
         self._request_count = 0
-        self._window_start = datetime.utcnow()
+        self._window_start = datetime.now(timezone.utc)
     
     @property
     def marketplace_name(self) -> str:
@@ -97,7 +97,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         """
         # Check if we have a valid token
         if self._auth_token and self._token_expires_at:
-            if datetime.utcnow() < self._token_expires_at - timedelta(minutes=5):
+            if datetime.now(timezone.utc) < self._token_expires_at - timedelta(minutes=5):
                 return self._auth_token
         
         # Get new token
@@ -131,7 +131,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
             
             self._auth_token = token_data.get("access_token")
             expires_in = token_data.get("expires_in", 3600)  # Default 1 hour
-            self._token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+            self._token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
             
             logger.debug("TCGPlayer authentication successful", expires_in=expires_in)
             return self._auth_token
@@ -149,15 +149,15 @@ class TCGPlayerAdapter(MarketplaceAdapter):
     
     async def _rate_limit(self) -> None:
         """Enforce rate limiting (100 requests per minute)."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         elapsed = (now - self._window_start).total_seconds()
-        
+
         # Reset window if 60 seconds has passed
         if elapsed >= self.RATE_LIMIT_WINDOW:
             self._request_count = 0
             self._window_start = now
             elapsed = 0
-        
+
         # If we've hit the limit, wait until window resets
         if self._request_count >= self.RATE_LIMIT_REQUESTS:
             wait_time = self.RATE_LIMIT_WINDOW - elapsed
@@ -165,17 +165,17 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                 logger.debug("TCGPlayer rate limit reached, waiting", wait_seconds=wait_time)
                 await asyncio.sleep(wait_time)
                 self._request_count = 0
-                self._window_start = datetime.utcnow()
-        
+                self._window_start = datetime.now(timezone.utc)
+
         self._request_count += 1
-        
+
         # Also enforce per-request rate limit
         if self._last_request_time is not None:
             elapsed_since_last = (now - self._last_request_time).total_seconds()
             if elapsed_since_last < self.config.rate_limit_seconds:
                 await asyncio.sleep(self.config.rate_limit_seconds - elapsed_since_last)
-        
-        self._last_request_time = datetime.utcnow()
+
+        self._last_request_time = datetime.now(timezone.utc)
     
     async def _make_authenticated_request(
         self,
@@ -552,7 +552,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                 price_high=max_price,
                 price_foil=price_foil,
                 num_listings=len(results),
-                snapshot_time=datetime.utcnow(),
+                snapshot_time=datetime.now(timezone.utc),
             )
             
         except httpx.HTTPStatusError as e:

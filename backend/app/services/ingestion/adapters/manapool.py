@@ -3,9 +3,12 @@ Manapool API adapter for marketplace price data.
 
 Manapool provides marketplace data and listings for MTG cards.
 API Documentation: https://manapool.com/api (to be verified)
+
+NOTE: This adapter is NOT IMPLEMENTED. It is a placeholder for future development
+when API documentation and access becomes available.
 """
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -25,10 +28,16 @@ logger = structlog.get_logger()
 class ManapoolAdapter(MarketplaceAdapter):
     """
     Adapter for Manapool marketplace API.
-    
+
+    WARNING: This adapter is NOT IMPLEMENTED and should not be used in production.
+    All methods will return empty data until the API integration is completed.
+
     Provides current marketplace prices and listings.
     Rate limit: TBD (to be configured based on API documentation)
     """
+
+    # Flag to indicate this adapter is not ready for production
+    IS_IMPLEMENTED = False
     
     BASE_URL = "https://api.manapool.com"  # To be verified
     RATE_LIMIT_REQUESTS = 10
@@ -53,7 +62,7 @@ class ManapoolAdapter(MarketplaceAdapter):
             logger.warning("Manapool API token not configured - adapter will not be able to fetch data")
         self._client: httpx.AsyncClient | None = None
         self._request_count = 0
-        self._window_start = datetime.utcnow()
+        self._window_start = datetime.now(timezone.utc)
     
     @property
     def marketplace_name(self) -> str:
@@ -82,15 +91,15 @@ class ManapoolAdapter(MarketplaceAdapter):
     
     async def _rate_limit(self) -> None:
         """Enforce rate limiting."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         elapsed = (now - self._window_start).total_seconds()
-        
+
         # Reset window if 1 second has passed
         if elapsed >= self.RATE_LIMIT_WINDOW:
             self._request_count = 0
             self._window_start = now
             elapsed = 0
-        
+
         # If we've hit the limit, wait until window resets
         if self._request_count >= self.RATE_LIMIT_REQUESTS:
             wait_time = self.RATE_LIMIT_WINDOW - elapsed
@@ -98,17 +107,17 @@ class ManapoolAdapter(MarketplaceAdapter):
                 logger.debug("Manapool rate limit reached, waiting", wait_seconds=wait_time)
                 await asyncio.sleep(wait_time)
                 self._request_count = 0
-                self._window_start = datetime.utcnow()
-        
+                self._window_start = datetime.now(timezone.utc)
+
         self._request_count += 1
-        
+
         # Also enforce per-request rate limit
         if self._last_request_time is not None:
             elapsed_since_last = (now - self._last_request_time).total_seconds()
             if elapsed_since_last < self.config.rate_limit_seconds:
                 await asyncio.sleep(self.config.rate_limit_seconds - elapsed_since_last)
-        
-        self._last_request_time = datetime.utcnow()
+
+        self._last_request_time = datetime.now(timezone.utc)
     
     async def fetch_listings(
         self,
@@ -308,7 +317,7 @@ class ManapoolAdapter(MarketplaceAdapter):
                 price_high=data.get("price_high"),
                 price_foil=data.get("price_foil"),
                 num_listings=data.get("num_listings"),
-                snapshot_time=datetime.utcnow(),
+                snapshot_time=datetime.now(timezone.utc),
             )
             
         except httpx.HTTPStatusError as e:

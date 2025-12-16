@@ -4,7 +4,7 @@ Recommendation Agent service.
 Generates actionable buy/sell/hold recommendations based on analytics.
 """
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import structlog
@@ -136,7 +136,7 @@ class RecommendationAgent:
             Recommendation.card_id == card_id,
             Recommendation.is_active == True,
             or_(
-                Recommendation.valid_until < datetime.utcnow(),
+                Recommendation.valid_until < datetime.now(timezone.utc),
                 Recommendation.valid_until == None,
             ),
         )
@@ -202,7 +202,7 @@ class RecommendationAgent:
                 potential_profit_pct=capped_profit_pct,
                 rationale=rationale,
                 source_signals=json.dumps(["spread_high"]),
-                valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
                 is_active=True,
             )
         
@@ -269,7 +269,7 @@ class RecommendationAgent:
             current_price=float(metrics.avg_price) if metrics.avg_price else None,
             rationale=rationale,
             source_signals=json.dumps([latest_signal.signal_type]),
-            valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+            valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
             is_active=True,
         )
     
@@ -333,7 +333,7 @@ class RecommendationAgent:
             current_price=float(metrics.avg_price) if metrics.avg_price else None,
             rationale=rationale,
             source_signals=json.dumps([latest_signal.signal_type]),
-            valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+            valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
             is_active=True,
         )
     
@@ -375,7 +375,7 @@ class RecommendationAgent:
             current_price=float(metrics.avg_price) if metrics.avg_price else None,
             rationale=rationale,
             source_signals=json.dumps([latest_signal.signal_type]),
-            valid_until=datetime.utcnow() + timedelta(days=self.horizon_days),
+            valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
             is_active=True,
         )
     

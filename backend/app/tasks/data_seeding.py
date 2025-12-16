@@ -8,7 +8,7 @@ This task:
 4. Ensures data quality for ML training and dashboard charts
 """
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -275,7 +275,7 @@ async def process_bulk_card(
     
     # Get updated_at timestamp from card data
     updated_at_str = card_data.get("updated_at")
-    snapshot_time = datetime.utcnow()
+    snapshot_time = datetime.now(timezone.utc)
     if updated_at_str:
         try:
             # Scryfall timestamps are ISO format
