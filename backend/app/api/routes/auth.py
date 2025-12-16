@@ -4,7 +4,7 @@ Authentication API endpoints for user registration, login, and profile managemen
 from datetime import timedelta
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
@@ -20,6 +20,7 @@ from app.schemas.auth import (
 from app.services.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
+    blacklist_token,
     create_access_token,
     create_user,
     get_user_by_email,
@@ -163,16 +164,25 @@ async def change_password(
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     current_user: CurrentUser,
 ):
     """
-    Logout the current user.
-    
-    Note: Since we use stateless JWT tokens, the actual token invalidation
-    should be handled client-side by removing the stored token.
-    For enhanced security, consider implementing a token blacklist.
+    Logout the current user and invalidate their token.
+
+    The token is added to a blacklist to prevent further use until expiration.
     """
-    logger.info("User logged out", user_id=current_user.id)
+    # Get token from Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]  # Remove "Bearer " prefix
+        if blacklist_token(token):
+            logger.info("User logged out, token blacklisted", user_id=current_user.id)
+        else:
+            logger.warning("User logged out, but token blacklisting failed", user_id=current_user.id)
+    else:
+        logger.info("User logged out (no token to blacklist)", user_id=current_user.id)
+
     return {"message": "Successfully logged out"}
 
 

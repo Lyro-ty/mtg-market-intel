@@ -54,10 +54,11 @@ class Token(BaseModel):
 
 class TokenPayload(BaseModel):
     """Schema for JWT token payload."""
-    
+
     sub: str  # user id
     exp: datetime
     iat: datetime
+    jti: Optional[str] = None  # JWT ID for blacklist support
     type: str = "access"
 
 

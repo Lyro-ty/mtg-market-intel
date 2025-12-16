@@ -7,7 +7,7 @@ This adapter supplements our scrapers by providing historical price trends.
 import asyncio
 import gzip
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
@@ -74,10 +74,10 @@ class MTGJSONAdapter(MarketplaceAdapter):
     async def _rate_limit(self) -> None:
         """Enforce rate limiting."""
         if self._last_request_time is not None:
-            elapsed = (datetime.utcnow() - self._last_request_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self._last_request_time).total_seconds()
             if elapsed < self.config.rate_limit_seconds:
                 await asyncio.sleep(self.config.rate_limit_seconds - elapsed)
-        self._last_request_time = datetime.utcnow()
+        self._last_request_time = datetime.now(timezone.utc)
     
     async def _download_file(self, url: str, cache_file: Path) -> dict | None:
         """
@@ -103,7 +103,7 @@ class MTGJSONAdapter(MarketplaceAdapter):
         
         # Check disk cache (if less than 7 days old, since MTGJSON updates weekly)
         if cache_file.exists():
-            cache_age = datetime.utcnow() - datetime.fromtimestamp(cache_file.stat().st_mtime)
+            cache_age = datetime.now(timezone.utc) - datetime.fromtimestamp(cache_file.stat().st_mtime, tz=timezone.utc)
             if cache_age < timedelta(days=7):
                 logger.debug("Using cached MTGJSON file", file=str(cache_file), age_hours=cache_age.total_seconds() / 3600)
                 try:
@@ -304,7 +304,7 @@ class MTGJSONAdapter(MarketplaceAdapter):
                         try:
                             price_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                             # Only include prices within requested days
-                            if (datetime.utcnow() - price_date).days <= days:
+                            if (datetime.now(timezone.utc) - price_date).days <= days:
                                 historical_prices.append(
                                     CardPrice(
                                         card_name=card_data.get("name", card_name),
@@ -332,7 +332,7 @@ class MTGJSONAdapter(MarketplaceAdapter):
                     if isinstance(price_value, (int, float)) and price_value > 0:
                         try:
                             price_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                            if (datetime.utcnow() - price_date).days <= days:
+                            if (datetime.now(timezone.utc) - price_date).days <= days:
                                 historical_prices.append(
                                     CardPrice(
                                         card_name=card_data.get("name", card_name),
@@ -384,7 +384,7 @@ class MTGJSONAdapter(MarketplaceAdapter):
                         price=float(current_price),
                         currency="USD",
                         price_foil=float(current_foil_price) if current_foil_price else None,
-                        snapshot_time=datetime.utcnow(),
+                        snapshot_time=datetime.now(timezone.utc),
                     )
                 )
         

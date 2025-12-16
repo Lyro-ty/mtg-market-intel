@@ -3,7 +3,8 @@ Authentication service for user management, password hashing, and JWT tokens.
 
 Security measures implemented:
 - bcrypt password hashing (cost factor 12)
-- JWT tokens with expiration
+- JWT tokens with expiration and unique JTI
+- Token blacklist for secure logout
 - Account lockout after failed attempts
 - Timing-attack resistant password comparison
 - Email normalization
@@ -11,6 +12,7 @@ Security measures implemented:
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
+import uuid
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -19,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.core.config import settings
+from app.core.token_blacklist import get_token_blacklist
 from app.models.user import User
 from app.schemas.auth import TokenPayload, UserRegister
 
@@ -57,46 +60,96 @@ def get_password_hash(password: str) -> str:
 
 
 def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token."""
+    """
+    Create a JWT access token with unique JTI for blacklist support.
+
+    Args:
+        user_id: User ID to encode in the token
+        expires_delta: Optional custom expiration time
+
+    Returns:
+        Encoded JWT token
+    """
     now = datetime.now(timezone.utc)
-    
+
     if expires_delta:
         expire = now + expires_delta
     else:
         expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
+    # Generate unique JTI for blacklist support
+    jti = str(uuid.uuid4())
+
     payload = {
         "sub": str(user_id),
         "exp": expire,
         "iat": now,
+        "jti": jti,  # JWT ID for blacklist
         "type": "access",
     }
-    
+
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
 def decode_access_token(token: str) -> Optional[TokenPayload]:
     """
     Decode and validate a JWT access token.
-    
+
     Validates:
     - Token signature
     - Token expiration
     - Token type (must be "access")
+    - Token not in blacklist
     """
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
         token_data = TokenPayload(**payload)
-        
+
         # Validate token type
         if token_data.type != "access":
             logger.warning("Invalid token type", token_type=token_data.type)
             return None
-        
+
+        # Check if token is blacklisted
+        if token_data.jti:
+            blacklist = get_token_blacklist()
+            if blacklist.is_blacklisted(token_data.jti):
+                logger.warning("Token is blacklisted", jti=token_data.jti)
+                return None
+
         return token_data
     except JWTError as e:
         logger.warning("JWT decode error", error=str(e))
         return None
+
+
+def blacklist_token(token: str) -> bool:
+    """
+    Add a token to the blacklist.
+
+    Args:
+        token: JWT token to blacklist
+
+    Returns:
+        True if token was successfully blacklisted
+    """
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+
+        if not jti or not exp:
+            logger.warning("Token missing JTI or exp claim")
+            return False
+
+        # Convert exp to datetime
+        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+
+        blacklist = get_token_blacklist()
+        return blacklist.add(jti, expires_at)
+    except JWTError as e:
+        logger.warning("Failed to blacklist token", error=str(e))
+        return False
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:

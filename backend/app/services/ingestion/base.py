@@ -5,7 +5,7 @@ Defines the interface that all marketplace adapters must implement.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -50,7 +50,7 @@ class CardListing:
     listing_url: str | None = None
     
     # Timestamps
-    scraped_at: datetime = field(default_factory=datetime.utcnow)
+    scraped_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Raw data for debugging
     raw_data: dict[str, Any] | None = None
@@ -81,7 +81,7 @@ class CardPrice:
     total_quantity: int | None = None
     
     # Timestamp
-    snapshot_time: datetime = field(default_factory=datetime.utcnow)
+    snapshot_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MarketplaceAdapter(ABC):

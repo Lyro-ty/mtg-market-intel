@@ -1,7 +1,7 @@
 """
 Dashboard API endpoints.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc
@@ -36,7 +36,7 @@ async def get_dashboard_summary(
     ) or 0
     
     # Cards with recent prices
-    week_ago = datetime.utcnow() - timedelta(days=7)
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     cards_with_prices = await db.scalar(
         select(func.count(func.distinct(PriceSnapshot.card_id))).where(
             PriceSnapshot.snapshot_time >= week_ago
@@ -71,7 +71,7 @@ async def get_dashboard_summary(
             func.avg(MetricsCardsDaily.price_change_pct_7d).label("avg_change_7d"),
             func.avg(MetricsCardsDaily.spread_pct).label("avg_spread"),
         ).where(
-            MetricsCardsDaily.date >= datetime.utcnow().date() - timedelta(days=1)
+            MetricsCardsDaily.date >= datetime.now(timezone.utc).date() - timedelta(days=1)
         )
     )
     stats_row = avg_stats.first()

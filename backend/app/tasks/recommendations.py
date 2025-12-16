@@ -207,14 +207,14 @@ def cleanup_old_recommendations(self, days: int = 30) -> dict[str, Any]:
 
 async def _cleanup_old_recommendations_async(days: int) -> dict[str, Any]:
     """Async implementation of recommendation cleanup."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from app.models import Recommendation
     from sqlalchemy import delete
-    
+
     session_maker, engine = create_task_session_maker()
     try:
         async with session_maker() as db:
-            cutoff = datetime.utcnow() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             
             # Delete old inactive recommendations
             stmt = delete(Recommendation).where(

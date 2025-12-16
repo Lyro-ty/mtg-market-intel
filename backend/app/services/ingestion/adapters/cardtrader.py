@@ -5,7 +5,7 @@ CardTrader provides marketplace data in multiple currencies (USD, EUR) with mark
 API Documentation: https://www.cardtrader.com/docs/api/full/reference
 """
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -53,7 +53,7 @@ class CardTraderAdapter(MarketplaceAdapter):
             logger.warning("CardTrader API token not configured - adapter will not be able to fetch data")
         self._client: httpx.AsyncClient | None = None
         self._request_count = 0
-        self._window_start = datetime.utcnow()
+        self._window_start = datetime.now(timezone.utc)
         # Cache expansions to avoid fetching on every card lookup
         self._expansions_cache: dict[str, int] | None = None
         self._expansions_cache_time: datetime | None = None
@@ -83,15 +83,15 @@ class CardTraderAdapter(MarketplaceAdapter):
     
     async def _rate_limit(self) -> None:
         """Enforce rate limiting (200 requests per 10 seconds per API documentation)."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         elapsed = (now - self._window_start).total_seconds()
-        
+
         # Reset window if 10 seconds has passed
         if elapsed >= self.RATE_LIMIT_WINDOW:
             self._request_count = 0
             self._window_start = now
             elapsed = 0
-        
+
         # If we've hit the limit, wait until window resets
         if self._request_count >= self.RATE_LIMIT_REQUESTS:
             wait_time = self.RATE_LIMIT_WINDOW - elapsed
@@ -99,7 +99,7 @@ class CardTraderAdapter(MarketplaceAdapter):
                 logger.debug("CardTrader rate limit reached, waiting", wait_seconds=wait_time)
                 await asyncio.sleep(wait_time)
                 self._request_count = 0
-                self._window_start = datetime.utcnow()
+                self._window_start = datetime.now(timezone.utc)
         
         self._request_count += 1
         
@@ -109,7 +109,7 @@ class CardTraderAdapter(MarketplaceAdapter):
             if elapsed_since_last < self.config.rate_limit_seconds:
                 await asyncio.sleep(self.config.rate_limit_seconds - elapsed_since_last)
         
-        self._last_request_time = datetime.utcnow()
+        self._last_request_time = datetime.now(timezone.utc)
     
     async def _get_expansions_cached(self) -> list[dict[str, Any]]:
         """
@@ -118,8 +118,8 @@ class CardTraderAdapter(MarketplaceAdapter):
         Cache expires after 1 hour to avoid excessive API calls.
         Per CardTrader API documentation: GET /expansions returns array of Expansion objects.
         """
-        now = datetime.utcnow()
-        
+        now = datetime.now(timezone.utc)
+
         # Check if cache is valid (1 hour expiry)
         # Note: We cache the mapping (code -> id) but need to return the full list
         # For now, we'll always fetch but use cache for quick lookups in _find_blueprint
@@ -699,7 +699,7 @@ class CardTraderAdapter(MarketplaceAdapter):
             price_high=max_price,
             price_foil=price_foil,
             num_listings=len(products),
-            snapshot_time=datetime.utcnow(),
+            snapshot_time=datetime.now(timezone.utc),
         )
     
     async def search_cards(
