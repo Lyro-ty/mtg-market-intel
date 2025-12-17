@@ -36,6 +36,24 @@ export function VolumeByFormatChart({
   title = 'Volume by Format',
   height = 350,
 }: VolumeByFormatChartProps) {
+  // Handle empty or missing data
+  if (!data || !data.formats || data.formats.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center" style={{ height }}>
+            <span className="text-[rgb(var(--muted-foreground))]">
+              No volume data available
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Transform data for stacked area chart
   // Group all points by timestamp
   const allDates = new Set<string>();

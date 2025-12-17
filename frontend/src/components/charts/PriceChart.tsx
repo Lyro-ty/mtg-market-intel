@@ -33,15 +33,43 @@ const COLORS = [
   '#8b5cf6', // purple
 ];
 
-export function PriceChart({ 
-  data, 
+export function PriceChart({
+  data,
   history,
-  title = 'Price History', 
+  title = 'Price History',
   height = 300,
   showFreshness = true,
   autoRefresh = false,
   refreshInterval = 60,
 }: PriceChartProps) {
+  // Handle empty or missing data
+  if (!data || data.length === 0) {
+    // If no title, render without Card wrapper
+    if (!title) {
+      return (
+        <div className="flex items-center justify-center" style={{ height }}>
+          <span className="text-[rgb(var(--muted-foreground))]">
+            No price history available
+          </span>
+        </div>
+      );
+    }
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center" style={{ height }}>
+            <span className="text-[rgb(var(--muted-foreground))]">
+              No price history available
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Group data by marketplace and condition (if condition data is present)
   // Create a key that combines marketplace and condition for unique series
   const hasConditionData = data.some((d) => d.condition);

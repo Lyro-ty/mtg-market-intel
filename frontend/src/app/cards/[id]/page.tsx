@@ -102,8 +102,8 @@ export default function CardDetailPage() {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      // Use sync=true to get immediate data back
-      const updatedData = await refreshCard(cardId, { sync: true });
+      // Use sync=true and force=true to always fetch fresh data
+      const updatedData = await refreshCard(cardId, { sync: true, force: true });
       // Update the cache with the new data
       queryClient.setQueryData(['card', cardId], updatedData);
       // Also refetch history to get new price points

@@ -28,7 +28,7 @@ limiter = Limiter(key_func=get_remote_address)
 async def lifespan(app: FastAPI):
     """
     Application lifespan handler.
-    
+
     Startup and shutdown events.
     """
     # Startup
@@ -37,56 +37,103 @@ async def lifespan(app: FastAPI):
         version="1.0.0",
         debug=settings.api_debug,
     )
-    
+
     # Enable adapter caching for FastAPI (single event loop)
     # This is safe here because FastAPI runs in a single event loop
     # Celery workers should NOT enable this as they create new loops per task
     enable_adapter_caching(True)
-    
-    # Trigger initial tasks on startup
+
+    # Check data freshness and only trigger tasks if needed
     try:
+        from app.db.session import async_session_maker
+        from app.core.data_freshness import (
+            check_data_freshness,
+            should_run_price_collection,
+            should_run_analytics,
+            should_run_recommendations,
+        )
         from app.tasks.data_seeding import seed_comprehensive_price_data
         from app.tasks.ingestion import collect_price_data, import_mtgjson_historical_prices
         from app.tasks.analytics import run_analytics
         from app.tasks.recommendations import generate_recommendations
-        
-        logger.info("Triggering startup tasks: comprehensive seeding, price collection, analytics, recommendations")
-        
-        # Phase 1: Comprehensive data seeding (current + historical for all cards)
-        # This pulls current prices from Scryfall + historical from MTGJSON
-        seeding_task = seed_comprehensive_price_data.delay()
-        logger.info("Comprehensive data seeding task queued", task_id=str(seeding_task.id))
-        
-        # Phase 1.5: Import MTGJSON historical data for inventory cards (30 days)
-        # This ensures inventory cards have chart data immediately
-        # Prioritizes inventory cards over all cards for faster chart availability
-        mtgjson_task = import_mtgjson_historical_prices.delay(card_ids=None, days=30)
-        logger.info("MTGJSON historical import for inventory cards queued", task_id=str(mtgjson_task.id))
-        
-        # Phase 2: Regular price collection (runs in background, continues after seeding)
-        price_task = collect_price_data.delay()
-        logger.info("Price collection task queued", task_id=str(price_task.id))
-        
-        # Phase 3: Analytics (runs after data is available)
-        analytics_task = run_analytics.delay()
-        logger.info("Analytics task queued", task_id=str(analytics_task.id))
-        
-        # Phase 4: Recommendations (runs after analytics)
-        rec_task = generate_recommendations.delay()
-        logger.info("Recommendations task queued", task_id=str(rec_task.id))
-        
+
+        # Check existing data freshness
+        async with async_session_maker() as db:
+            freshness = await check_data_freshness(db)
+
+            price_fresh = freshness["price_snapshots"]["fresh"]
+            analytics_fresh = freshness["analytics"]["fresh"]
+            recommendations_fresh = freshness["recommendations"]["fresh"]
+
+            price_count = freshness["price_snapshots"]["count"]
+            analytics_count = freshness["analytics"]["count"]
+            recommendations_count = freshness["recommendations"]["count"]
+
+        logger.info(
+            "Data freshness check on startup",
+            price_snapshots_fresh=price_fresh,
+            price_snapshots_count=price_count,
+            analytics_fresh=analytics_fresh,
+            analytics_count=analytics_count,
+            recommendations_fresh=recommendations_fresh,
+            recommendations_count=recommendations_count,
+        )
+
+        # Only trigger tasks for stale or missing data
+        tasks_triggered = []
+
+        # Price collection - only if data is stale or missing
+        if not price_fresh or price_count < 100:
+            # Phase 1: Comprehensive data seeding (current + historical for all cards)
+            seeding_task = seed_comprehensive_price_data.delay()
+            logger.info("Comprehensive data seeding task queued", task_id=str(seeding_task.id))
+            tasks_triggered.append("seed_comprehensive_price_data")
+
+            # Phase 1.5: Import MTGJSON historical data for inventory cards (30 days)
+            mtgjson_task = import_mtgjson_historical_prices.delay(card_ids=None, days=30)
+            logger.info("MTGJSON historical import queued", task_id=str(mtgjson_task.id))
+            tasks_triggered.append("import_mtgjson_historical_prices")
+
+            # Phase 2: Regular price collection
+            price_task = collect_price_data.delay()
+            logger.info("Price collection task queued", task_id=str(price_task.id))
+            tasks_triggered.append("collect_price_data")
+        else:
+            logger.info("Skipping price collection tasks - data is fresh")
+
+        # Analytics - only if data is stale or missing
+        if not analytics_fresh or analytics_count == 0:
+            analytics_task = run_analytics.delay()
+            logger.info("Analytics task queued", task_id=str(analytics_task.id))
+            tasks_triggered.append("run_analytics")
+        else:
+            logger.info("Skipping analytics task - data is fresh")
+
+        # Recommendations - only if data is stale or missing
+        if not recommendations_fresh or recommendations_count == 0:
+            rec_task = generate_recommendations.delay()
+            logger.info("Recommendations task queued", task_id=str(rec_task.id))
+            tasks_triggered.append("generate_recommendations")
+        else:
+            logger.info("Skipping recommendations task - data is fresh")
+
+        if tasks_triggered:
+            logger.info("Startup tasks triggered", tasks=tasks_triggered)
+        else:
+            logger.info("All data is fresh - no startup tasks needed, charts will load instantly")
+
     except Exception as exc:
         # Don't fail startup if Celery isn't available (e.g., in dev)
         logger.warning(
-            "Failed to trigger startup tasks (Celery may not be ready)",
+            "Failed to check freshness or trigger startup tasks (Celery may not be ready)",
             error=str(exc)
         )
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down MTG Market Intel API")
-    
+
     # Disable caching and clean up adapters
     enable_adapter_caching(False)
 

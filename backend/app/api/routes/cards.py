@@ -519,26 +519,29 @@ async def refresh_card_data(
     card_id: int,
     payload: dict | None = None,
     sync: bool = Query(True, description="Run synchronously and return updated data immediately"),
+    force: bool = Query(False, description="Force fetch new data, bypassing the 24-hour cache"),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Manually trigger a refresh for a card's prices, metrics, and recommendations.
-    
+
     If sync=True (default), fetches data immediately and returns updated card detail.
     If sync=False, dispatches background tasks and returns task IDs.
-    
+    If force=True, always fetches new data even if recent data exists (bypasses 24-hour cache).
+
     Note: Synchronous refresh can take 30-60 seconds for cards with historical data.
     Consider using sync=False for background processing if you don't need immediate results.
     """
     card = await db.get(Card, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
-    
+
     if sync:
         # Synchronous refresh - fetch data immediately and return
         # Use fast_mode=True for instant refresh (skips heavy operations if data exists)
+        # If force=True, use fast_mode=False to always fetch new data
         try:
-            return await _sync_refresh_card(db, card, fast_mode=True)
+            return await _sync_refresh_card(db, card, fast_mode=not force)
         except Exception as e:
             logger.error(
                 "Error during card refresh",
