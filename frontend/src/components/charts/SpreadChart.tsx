@@ -28,6 +28,24 @@ export function SpreadChart({
   height = 250,
   showFreshness = true,
 }: SpreadChartProps) {
+  // Handle empty or missing data
+  if (!data || data.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center" style={{ height }}>
+            <span className="text-[rgb(var(--muted-foreground))]">
+              No price data available
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const chartData = data.map((item) => ({
     marketplace: item.marketplace_name,
     price: item.price,

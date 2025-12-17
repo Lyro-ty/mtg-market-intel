@@ -3,10 +3,11 @@ Startup script that seeds data and backfills MTGJSON historical data before star
 
 This script:
 1. Runs database migrations
-2. Seeds basic data (marketplaces, settings, cards) - NO mock prices
-3. Backfills MTGJSON historical data (with 5-minute timeout)
-4. Starts the API server
-5. Continues backfilling in background via Celery task
+2. Checks existing data freshness
+3. Seeds basic data (marketplaces, settings, cards) - NO mock prices
+4. Backfills MTGJSON historical data (with 5-minute timeout) - ONLY if needed
+5. Starts the API server
+6. Continues backfilling in background via Celery task (if needed)
 """
 import asyncio
 import sys
@@ -23,6 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from app.scripts.seed_mtgjson_historical import seed_mtgjson_historical
 
 logger = structlog.get_logger()
+
+# Minimum snapshots to consider data sufficient (skip backfill if we have this many)
+MIN_SNAPSHOTS_FOR_SKIP = 10000
 
 
 async def run_migrations():
@@ -151,7 +155,7 @@ async def trigger_background_backfill():
     """Trigger Celery task to continue backfilling in background."""
     try:
         from app.tasks.data_seeding import seed_comprehensive_price_data
-        
+
         logger.info("Triggering background MTGJSON backfill task...")
         # Schedule the task to run asynchronously
         task = seed_comprehensive_price_data.delay()
@@ -166,26 +170,96 @@ async def trigger_background_backfill():
         return False
 
 
+async def check_existing_data():
+    """
+    Check if sufficient data already exists in the database.
+
+    Returns:
+        dict with data counts and freshness info
+    """
+    try:
+        from app.db.session import async_session_maker
+        from app.core.data_freshness import check_data_freshness, get_price_snapshot_count
+
+        async with async_session_maker() as db:
+            freshness = await check_data_freshness(db)
+            snapshot_count = freshness["price_snapshots"]["count"]
+            analytics_count = freshness["analytics"]["count"]
+            recommendations_count = freshness["recommendations"]["count"]
+
+            return {
+                "snapshot_count": snapshot_count,
+                "analytics_count": analytics_count,
+                "recommendations_count": recommendations_count,
+                "price_fresh": freshness["price_snapshots"]["fresh"],
+                "analytics_fresh": freshness["analytics"]["fresh"],
+                "recommendations_fresh": freshness["recommendations"]["fresh"],
+                "has_sufficient_data": snapshot_count >= MIN_SNAPSHOTS_FOR_SKIP,
+            }
+    except Exception as e:
+        logger.warning("Failed to check existing data", error=str(e))
+        return {
+            "snapshot_count": 0,
+            "analytics_count": 0,
+            "recommendations_count": 0,
+            "price_fresh": False,
+            "analytics_fresh": False,
+            "recommendations_fresh": False,
+            "has_sufficient_data": False,
+        }
+
+
 async def main():
     """Main startup function."""
-    logger.info("Starting application with MTGJSON historical data backfill...")
-    
+    logger.info("Starting application...")
+
     # Step 1: Run migrations
     if not await run_migrations():
         logger.error("Migrations failed, exiting")
         sys.exit(1)
-    
-    # Step 2: Seed basic data (NO mock prices)
+
+    # Step 2: Check existing data
+    existing_data = await check_existing_data()
+    logger.info(
+        "Existing data check",
+        snapshot_count=existing_data["snapshot_count"],
+        analytics_count=existing_data["analytics_count"],
+        recommendations_count=existing_data["recommendations_count"],
+        price_fresh=existing_data["price_fresh"],
+        analytics_fresh=existing_data["analytics_fresh"],
+        recommendations_fresh=existing_data["recommendations_fresh"],
+        has_sufficient_data=existing_data["has_sufficient_data"],
+    )
+
+    # Step 3: Seed basic data (NO mock prices) - always run (idempotent)
     if not await seed_basic_data():
         logger.error("Basic data seeding failed, exiting")
         sys.exit(1)
-    
-    # Step 3: Backfill MTGJSON historical data (with 5-minute timeout, process up to 4000 cards)
-    backfill_stats = await backfill_historical_data(timeout_minutes=5, card_limit=4000)
-    
-    # Step 4: Trigger background backfill task to continue processing all cards
-    await trigger_background_backfill()
-    
+
+    # Step 4: Backfill MTGJSON historical data - ONLY if insufficient data exists
+    if existing_data["has_sufficient_data"]:
+        logger.info(
+            "Skipping MTGJSON backfill - sufficient data already exists",
+            snapshot_count=existing_data["snapshot_count"],
+            min_required=MIN_SNAPSHOTS_FOR_SKIP,
+        )
+        backfill_stats = {
+            "status": "skipped",
+            "reason": "sufficient_data_exists",
+            "existing_snapshots": existing_data["snapshot_count"],
+        }
+    else:
+        logger.info(
+            "Running MTGJSON backfill - insufficient data",
+            snapshot_count=existing_data["snapshot_count"],
+            min_required=MIN_SNAPSHOTS_FOR_SKIP,
+        )
+        # Backfill with 5-minute timeout, process up to 4000 cards
+        backfill_stats = await backfill_historical_data(timeout_minutes=5, card_limit=4000)
+
+        # Trigger background backfill task to continue processing all cards
+        await trigger_background_backfill()
+
     logger.info(
         "Startup seeding completed",
         backfill_status=backfill_stats.get("status", "completed"),
@@ -193,10 +267,10 @@ async def main():
         snapshots_created=backfill_stats.get("snapshots_created", 0),
         message="Starting API server..."
     )
-    
+
     # Step 5: Start the API server using subprocess
     logger.info("Starting uvicorn server...")
-    
+
     # Start uvicorn as a subprocess
     process = subprocess.Popen(
         [
@@ -207,7 +281,7 @@ async def main():
         ],
         env=os.environ
     )
-    
+
     # Wait for the process to complete
     try:
         process.wait()

@@ -76,7 +76,7 @@ async def get_dashboard_summary(
     )
     stats_row = avg_stats.first()
     
-    return DashboardSummary(
+    result = DashboardSummary(
         total_cards=total_cards,
         total_with_prices=cards_with_prices,
         total_marketplaces=total_marketplaces,
@@ -90,10 +90,10 @@ async def get_dashboard_summary(
         avg_price_change_7d=float(stats_row.avg_change_7d) if stats_row and stats_row.avg_change_7d else None,
         avg_spread_pct=float(stats_row.avg_spread) if stats_row and stats_row.avg_spread else None,
     )
-    
+
     # Cache result for 5 minutes
     cache.set(cache_key, result, ttl=300)
-    
+
     return result
 
 

@@ -258,13 +258,17 @@ export async function refreshCard(
   options: {
     marketplaces?: string[];
     sync?: boolean;
+    force?: boolean;
   } = {}
 ): Promise<CardDetail> {
   const params = new URLSearchParams();
   if (options.sync !== undefined) {
     params.set('sync', String(options.sync));
   }
-  
+  if (options.force !== undefined) {
+    params.set('force', String(options.force));
+  }
+
   const queryString = params.toString();
   return fetchApi(`/cards/${cardId}/refresh${queryString ? `?${queryString}` : ''}`, {
     method: 'POST',
