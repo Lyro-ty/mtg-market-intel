@@ -96,7 +96,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                   </Button>
                   <Button
                     onClick={() => window.location.reload()}
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                   >
                     Reload Page
