@@ -1,1 +1,4 @@
 backend/data/scryfall_default_cards.json
+
+# Worktrees
+.worktrees/
