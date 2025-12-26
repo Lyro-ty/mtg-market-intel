@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingPage } from '@/components/ui/Loading';
+import { ThemePicker } from '@/components/ui/ThemePicker';
 import { getSettings, updateSettings, getMarketplaces, toggleMarketplace } from '@/lib/api';
 
 export default function SettingsPage() {
@@ -76,6 +77,23 @@ export default function SettingsPage() {
           Configure your MTG Market Intel preferences
         </p>
       </div>
+
+      {/* Appearance Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Customize the look and feel of the application</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <label className="text-sm text-[rgb(var(--muted-foreground))]">Mana Theme</label>
+            <ThemePicker />
+            <p className="text-xs text-[rgb(var(--muted-foreground))]">
+              Choose your preferred mana color theme
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Marketplace Settings */}
       <Card>
