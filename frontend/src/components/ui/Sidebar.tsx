@@ -59,12 +59,15 @@ export function Sidebar() {
               key={item.name}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-amber-500/10 text-amber-500'
-                  : 'text-[rgb(var(--muted-foreground))] hover:text-[rgb(var(--foreground))] hover:bg-[rgb(var(--secondary))]'
+                  ? 'text-[rgb(var(--accent))] bg-[rgba(var(--accent),0.05)]'
+                  : 'text-[rgb(var(--muted-foreground))] hover:text-[rgb(var(--foreground))] hover:bg-[rgba(var(--accent),0.05)]'
               )}
             >
+              {isActive && (
+                <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[rgb(var(--accent))] rounded-r-full" />
+              )}
               <item.icon className="w-5 h-5" />
               {item.name}
             </Link>
