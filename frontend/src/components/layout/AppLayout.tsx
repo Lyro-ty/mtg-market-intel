@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { TopNav } from '@/components/layout/TopNav';
+import { PageTransition } from '@/components/layout/PageTransition';
 
 // Routes where navigation should not be shown
 const fullPageRoutes = ['/login', '/register'];
@@ -13,14 +14,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isLandingPage = pathname === landingPageRoute;
 
   if (isFullPage || isLandingPage) {
-    return <>{children}</>;
+    return <PageTransition>{children}</PageTransition>;
   }
 
   return (
     <div className="min-h-screen bg-[rgb(var(--background))]">
       <TopNav />
       <main className="p-8">
-        {children}
+        <PageTransition>{children}</PageTransition>
       </main>
     </div>
   );
