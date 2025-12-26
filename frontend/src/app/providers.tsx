@@ -3,7 +3,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { ToastProvider } from '@/contexts/ToastContext';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { WelcomeModal } from '@/components/onboarding/WelcomeModal';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -20,11 +23,16 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ErrorBoundary title="Application Error">
-          {children}
-        </ErrorBoundary>
-      </AuthProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ErrorBoundary title="Application Error">
+              {children}
+              <WelcomeModal />
+            </ErrorBoundary>
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

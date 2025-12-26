@@ -312,6 +312,7 @@ export default function CardDetailPage() {
               <button
                 onClick={() => setShowAddInventory(false)}
                 className="p-2 rounded-lg hover:bg-[rgb(var(--secondary))] transition-colors"
+                aria-label="Close add to inventory modal"
               >
                 <X className="w-5 h-5 text-[rgb(var(--muted-foreground))]" />
               </button>
