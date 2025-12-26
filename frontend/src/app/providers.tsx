@@ -6,6 +6,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { WelcomeModal } from '@/components/onboarding/WelcomeModal';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -27,6 +28,7 @@ export function Providers({ children }: { children: ReactNode }) {
           <AuthProvider>
             <ErrorBoundary title="Application Error">
               {children}
+              <WelcomeModal />
             </ErrorBoundary>
           </AuthProvider>
         </ToastProvider>
