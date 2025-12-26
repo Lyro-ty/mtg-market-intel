@@ -19,7 +19,11 @@ export function MobileNav() {
   const { isAuthenticated } = useAuth();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[rgb(var(--surface))] border-t border-[rgb(var(--border))] md:hidden safe-area-inset-bottom">
+    <nav
+      role="navigation"
+      aria-label="Mobile navigation"
+      className="fixed bottom-0 left-0 right-0 z-40 bg-[rgb(var(--surface))] border-t border-[rgb(var(--border))] md:hidden safe-area-inset-bottom"
+    >
       <div className="flex justify-around items-center h-16 px-2">
         {NAV_ITEMS.map((item) => {
           // Skip auth-required items if not authenticated
@@ -34,6 +38,7 @@ export function MobileNav() {
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
                 'flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-[60px]',
                 isActive
@@ -41,7 +46,7 @@ export function MobileNav() {
                   : 'text-[rgb(var(--muted-foreground))] hover:text-[rgb(var(--foreground))]'
               )}
             >
-              <Icon className="w-5 h-5" />
+              <Icon className="w-5 h-5" aria-hidden="true" />
               <span className="text-xs font-medium">{item.label}</span>
             </Link>
           );
