@@ -165,6 +165,7 @@ export function InventoryItemCard({ item, onClick, onDelete, onToggleFoil, onEdi
                     }}
                     className="h-7 px-2"
                     title={item.is_foil ? 'Mark as non-foil' : 'Mark as foil'}
+                    aria-label={item.is_foil ? 'Mark as non-foil' : 'Mark as foil'}
                   >
                     <Sparkles className={`w-3 h-3 ${item.is_foil ? 'text-purple-500' : ''}`} />
                   </Button>
@@ -179,6 +180,7 @@ export function InventoryItemCard({ item, onClick, onDelete, onToggleFoil, onEdi
                     }}
                     className="h-7 px-2"
                     title="Edit item"
+                    aria-label="Edit item"
                   >
                     <Edit2 className="w-3 h-3" />
                   </Button>
@@ -195,6 +197,7 @@ export function InventoryItemCard({ item, onClick, onDelete, onToggleFoil, onEdi
                     }}
                     className="h-7 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
                     title="Remove from inventory"
+                    aria-label="Remove from inventory"
                   >
                     <Trash2 className="w-3 h-3" />
                   </Button>
