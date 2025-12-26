@@ -12,6 +12,9 @@ const buttonVariants = cva(
         // Alias for backward compatibility
         primary:
           'bg-[rgb(var(--accent))] text-white hover:bg-[rgb(var(--accent-glow))] hover:shadow-[0_0_20px_rgba(var(--accent),0.4)] hover:scale-[1.02] active:scale-[0.98]',
+        // Explicit accent variant (identical to default/primary)
+        accent:
+          'bg-[rgb(var(--accent))] text-white hover:bg-[rgb(var(--accent-glow))] hover:shadow-[0_0_20px_rgba(var(--accent),0.4)] hover:scale-[1.02] active:scale-[0.98]',
         secondary:
           'border border-[rgb(var(--accent))] text-[rgb(var(--accent))] hover:bg-[rgba(var(--accent),0.1)] hover:scale-[1.02] active:scale-[0.98]',
         ghost:
