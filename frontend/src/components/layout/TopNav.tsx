@@ -40,16 +40,20 @@ export function TopNav() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 w-full bg-[rgb(var(--card))] border-b border-[rgb(var(--border))] backdrop-blur-sm">
+    <nav
+      role="navigation"
+      aria-label="Main navigation"
+      className="sticky top-0 z-50 w-full bg-[rgb(var(--card))] border-b border-[rgb(var(--border))] backdrop-blur-sm"
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3" aria-label="Dualcaster Deals - Home">
             <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
-              <Sparkles className="w-5 h-5 text-white" />
+              <Sparkles className="w-5 h-5 text-white" aria-hidden="true" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-[rgb(var(--foreground))]">Dualcaster</h1>
+              <span className="text-lg font-bold text-[rgb(var(--foreground))]">Dualcaster</span>
               <p className="text-xs text-[rgb(var(--muted-foreground))]">Deals & Intelligence</p>
             </div>
           </Link>
@@ -69,6 +73,7 @@ export function TopNav() {
                 <Link
                   key={item.name}
                   href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
                   className={cn(
                     'relative flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all duration-200',
                     isActive
@@ -76,10 +81,10 @@ export function TopNav() {
                       : 'text-[rgb(var(--muted-foreground))] hover:text-[rgb(var(--foreground))] hover:bg-[rgba(var(--accent),0.05)]'
                   )}
                 >
-                  <item.icon className="w-4 h-4" />
+                  <item.icon className="w-4 h-4" aria-hidden="true" />
                   {item.name}
                   {isActive && (
-                    <span className="absolute bottom-0 left-0 right-0 h-[3px] bg-[rgb(var(--accent))]" />
+                    <span className="absolute bottom-0 left-0 right-0 h-[3px] bg-[rgb(var(--accent))]" aria-hidden="true" />
                   )}
                 </Link>
               );
@@ -93,7 +98,7 @@ export function TopNav() {
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                      <User className="w-4 h-4 text-white" />
+                      <User className="w-4 h-4 text-white" aria-hidden="true" />
                     </div>
                     <div className="hidden lg:block">
                       <p className="text-sm font-medium text-[rgb(var(--foreground))]">
@@ -106,7 +111,7 @@ export function TopNav() {
                     size="sm"
                     onClick={logout}
                   >
-                    <LogOut className="w-4 h-4 mr-2" />
+                    <LogOut className="w-4 h-4 mr-2" aria-hidden="true" />
                     Sign out
                   </Button>
                 </div>
@@ -117,7 +122,7 @@ export function TopNav() {
                     size="sm"
                     className="bg-gradient-to-r from-amber-500 to-orange-600"
                   >
-                    <LogIn className="w-4 h-4 mr-2" />
+                    <LogIn className="w-4 h-4 mr-2" aria-hidden="true" />
                     Sign in
                   </Button>
                 </Link>
@@ -127,20 +132,24 @@ export function TopNav() {
 
           {/* Mobile menu button */}
           <button
+            type="button"
             className="md:hidden p-2 rounded-lg text-[rgb(var(--muted-foreground))] hover:text-[rgb(var(--foreground))] hover:bg-[rgb(var(--secondary))]"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-menu"
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
           >
             {mobileMenuOpen ? (
-              <X className="w-6 h-6" />
+              <X className="w-6 h-6" aria-hidden="true" />
             ) : (
-              <Menu className="w-6 h-6" />
+              <Menu className="w-6 h-6" aria-hidden="true" />
             )}
           </button>
         </div>
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-[rgb(var(--border))] py-4">
+          <div id="mobile-menu" className="md:hidden border-t border-[rgb(var(--border))] py-4">
             <div className="space-y-1">
               {navigation.map((item) => {
                 const isActive = pathname === item.href || 
@@ -156,6 +165,7 @@ export function TopNav() {
                     key={item.name}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
+                    aria-current={isActive ? 'page' : undefined}
                     className={cn(
                       'relative flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all duration-200',
                       isActive
@@ -164,9 +174,9 @@ export function TopNav() {
                     )}
                   >
                     {isActive && (
-                      <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[rgb(var(--accent))]" />
+                      <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[rgb(var(--accent))]" aria-hidden="true" />
                     )}
-                    <item.icon className="w-5 h-5" />
+                    <item.icon className="w-5 h-5" aria-hidden="true" />
                     {item.name}
                   </Link>
                 );
@@ -180,7 +190,7 @@ export function TopNav() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 px-4">
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                        <User className="w-5 h-5 text-white" />
+                        <User className="w-5 h-5 text-white" aria-hidden="true" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-[rgb(var(--foreground))] truncate">
@@ -200,7 +210,7 @@ export function TopNav() {
                         setMobileMenuOpen(false);
                       }}
                     >
-                      <LogOut className="w-4 h-4 mr-2" />
+                      <LogOut className="w-4 h-4 mr-2" aria-hidden="true" />
                       Sign out
                     </Button>
                   </div>
@@ -212,7 +222,7 @@ export function TopNav() {
                         size="sm"
                         className="w-full justify-center bg-gradient-to-r from-amber-500 to-orange-600"
                       >
-                        <LogIn className="w-4 h-4 mr-2" />
+                        <LogIn className="w-4 h-4 mr-2" aria-hidden="true" />
                         Sign in
                       </Button>
                     </Link>
