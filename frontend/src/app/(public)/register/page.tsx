@@ -64,9 +64,9 @@ export default function RegisterPage() {
   };
 
   const PasswordRequirement = ({ met, label }: { met: boolean; label: string }) => (
-    <div className={`flex items-center gap-2 text-xs ${met ? 'text-green-400' : 'text-slate-500'}`}>
+    <div className={`flex items-center gap-2 text-xs ${met ? 'text-[rgb(var(--success))]' : 'text-muted-foreground'}`}>
       <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-        met ? 'bg-green-500/20' : 'bg-slate-700'
+        met ? 'bg-[rgb(var(--success))]/20' : 'bg-muted'
       }`}>
         {met && <Check className="w-3 h-3" />}
       </div>
@@ -75,65 +75,65 @@ export default function RegisterPage() {
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4">
+    <div className="flex-1 flex items-center justify-center p-4 relative">
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[rgb(var(--magic-purple))]/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[rgb(var(--magic-green))]/10 rounded-full blur-3xl" />
       </div>
 
-      <Card className="w-full max-w-md relative bg-slate-900/80 backdrop-blur-xl border-slate-800">
+      <Card className="w-full max-w-md relative bg-card/80 backdrop-blur-xl border-border">
         <CardContent className="p-8">
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 mb-4">
+            <div className="p-3 rounded-2xl gradient-arcane mb-4">
               <Sparkles className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-white">Create Account</h1>
-            <p className="text-slate-400 mt-1">Join Dualcaster Deals</p>
+            <h1 className="text-2xl font-heading font-bold text-foreground">Create Account</h1>
+            <p className="text-muted-foreground mt-1">Join Dualcaster Deals</p>
           </div>
 
           {/* Error message */}
           {error && (
-            <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-              <p className="text-red-400 text-sm">{error}</p>
+            <div className="mb-6 p-4 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
+              <p className="text-destructive text-sm">{error}</p>
             </div>
           )}
 
           {/* Register form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-medium text-slate-300">
+              <label htmlFor="email" className="block text-sm font-medium text-foreground">
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="pl-11 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                  className="pl-11"
                   required
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="username" className="block text-sm font-medium text-slate-300">
+              <label htmlFor="username" className="block text-sm font-medium text-foreground">
                 Username
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="your_username"
-                  className="pl-11 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                  className="pl-11"
                   required
                   minLength={3}
                   maxLength={50}
@@ -141,40 +141,40 @@ export default function RegisterPage() {
                   title="Letters, numbers, underscores, and hyphens only"
                 />
               </div>
-              <p className="text-xs text-slate-500">3-50 characters, letters, numbers, underscores, and hyphens</p>
+              <p className="text-xs text-muted-foreground">3-50 characters, letters, numbers, underscores, and hyphens</p>
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="displayName" className="block text-sm font-medium text-slate-300">
-                Display Name <span className="text-slate-500">(optional)</span>
+              <label htmlFor="displayName" className="block text-sm font-medium text-foreground">
+                Display Name <span className="text-muted-foreground">(optional)</span>
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="displayName"
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Your Name"
-                  className="pl-11 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                  className="pl-11"
                   maxLength={100}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-medium text-slate-300">
+              <label htmlFor="password" className="block text-sm font-medium text-foreground">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="pl-11 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                  className="pl-11"
                   required
                 />
               </div>
@@ -189,18 +189,18 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-300">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-foreground">
                 Confirm Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="confirmPassword"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="pl-11 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                  className="pl-11"
                   required
                 />
               </div>
@@ -211,9 +211,8 @@ export default function RegisterPage() {
 
             <Button
               type="submit"
-              variant="primary"
               size="lg"
-              className="w-full mt-6 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
+              className="w-full mt-6 gradient-arcane hover:opacity-90 transition-opacity"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -231,11 +230,11 @@ export default function RegisterPage() {
           </form>
 
           {/* Login link */}
-          <p className="mt-6 text-center text-sm text-slate-400">
+          <p className="mt-6 text-center text-sm text-muted-foreground">
             Already have an account?{' '}
             <Link
               href="/login"
-              className="text-amber-500 hover:text-amber-400 font-medium transition-colors"
+              className="text-[rgb(var(--accent))] hover:text-[rgb(var(--accent))]/80 font-medium transition-colors"
             >
               Sign in
             </Link>
