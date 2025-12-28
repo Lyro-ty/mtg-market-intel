@@ -5,7 +5,6 @@ import { Monitor, Smartphone, Trash2, LogOut } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { getStoredToken } from '@/lib/api';
 
 interface Session {
   id: number;
@@ -18,79 +17,61 @@ interface Session {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-async function fetchSessions(): Promise<Session[]> {
-  const token = getStoredToken();
-  if (!token) {
-    throw new Error('Authentication required');
-  }
-
-  const response = await fetch(`${API_BASE}/sessions`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch sessions');
-  }
-
-  return response.json();
+// Helper to get token from storage
+function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('auth_token');
 }
 
-async function revokeSession(sessionId: number): Promise<void> {
+// Helper for authenticated API calls
+async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   if (!token) {
     throw new Error('Authentication required');
   }
 
-  const response = await fetch(`${API_BASE}/sessions/${sessionId}`, {
-    method: 'DELETE',
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...options.headers,
     },
   });
 
   if (!response.ok) {
-    throw new Error('Failed to revoke session');
-  }
-}
-
-async function revokeAllSessions(): Promise<void> {
-  const token = getStoredToken();
-  if (!token) {
-    throw new Error('Authentication required');
+    throw new Error(`Request failed: ${response.statusText}`);
   }
 
-  const response = await fetch(`${API_BASE}/sessions`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to revoke all sessions');
+  // Handle empty responses (like DELETE)
+  const text = await response.text();
+  if (!text) {
+    return {} as T;
   }
+  return JSON.parse(text);
 }
 
 export function SessionsManager() {
   const queryClient = useQueryClient();
 
-  const { data: sessions, isLoading } = useQuery<Session[]>({
+  const { data: sessions, isLoading, isError } = useQuery<Session[]>({
     queryKey: ['sessions'],
-    queryFn: fetchSessions,
+    queryFn: async () => {
+      return fetchApi<Session[]>('/sessions');
+    },
   });
 
   const revokeMutation = useMutation({
-    mutationFn: revokeSession,
+    mutationFn: async (sessionId: number) => {
+      await fetchApi(`/sessions/${sessionId}`, { method: 'DELETE' });
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   });
 
   const revokeAllMutation = useMutation({
-    mutationFn: revokeAllSessions,
+    mutationFn: async () => {
+      await fetchApi('/sessions', { method: 'DELETE' });
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   });
 
@@ -121,7 +102,11 @@ export function SessionsManager() {
           <Button
             variant="danger"
             size="sm"
-            onClick={() => revokeAllMutation.mutate()}
+            onClick={() => {
+              if (window.confirm('Are you sure you want to log out of all devices? You will need to log in again.')) {
+                revokeAllMutation.mutate();
+              }
+            }}
             disabled={revokeAllMutation.isPending}
           >
             <LogOut className="w-4 h-4 mr-2" />
@@ -130,7 +115,9 @@ export function SessionsManager() {
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isError ? (
+          <p className="text-red-500">Failed to load sessions. Please try again.</p>
+        ) : isLoading ? (
           <p className="text-[rgb(var(--muted-foreground))]">Loading sessions...</p>
         ) : sessions?.length === 0 ? (
           <p className="text-[rgb(var(--muted-foreground))]">No active sessions</p>
