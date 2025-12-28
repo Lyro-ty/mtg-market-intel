@@ -627,3 +627,22 @@ export interface CardMetaResponse {
   attribution: string;
 }
 
+// Similar Cards types
+export interface SimilarCard {
+  card_id: number;
+  name: string;
+  set_code: string;
+  set_name?: string;
+  image_url?: string;
+  similarity_score: number;
+  rarity?: string;
+  mana_cost?: string;
+  type_line?: string;
+}
+
+export interface SimilarCardsResponse {
+  card_id: number;
+  card_name: string;
+  similar_cards: SimilarCard[];
+}
+
