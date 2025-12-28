@@ -4,7 +4,7 @@ User model for authentication.
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, DateTime, String, Text, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -62,7 +62,12 @@ class User(Base):
     # OAuth fields
     oauth_provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     oauth_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    
+
+    # Notification preferences
+    email_alerts: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    price_drop_threshold: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    digest_frequency: Mapped[str] = mapped_column(String(10), default="instant", nullable=False)
+
     # Relationships
     inventory_items: Mapped[list["InventoryItem"]] = relationship(
         "InventoryItem",
