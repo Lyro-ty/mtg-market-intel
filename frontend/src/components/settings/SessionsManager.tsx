@@ -5,6 +5,7 @@ import { Monitor, Smartphone, Trash2, LogOut } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { fetchApi } from '@/lib/api';
 
 interface Session {
   id: number;
@@ -15,63 +16,21 @@ interface Session {
   is_current: boolean;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
-
-// Helper to get token from storage
-function getStoredToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
-}
-
-// Helper for authenticated API calls
-async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const token = getStoredToken();
-  if (!token) {
-    throw new Error('Authentication required');
-  }
-
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.statusText}`);
-  }
-
-  // Handle empty responses (like DELETE)
-  const text = await response.text();
-  if (!text) {
-    return {} as T;
-  }
-  return JSON.parse(text);
-}
-
 export function SessionsManager() {
   const queryClient = useQueryClient();
 
   const { data: sessions, isLoading, isError } = useQuery<Session[]>({
     queryKey: ['sessions'],
-    queryFn: async () => {
-      return fetchApi<Session[]>('/sessions');
-    },
+    queryFn: () => fetchApi<Session[]>('/sessions', {}, true),
   });
 
   const revokeMutation = useMutation({
-    mutationFn: async (sessionId: number) => {
-      await fetchApi(`/sessions/${sessionId}`, { method: 'DELETE' });
-    },
+    mutationFn: (sessionId: number) => fetchApi<void>(`/sessions/${sessionId}`, { method: 'DELETE' }, true),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   });
 
   const revokeAllMutation = useMutation({
-    mutationFn: async () => {
-      await fetchApi('/sessions', { method: 'DELETE' });
-    },
+    mutationFn: () => fetchApi<void>('/sessions', { method: 'DELETE' }, true),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   });
 
