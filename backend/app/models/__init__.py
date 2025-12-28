@@ -31,6 +31,7 @@ from app.models.tournament import (
 from app.models.news import NewsArticle, CardNewsMention
 from app.models.session import UserSession
 from app.models.want_list import WantListItem
+from app.models.notification import Notification, NotificationType, NotificationPriority
 
 
 # DEPRECATED: Listing model - use PriceSnapshot instead
@@ -120,6 +121,9 @@ __all__ = [
     "CardNewsMention",
     "UserSession",
     "WantListItem",
+    "Notification",
+    "NotificationType",
+    "NotificationPriority",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
     "ListingFeatureVector",  # DEPRECATED: Use CardFeatureVector

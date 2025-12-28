@@ -2,7 +2,7 @@
 User model for authentication.
 """
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,6 +11,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.inventory import InventoryItem
+    from app.models.notification import Notification
     from app.models.settings import AppSettings
     from app.models.session import UserSession
     from app.models.want_list import WantListItem
@@ -78,6 +79,11 @@ class User(Base):
     )
     want_list_items: Mapped[list["WantListItem"]] = relationship(
         "WantListItem",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
+        "Notification",
         back_populates="user",
         cascade="all, delete-orphan"
     )
