@@ -156,6 +156,11 @@ __all__ = [
     "WantListItemUpdate",
     "WantListItemResponse",
     "WantListListResponse",
+    # Notification schemas
+    "NotificationResponse",
+    "NotificationUpdate",
+    "NotificationList",
+    "UnreadCountResponse",
     # TypedDict schemas - Market
     "MarketIndexPoint",
     "MarketIndexResponse",
