@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -54,7 +55,6 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email not provided by Google")
 
     # Find or create user
-    from sqlalchemy import select
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
