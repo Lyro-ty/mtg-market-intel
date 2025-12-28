@@ -9,7 +9,7 @@ import io
 import json
 import re
 import uuid
-from datetime import datetime, timedelta, timezone, date as date_class
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
 import structlog
@@ -37,6 +37,8 @@ from app.schemas.inventory import (
     InventoryCondition,
     InventoryUrgency,
     ActionType,
+    InventoryTopMoversResponse,
+    TopMoverCard,
 )
 
 
@@ -1241,119 +1243,146 @@ async def _get_inventory_currency_index(
     return points
 
 
-@router.get("/top-movers")
+TOP_MOVERS_LIMIT = 5
+
+
+@router.get("/top-movers", response_model=InventoryTopMoversResponse)
 async def get_inventory_top_movers(
     current_user: CurrentUser,
     window: str = Query("24h", regex="^(24h|7d)$"),
     db: AsyncSession = Depends(get_db),
-):
+) -> InventoryTopMoversResponse:
     """
     Get top gaining and losing cards from the current user's inventory.
+
+    Uses direct price_snapshot comparison instead of stale MetricsCardsDaily data.
+    Compares latest price to price from `window` time ago.
     """
     # Determine time window
+    now = datetime.now(timezone.utc)
     if window == "24h":
-        change_field = MetricsCardsDaily.price_change_pct_1d
+        past_time = now - timedelta(hours=24)
     else:  # 7d
-        change_field = MetricsCardsDaily.price_change_pct_7d
-    
+        past_time = now - timedelta(days=7)
+
     try:
         # Get user's inventory card IDs
         inventory_query = select(InventoryItem.card_id).where(
             InventoryItem.user_id == current_user.id
-        )
+        ).distinct()
         inventory_result = await db.execute(inventory_query)
         inventory_card_ids = [row.card_id for row in inventory_result.all()]
-        
+
         if not inventory_card_ids:
             return {
                 "window": window,
                 "gainers": [],
                 "losers": [],
-                "isMockData": False,
+                "data_freshness_hours": 0,
             }
-        
-        latest_date = await asyncio.wait_for(
-            db.scalar(select(func.max(MetricsCardsDaily.date))),
-            timeout=25
-        )
-        
-        if not latest_date:
-            return {
-                "window": window,
-                "gainers": [],
-                "losers": [],
-                "isMockData": False,
-            }
-        
-        # If latest date is more than 2 days old, try to use a more recent date
-        today = date_class.today()
-        days_old = (today - latest_date).days
-        
-        # Use latest date, but if it's more than 2 days old, try to find any recent date
-        query_date = latest_date
-        if days_old > 2:
-            # Try to find the most recent date within the last 7 days that has data for inventory cards
-            recent_date_query = select(func.max(MetricsCardsDaily.date)).where(
-                MetricsCardsDaily.date >= today - timedelta(days=7),
-                MetricsCardsDaily.card_id.in_(inventory_card_ids),
-                change_field.isnot(None),
+
+        # Note: This uses aggregate prices regardless of condition/foil.
+        # Individual condition pricing will be addressed in condition_refresh task.
+
+        # Subquery for latest price per card
+        latest_subq = (
+            select(
+                PriceSnapshot.card_id,
+                func.max(PriceSnapshot.time).label("latest_time")
             )
-            recent_date = await db.scalar(recent_date_query)
-            if recent_date:
-                query_date = recent_date
-                logger.info(
-                    "Using recent date for inventory top movers instead of stale latest date",
-                    latest_date=latest_date.isoformat(),
-                    query_date=query_date.isoformat(),
-                    window=window
-                )
-        
-        # Minimum thresholds to filter out noise (lower for inventory since it's personalized)
-        min_change_pct = 0.5  # At least 0.5% change for inventory
-        min_volume = 1  # At least 1 listing (more lenient for inventory)
-        
-        # Get top gainers from inventory
-        gainers_query = select(MetricsCardsDaily, Card).join(
-            Card, MetricsCardsDaily.card_id == Card.id
-        ).where(
-            MetricsCardsDaily.date == query_date,
-            MetricsCardsDaily.card_id.in_(inventory_card_ids),
-            change_field.isnot(None),
-            change_field >= min_change_pct,  # At least 0.5% gain
-            MetricsCardsDaily.total_listings >= min_volume,  # Minimum volume
-            MetricsCardsDaily.avg_price.isnot(None),
-            MetricsCardsDaily.avg_price > 0,  # Valid price
-        ).order_by(
-            desc(change_field)
-        ).limit(10)
-        
-        gainers_result = await asyncio.wait_for(
-            db.execute(gainers_query),
-            timeout=25
+            .where(PriceSnapshot.card_id.in_(inventory_card_ids))
+            .where(PriceSnapshot.currency == "USD")
+            .group_by(PriceSnapshot.card_id)
+            .subquery()
         )
-        gainers_rows = gainers_result.all()
-        
-        # Get top losers from inventory
-        losers_query = select(MetricsCardsDaily, Card).join(
-            Card, MetricsCardsDaily.card_id == Card.id
-        ).where(
-            MetricsCardsDaily.date == query_date,
-            MetricsCardsDaily.card_id.in_(inventory_card_ids),
-            change_field.isnot(None),
-            change_field <= -min_change_pct,  # At least 0.5% loss
-            MetricsCardsDaily.total_listings >= min_volume,  # Minimum volume
-            MetricsCardsDaily.avg_price.isnot(None),
-            MetricsCardsDaily.avg_price > 0,  # Valid price
-        ).order_by(
-            change_field.asc()
-        ).limit(10)
-        
-        losers_result = await asyncio.wait_for(
-            db.execute(losers_query),
-            timeout=25
+
+        # Get current prices
+        current_result = await db.execute(
+            select(PriceSnapshot.card_id, PriceSnapshot.price, PriceSnapshot.time)
+            .join(latest_subq, and_(
+                PriceSnapshot.card_id == latest_subq.c.card_id,
+                PriceSnapshot.time == latest_subq.c.latest_time
+            ))
+            .where(PriceSnapshot.currency == "USD")
         )
-        losers_rows = losers_result.all()
-        
+        current_prices = {row.card_id: (float(row.price), row.time) for row in current_result}
+
+        # Subquery for past price per card (closest price at or before past_time)
+        past_subq = (
+            select(
+                PriceSnapshot.card_id,
+                func.max(PriceSnapshot.time).label("past_time")
+            )
+            .where(PriceSnapshot.card_id.in_(inventory_card_ids))
+            .where(PriceSnapshot.currency == "USD")
+            .where(PriceSnapshot.time <= past_time)
+            .group_by(PriceSnapshot.card_id)
+            .subquery()
+        )
+
+        # Get past prices
+        past_result = await db.execute(
+            select(PriceSnapshot.card_id, PriceSnapshot.price)
+            .join(past_subq, and_(
+                PriceSnapshot.card_id == past_subq.c.card_id,
+                PriceSnapshot.time == past_subq.c.past_time
+            ))
+            .where(PriceSnapshot.currency == "USD")
+        )
+        past_prices = {row.card_id: float(row.price) for row in past_result}
+
+        # Calculate changes
+        changes = []
+        for card_id in inventory_card_ids:
+            if card_id in current_prices and card_id in past_prices:
+                current_price, current_time = current_prices[card_id]
+                past_price = past_prices[card_id]
+
+                if past_price > 0:
+                    change_pct = ((current_price - past_price) / past_price) * 100
+                    changes.append({
+                        "card_id": card_id,
+                        "old_price": past_price,
+                        "new_price": current_price,
+                        "change_pct": change_pct,
+                    })
+
+        # Get card info for the cards with changes
+        card_ids_with_changes = [c["card_id"] for c in changes]
+        if card_ids_with_changes:
+            card_result = await db.execute(
+                select(Card.id, Card.name, Card.set_code, Card.image_url_small)
+                .where(Card.id.in_(card_ids_with_changes))
+            )
+            card_info = {row.id: row for row in card_result}
+
+            # Enrich with card info
+            for change in changes:
+                card = card_info.get(change["card_id"])
+                if card:
+                    change["card_name"] = card.name
+                    change["set_code"] = card.set_code
+                    change["image_url"] = card.image_url_small
+
+        # Sort and split into gainers and losers
+        gainers = sorted(
+            [c for c in changes if c["change_pct"] > 0],
+            key=lambda x: x["change_pct"],
+            reverse=True
+        )[:TOP_MOVERS_LIMIT]
+
+        losers = sorted(
+            [c for c in changes if c["change_pct"] < 0],
+            key=lambda x: x["change_pct"]
+        )[:TOP_MOVERS_LIMIT]
+
+        # Calculate data freshness
+        if current_prices:
+            latest_time = max(t for _, t in current_prices.values())
+            freshness_hours = (now - latest_time).total_seconds() / 3600
+        else:
+            freshness_hours = 999
+
     except Exception as e:
         logger.error("Error fetching inventory top movers", error=str(e), error_type=type(e).__name__, window=window)
         # Return empty data on connection errors, raise for other errors
@@ -1362,76 +1391,15 @@ async def get_inventory_top_movers(
                 "window": window,
                 "gainers": [],
                 "losers": [],
-                "isMockData": False,
+                "data_freshness_hours": 0,
             }
         raise HTTPException(status_code=500, detail="Failed to fetch inventory top movers")
-    
-    # Format gainers
-    gainers = []
-    for metrics, card in gainers_rows:
-        volume = metrics.total_listings or 0
-        
-        if window == "24h":
-            change_value = metrics.price_change_pct_1d
-        else:
-            change_value = metrics.price_change_pct_7d
-        
-        # Try to determine format from legalities
-        format_name = "Standard"
-        if card.legalities:
-            try:
-                legalities = json.loads(card.legalities)
-                for fmt, status in legalities.items():
-                    if status == "legal":
-                        format_name = fmt
-                        break
-            except (json.JSONDecodeError, TypeError):
-                pass
-        
-        gainers.append({
-            "cardName": card.name,
-            "setCode": card.set_code,
-            "format": format_name,
-            "currentPriceUsd": float(metrics.avg_price) if metrics.avg_price else 0.0,
-            "changePct": float(change_value) if change_value is not None else 0.0,
-            "volume": volume,
-        })
-    
-    # Format losers
-    losers = []
-    for metrics, card in losers_rows:
-        volume = metrics.total_listings or 0
-        
-        if window == "24h":
-            change_value = metrics.price_change_pct_1d
-        else:
-            change_value = metrics.price_change_pct_7d
-        
-        format_name = "Standard"
-        if card.legalities:
-            try:
-                legalities = json.loads(card.legalities)
-                for fmt, status in legalities.items():
-                    if status == "legal":
-                        format_name = fmt
-                        break
-            except (json.JSONDecodeError, TypeError):
-                pass
-        
-        losers.append({
-            "cardName": card.name,
-            "setCode": card.set_code,
-            "format": format_name,
-            "currentPriceUsd": float(metrics.avg_price) if metrics.avg_price else 0.0,
-            "changePct": float(change_value) if change_value is not None else 0.0,
-            "volume": volume,
-        })
-    
+
     return {
         "window": window,
         "gainers": gainers,
         "losers": losers,
-        "isMockData": False,
+        "data_freshness_hours": round(freshness_hours, 1),
     }
 
 

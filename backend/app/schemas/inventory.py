@@ -219,13 +219,33 @@ class InventoryRecommendationListResponse(BaseModel):
     page: int = 1
     page_size: int = 20
     has_more: bool = False
-    
+
     # Summary stats by urgency
     critical_count: int = 0
     high_count: int = 0
     normal_count: int = 0
     low_count: int = 0
-    
+
     # Summary stats by action
     sell_count: int = 0
     hold_count: int = 0
+
+
+# Top Movers schemas
+class TopMoverCard(BaseModel):
+    """A card with significant price movement."""
+    card_id: int
+    card_name: str
+    set_code: str
+    image_url: Optional[str] = None
+    old_price: float
+    new_price: float
+    change_pct: float
+
+
+class InventoryTopMoversResponse(BaseModel):
+    """Response for inventory top movers endpoint."""
+    window: str
+    gainers: list[TopMoverCard]
+    losers: list[TopMoverCard]
+    data_freshness_hours: float
