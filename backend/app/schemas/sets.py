@@ -4,7 +4,7 @@ MTG Set Pydantic schemas for API request/response validation.
 from datetime import date
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MTGSetResponse(BaseModel):
@@ -21,8 +21,7 @@ class MTGSetResponse(BaseModel):
     is_digital: bool
     is_foil_only: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MTGSetList(BaseModel):

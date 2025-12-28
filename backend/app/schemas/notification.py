@@ -43,6 +43,7 @@ class NotificationList(BaseModel):
 
 
 class UnreadCountResponse(BaseModel):
-    """Response for unread notification count."""
+    """Response for unread notification count endpoint."""
 
     count: int
+    by_type: Optional[dict[str, int]] = None

@@ -58,6 +58,13 @@ from app.schemas.notification import (
     NotificationList,
     UnreadCountResponse,
 )
+from app.schemas.collection import (
+    CollectionStatsResponse,
+    SetCompletion,
+    SetCompletionList,
+    MilestoneResponse,
+    MilestoneList,
+)
 from app.schemas.typed_dicts import (
     # Market types
     MarketIndexPoint,
@@ -161,6 +168,12 @@ __all__ = [
     "NotificationUpdate",
     "NotificationList",
     "UnreadCountResponse",
+    # Collection schemas
+    "CollectionStatsResponse",
+    "SetCompletion",
+    "SetCompletionList",
+    "MilestoneResponse",
+    "MilestoneList",
     # TypedDict schemas - Market
     "MarketIndexPoint",
     "MarketIndexResponse",
