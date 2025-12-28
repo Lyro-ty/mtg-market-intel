@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LogIn, Mail, Lock, Sparkles, AlertCircle } from 'lucide-react';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
+import { GoogleLoginButton } from '@/components/auth/GoogleLoginButton';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,6 +17,17 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { login, isAuthenticated } = useAuth();
   const router = useRouter();
+
+  // Handle OAuth callback token
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      // Store token and redirect
+      localStorage.setItem('token', token);
+      router.push('/dashboard');
+    }
+  }, [router]);
 
   // Redirect if already authenticated
   if (isAuthenticated) {
@@ -122,6 +134,19 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {/* OAuth Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-700" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-slate-900 text-slate-400">Or continue with</span>
+            </div>
+          </div>
+
+          {/* Google Login */}
+          <GoogleLoginButton disabled={isLoading} />
 
           {/* Register link */}
           <p className="mt-6 text-center text-sm text-slate-400">
