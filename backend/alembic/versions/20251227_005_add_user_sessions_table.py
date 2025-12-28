@@ -35,9 +35,11 @@ def upgrade() -> None:
     )
     op.create_index('ix_user_sessions_user_id', 'user_sessions', ['user_id'])
     op.create_index('ix_user_sessions_token_hash', 'user_sessions', ['token_hash'])
+    op.create_index('ix_user_sessions_expires_at', 'user_sessions', ['expires_at'])
 
 
 def downgrade() -> None:
+    op.drop_index('ix_user_sessions_expires_at', table_name='user_sessions')
     op.drop_index('ix_user_sessions_token_hash', table_name='user_sessions')
     op.drop_index('ix_user_sessions_user_id', table_name='user_sessions')
     op.drop_table('user_sessions')
