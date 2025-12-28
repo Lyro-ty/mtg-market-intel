@@ -14,13 +14,15 @@ from typing import Any
 
 import structlog
 from celery import shared_task
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 import json
 import ijson
 
 from app.models import Card, Marketplace, PriceSnapshot
+from app.core.config import settings
+from app.core.constants import CardCondition, CardLanguage
 from app.services.ingestion import ScryfallAdapter
 from app.services.ingestion.adapters.mtgjson import MTGJSONAdapter
 from app.tasks.utils import create_task_session_maker, run_async
@@ -300,27 +302,31 @@ async def process_bulk_card(
                 select(PriceSnapshot).where(
                     PriceSnapshot.card_id == card.id,
                     PriceSnapshot.marketplace_id == marketplace.id,
-                    PriceSnapshot.snapshot_time >= snapshot_time - timedelta(hours=24),
+                    PriceSnapshot.time >= snapshot_time - timedelta(hours=24),
                 ).limit(1)
             )
             
             if not existing:
-                # Get foil price if available
+                # Get foil price if available (stored as price_market for legacy compatibility)
                 foil_key = f"{price_key}_foil"
                 price_foil = prices.get(foil_key)
                 price_foil_float = float(price_foil) if price_foil and float(price_foil) > 0 else None
-                
+
+                # Create non-foil snapshot
                 snapshot = PriceSnapshot(
+                    time=snapshot_time,
                     card_id=card.id,
                     marketplace_id=marketplace.id,
-                    snapshot_time=snapshot_time,
+                    condition=CardCondition.NEAR_MINT.value,
+                    is_foil=False,
+                    language=CardLanguage.ENGLISH.value,
                     price=float(price_value),
                     currency=currency,
-                    price_foil=price_foil_float,
+                    price_market=price_foil_float,
                 )
                 db.add(snapshot)
                 snapshots_created += 1
-    
+
     return snapshots_created
 
 
@@ -439,7 +445,7 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                 and_(
                                     PriceSnapshot.card_id == card.id,
                                     PriceSnapshot.marketplace_id == marketplace.id,
-                                    PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
+                                    PriceSnapshot.time >= now - timedelta(hours=24),
                                 )
                             )
                             recent_result = await db.execute(recent_snapshot_query)
@@ -448,12 +454,15 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                             if not recent_snapshot:
                                 # Create new price snapshot
                                 snapshot = PriceSnapshot(
+                                    time=now,
                                     card_id=card.id,
                                     marketplace_id=marketplace.id,
-                                    snapshot_time=now,
+                                    condition=CardCondition.NEAR_MINT.value,
+                                    is_foil=False,
+                                    language=CardLanguage.ENGLISH.value,
                                     price=price_data.price,
                                     currency=price_data.currency,
-                                    price_foil=price_data.price_foil,
+                                    price_market=price_data.price_foil,
                                 )
                                 db.add(snapshot)
                                 results["current_snapshots"] += 1
@@ -530,7 +539,7 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                         and_(
                                             PriceSnapshot.card_id == card.id,
                                             PriceSnapshot.marketplace_id == marketplace.id,
-                                            PriceSnapshot.snapshot_time == price_data.snapshot_time,
+                                            PriceSnapshot.time == price_data.snapshot_time,
                                         )
                                     )
                                     existing_result = await db.execute(existing_query)
@@ -538,12 +547,15 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                     
                                     if not existing:
                                         snapshot = PriceSnapshot(
+                                            time=price_data.snapshot_time,
                                             card_id=card.id,
                                             marketplace_id=marketplace.id,
-                                            snapshot_time=price_data.snapshot_time,
+                                            condition=CardCondition.NEAR_MINT.value,
+                                            is_foil=False,
+                                            language=CardLanguage.ENGLISH.value,
                                             price=price_data.price,
                                             currency=price_data.currency,
-                                            price_foil=price_data.price_foil,
+                                            price_market=price_data.price_foil,
                                         )
                                         db.add(snapshot)
                                         results["historical_snapshots"] += 1
@@ -560,9 +572,9 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                             # Check how many days of data we have for this card
                             now = datetime.now(timezone.utc)
                             thirty_days_ago = now - timedelta(days=30)
-                            history_check_query = select(func.count(PriceSnapshot.id)).where(
+                            history_check_query = select(func.count()).select_from(PriceSnapshot).where(
                                 PriceSnapshot.card_id == card.id,
-                                PriceSnapshot.snapshot_time >= thirty_days_ago,
+                                PriceSnapshot.time >= thirty_days_ago,
                             )
                             history_count = await db.scalar(history_check_query) or 0
                             
@@ -571,8 +583,8 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                 # Get most recent snapshot as base
                                 recent_query = select(PriceSnapshot).where(
                                     PriceSnapshot.card_id == card.id,
-                                    PriceSnapshot.snapshot_time >= now - timedelta(hours=48),
-                                ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+                                    PriceSnapshot.time >= now - timedelta(hours=48),
+                                ).order_by(PriceSnapshot.time.desc()).limit(1)
                                 recent_result = await db.execute(recent_query)
                                 recent_snapshot = recent_result.scalar_one_or_none()
                                 
@@ -596,8 +608,8 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                 #         existing_query = select(func.count(PriceSnapshot.id)).where(
                                 #             PriceSnapshot.card_id == card.id,
                                 #             PriceSnapshot.marketplace_id == recent_snapshot.marketplace_id,
-                                #             PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
-                                #             PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
+                                #             PriceSnapshot.time >= snapshot_date - timedelta(hours=12),
+                                #             PriceSnapshot.time <= snapshot_date + timedelta(hours=12),
                                 #         )
                                 #         existing_count = await db.scalar(existing_query) or 0
                                 #         if existing_count > 0:
@@ -690,7 +702,7 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                     and_(
                                         PriceSnapshot.card_id == card.id,
                                         PriceSnapshot.marketplace_id == cardtrader_mp.id,
-                                        PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
+                                        PriceSnapshot.time >= now - timedelta(hours=24),
                                     )
                                 )
                                 recent_result = await db.execute(recent_snapshot_query)
@@ -699,14 +711,17 @@ async def _seed_comprehensive_price_data_async() -> dict[str, Any]:
                                 if not recent_snapshot:
                                     # Create price snapshot
                                     snapshot = PriceSnapshot(
+                                        time=now,
                                         card_id=card.id,
                                         marketplace_id=cardtrader_mp.id,
-                                        snapshot_time=now,
+                                        condition=CardCondition.NEAR_MINT.value,
+                                        is_foil=False,
+                                        language=CardLanguage.ENGLISH.value,
                                         price=price_data.price,
                                         currency=price_data.currency,
-                                        price_foil=price_data.price_foil,
-                                        min_price=price_data.price_low,
-                                        max_price=price_data.price_high,
+                                        price_low=price_data.price_low,
+                                        price_high=price_data.price_high,
+                                        price_market=price_data.price_foil,
                                         num_listings=price_data.num_listings,
                                     )
                                     db.add(snapshot)

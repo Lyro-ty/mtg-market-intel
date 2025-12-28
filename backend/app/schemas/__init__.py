@@ -1,5 +1,7 @@
 """
 Pydantic schemas for API request/response validation.
+
+Also exports TypedDict schemas for internal type hints.
 """
 from app.schemas.card import (
     CardBase,
@@ -35,6 +37,49 @@ from app.schemas.inventory import (
     InventoryAnalytics,
     InventoryRecommendationResponse,
     InventoryRecommendationListResponse,
+)
+from app.schemas.typed_dicts import (
+    # Market types
+    MarketIndexPoint,
+    MarketIndexResponse,
+    MarketOverviewResponse,
+    TopMoverItem,
+    TopMoversResponse,
+    VolumeDataPoint,
+    FormatVolumeData,
+    VolumeByFormatResponse,
+    ColorDistributionResponse,
+    MarketDiagnosticsResponse,
+    # Price snapshot types
+    PriceSnapshotKey,
+    PriceSnapshotData,
+    PriceSnapshotQueryResult,
+    # Card types
+    CardBasicInfo,
+    MarketplacePriceInfo,
+    CardPricesResponse,
+    PriceHistoryPoint,
+    CardHistoryDict,
+    # Dashboard types
+    DashboardTopCard,
+    DashboardSpread,
+    DashboardSummaryResponse,
+    # WebSocket types
+    WebSocketMessageBase,
+    MarketUpdateMessage,
+    CardUpdateMessage,
+    DashboardUpdateMessage,
+    InventoryUpdateMessage,
+    RecommendationsUpdateMessage,
+    # Inventory types
+    InventoryItemInfo,
+    InventoryListDict,
+    InventoryAnalyticsResponse,
+    # Task result types
+    PriceCollectionResult,
+    InventoryPriceCollectionResult,
+    MTGJSONImportResult,
+    VectorizationResult,
 )
 
 __all__ = [
@@ -79,5 +124,46 @@ __all__ = [
     "InventoryAnalytics",
     "InventoryRecommendationResponse",
     "InventoryRecommendationListResponse",
+    # TypedDict schemas - Market
+    "MarketIndexPoint",
+    "MarketIndexResponse",
+    "MarketOverviewResponse",
+    "TopMoverItem",
+    "TopMoversResponse",
+    "VolumeDataPoint",
+    "FormatVolumeData",
+    "VolumeByFormatResponse",
+    "ColorDistributionResponse",
+    "MarketDiagnosticsResponse",
+    # TypedDict schemas - Price Snapshot
+    "PriceSnapshotKey",
+    "PriceSnapshotData",
+    "PriceSnapshotQueryResult",
+    # TypedDict schemas - Card
+    "CardBasicInfo",
+    "MarketplacePriceInfo",
+    "CardPricesResponse",
+    "PriceHistoryPoint",
+    "CardHistoryDict",
+    # TypedDict schemas - Dashboard
+    "DashboardTopCard",
+    "DashboardSpread",
+    "DashboardSummaryResponse",
+    # TypedDict schemas - WebSocket
+    "WebSocketMessageBase",
+    "MarketUpdateMessage",
+    "CardUpdateMessage",
+    "DashboardUpdateMessage",
+    "InventoryUpdateMessage",
+    "RecommendationsUpdateMessage",
+    # TypedDict schemas - Inventory
+    "InventoryItemInfo",
+    "InventoryListDict",
+    "InventoryAnalyticsResponse",
+    # TypedDict schemas - Task Results
+    "PriceCollectionResult",
+    "InventoryPriceCollectionResult",
+    "MTGJSONImportResult",
+    "VectorizationResult",
 ]
 

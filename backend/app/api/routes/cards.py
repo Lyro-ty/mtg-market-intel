@@ -208,18 +208,18 @@ async def get_card_history(
 ):
     """
     Get price history for a card.
-    
+
     Returns daily price points for the specified time range.
-    If condition is specified, uses Listing data grouped by condition.
-    Otherwise, uses PriceSnapshot aggregated data.
-    
+    Filters PriceSnapshot data by condition, foil status, and marketplace.
+
     Foil Filter Behavior:
-    - is_foil=True: Returns only foil prices (price_foil field). Returns empty if no foil prices exist.
+    - is_foil=True: Returns only foil prices (price_market field). Returns empty if no foil prices exist.
     - is_foil=False: Returns only non-foil prices (price field). Excludes snapshots with foil prices.
     - is_foil=None: Returns non-foil prices by default. Includes price_foil in response if available.
-    
-    Note: When using Listing data (condition specified), foil filter applies to individual listings.
-    When using PriceSnapshot data, foil filter applies to snapshot-level price fields.
+
+    Condition Filter:
+    - Accepts abbreviations (NM, LP, MP, HP, DMG) or full names (Near Mint, Lightly Played, etc.)
+    - Normalized to standard CardCondition enum values
     """
     card = await db.get(Card, card_id)
     if not card:
@@ -236,65 +236,55 @@ async def get_card_history(
             return dt.replace(tzinfo=timezone.utc)
         return dt
     
-    # If condition is specified, use Listing data grouped by condition
+    # Import normalize_condition for condition filtering
+    from app.core.constants import normalize_condition
+
+    # If condition is specified, filter PriceSnapshot by condition
     if condition:
-        from app.models import Listing
-        
-        # Normalize condition (handle various formats)
-        condition_map = {
-            "NM": "Near Mint",
-            "LP": "Lightly Played",
-            "MP": "Moderately Played",
-            "HP": "Heavily Played",
-            "DMG": "Damaged",
-            "Near Mint": "Near Mint",
-            "Lightly Played": "Lightly Played",
-            "Moderately Played": "Moderately Played",
-            "Heavily Played": "Heavily Played",
-            "Damaged": "Damaged",
-        }
-        normalized_condition = condition_map.get(condition, condition)
-        
-        # Query listings grouped by time bucket and marketplace
+        # Normalize condition to our standard enum value
+        normalized_condition_enum = normalize_condition(condition)
+        normalized_condition = normalized_condition_enum.value
+
+        # Query price snapshots grouped by time bucket and marketplace, filtered by condition
         # Use date_trunc to bucket by day
-        bucket_expr = func.date_trunc('day', Listing.last_seen_at).label('bucket_time')
-        
+        bucket_expr = func.date_trunc('day', PriceSnapshot.time).label('bucket_time')
+
         query = select(
             bucket_expr,
-            Listing.marketplace_id,
+            PriceSnapshot.marketplace_id,
             Marketplace.name.label('marketplace_name'),
             Marketplace.slug.label('marketplace_slug'),
-            func.avg(Listing.price).label('avg_price'),
-            func.min(Listing.price).label('min_price'),
-            func.max(Listing.price).label('max_price'),
-            func.count(Listing.id).label('num_listings'),
-            func.max(Listing.currency).label('currency'),  # Most common currency
+            func.avg(PriceSnapshot.price).label('avg_price'),
+            func.min(PriceSnapshot.price).label('min_price'),
+            func.max(PriceSnapshot.price).label('max_price'),
+            func.count(PriceSnapshot.time).label('num_listings'),  # Count snapshots instead of listing IDs
+            func.max(PriceSnapshot.currency).label('currency'),
         ).join(
-            Marketplace, Listing.marketplace_id == Marketplace.id
+            Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
         ).where(
-            Listing.card_id == card_id,
-            Listing.last_seen_at >= from_date,
-            Listing.condition == normalized_condition,
-            Listing.currency == "USD",  # USD-only mode
+            PriceSnapshot.card_id == card_id,
+            PriceSnapshot.time >= from_date,
+            PriceSnapshot.condition == normalized_condition,
+            PriceSnapshot.currency == "USD",  # USD-only mode
             Marketplace.slug != "mtgo",  # Filter out MTGO
         )
-        
+
         if marketplace_id:
-            query = query.where(Listing.marketplace_id == marketplace_id)
-        
+            query = query.where(PriceSnapshot.marketplace_id == marketplace_id)
+
         if is_foil is not None:
-            query = query.where(Listing.is_foil == is_foil)
-        
+            query = query.where(PriceSnapshot.is_foil.is_(is_foil))
+
         query = query.group_by(
             bucket_expr,
-            Listing.marketplace_id,
+            PriceSnapshot.marketplace_id,
             Marketplace.name,
             Marketplace.slug
         ).order_by(bucket_expr)
-        
+
         result = await db.execute(query)
         rows = result.all()
-        
+
         def normalize_marketplace_name(marketplace_name: str, marketplace_slug: str, currency: str) -> str:
             """
             Normalize marketplace names to consolidate duplicates.
@@ -310,7 +300,7 @@ async def get_card_history(
                 return "TCGPlayer"
             # Keep other names as-is
             return marketplace_name
-        
+
         history = [
             PricePoint(
                 date=row.bucket_time,
@@ -326,7 +316,7 @@ async def get_card_history(
             )
             for row in rows
         ]
-        
+
         latest_snapshot = max((row.bucket_time for row in rows), default=None) if rows else None
     else:
         # Use PriceSnapshot data (aggregated, no condition filter, USD only)
@@ -334,7 +324,7 @@ async def get_card_history(
             Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
         ).where(
             PriceSnapshot.card_id == card_id,
-            PriceSnapshot.snapshot_time >= from_date,
+            PriceSnapshot.time >= from_date,
             PriceSnapshot.currency == "USD",  # USD-only mode
             Marketplace.slug != "mtgo",  # Filter out MTGO pricing
         )
@@ -363,12 +353,12 @@ async def get_card_history(
         # When is_foil is None, prefer regular price but include foil price in response if available
         # Add foil filter to SQL query for efficiency
         if is_foil is True:
-            query = query.where(PriceSnapshot.price_foil.isnot(None))
+            query = query.where(PriceSnapshot.price_market.isnot(None))
         elif is_foil is False:
-            query = query.where(PriceSnapshot.price_foil.is_(None))
+            query = query.where(PriceSnapshot.price_market.is_(None))
         # else: no filter needed (include all)
         
-        query = query.order_by(PriceSnapshot.snapshot_time)
+        query = query.order_by(PriceSnapshot.time)
         
         result = await db.execute(query)
         rows = result.all()
@@ -378,25 +368,25 @@ async def get_card_history(
             if is_foil is True:
                 # Only include entries with foil prices (already filtered in query)
                 # Validate price is positive
-                if snapshot.price_foil is not None and snapshot.price_foil > 0:
+                if snapshot.price_market is not None and snapshot.price_market > 0:
                     try:
                         history.append(PricePoint(
-                            date=snapshot.snapshot_time,
-                            price=float(snapshot.price_foil),
+                            date=snapshot.time,
+                            price=float(snapshot.price_market),
                             marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
                             currency=snapshot.currency,
                             min_price=None,  # Foil prices don't have min/max in snapshot
                             max_price=None,
                             num_listings=snapshot.num_listings,
-                            snapshot_time=snapshot.snapshot_time,
-                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
+                            snapshot_time=snapshot.time,
+                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.time)).total_seconds() / 60) if snapshot.time else None,
                         ))
                     except (ValueError, TypeError) as e:
                         logger.warning(
                             "Invalid price_foil value",
                             card_id=card_id,
                             snapshot_id=getattr(snapshot, 'id', None),
-                            price_foil=snapshot.price_foil,
+                            price_foil=snapshot.price_market,
                             error=str(e),
                         )
                         continue
@@ -406,15 +396,15 @@ async def get_card_history(
                 if snapshot.price > 0:
                     try:
                         history.append(PricePoint(
-                            date=snapshot.snapshot_time,
+                            date=snapshot.time,
                             price=float(snapshot.price),
                             marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
                             currency=snapshot.currency,
-                            min_price=float(snapshot.min_price) if snapshot.min_price and snapshot.min_price > 0 else None,
-                            max_price=float(snapshot.max_price) if snapshot.max_price and snapshot.max_price > 0 else None,
+                            min_price=float(snapshot.price_low) if snapshot.price_low and snapshot.price_low > 0 else None,
+                            max_price=float(snapshot.price_high) if snapshot.price_high and snapshot.price_high > 0 else None,
                             num_listings=snapshot.num_listings,
-                            snapshot_time=snapshot.snapshot_time,
-                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
+                            snapshot_time=snapshot.time,
+                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.time)).total_seconds() / 60) if snapshot.time else None,
                         ))
                     except (ValueError, TypeError) as e:
                         logger.warning(
@@ -431,16 +421,16 @@ async def get_card_history(
                 if snapshot.price > 0:
                     try:
                         history.append(PricePoint(
-                            date=snapshot.snapshot_time,
+                            date=snapshot.time,
                             price=float(snapshot.price),
                             marketplace=normalize_marketplace_name(marketplace.name, marketplace.slug, snapshot.currency),
                             currency=snapshot.currency,
-                            min_price=float(snapshot.min_price) if snapshot.min_price and snapshot.min_price > 0 else None,
-                            max_price=float(snapshot.max_price) if snapshot.max_price and snapshot.max_price > 0 else None,
+                            min_price=float(snapshot.price_low) if snapshot.price_low and snapshot.price_low > 0 else None,
+                            max_price=float(snapshot.price_high) if snapshot.price_high and snapshot.price_high > 0 else None,
                             num_listings=snapshot.num_listings,
-                            snapshot_time=snapshot.snapshot_time,
-                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.snapshot_time)).total_seconds() / 60) if snapshot.snapshot_time else None,
-                            price_foil=float(snapshot.price_foil) if snapshot.price_foil and snapshot.price_foil > 0 else None,
+                            snapshot_time=snapshot.time,
+                            data_age_minutes=int((now - ensure_timezone_aware(snapshot.time)).total_seconds() / 60) if snapshot.time else None,
+                            price_foil=float(snapshot.price_market) if snapshot.price_market and snapshot.price_market > 0 else None,
                         ))
                     except (ValueError, TypeError) as e:
                         logger.warning(
@@ -452,7 +442,7 @@ async def get_card_history(
                         )
                         continue
         
-        latest_snapshot = max((snapshot.snapshot_time for snapshot, _ in rows), default=None) if rows else None
+        latest_snapshot = max((snapshot.time for snapshot, _ in rows), default=None) if rows else None
     
     if latest_snapshot:
         latest_snapshot = ensure_timezone_aware(latest_snapshot)
@@ -572,51 +562,53 @@ async def _get_current_prices(
 ) -> list[MarketplacePriceDetail]:
     """
     Get latest price from each marketplace for a card.
-    If condition is specified, groups listings by condition.
+    If condition is specified, filters PriceSnapshot by condition.
     """
-    from app.models import Listing
-    
+    from app.core.constants import normalize_condition as normalize_cond
+
     if condition:
-        # Normalize condition
-        condition_map = {
-            "NM": "Near Mint",
-            "LP": "Lightly Played",
-            "MP": "Moderately Played",
-            "HP": "Heavily Played",
-            "DMG": "Damaged",
-            "Near Mint": "Near Mint",
-            "Lightly Played": "Lightly Played",
-            "Moderately Played": "Moderately Played",
-            "Heavily Played": "Heavily Played",
-            "Damaged": "Damaged",
-        }
-        normalized_condition = condition_map.get(condition, condition)
-        
-        # Get current prices from listings grouped by marketplace and condition
+        # Normalize condition to our standard enum value
+        normalized_condition_enum = normalize_cond(condition)
+        normalized_condition = normalized_condition_enum.value
+
+        # Get current prices from PriceSnapshot grouped by marketplace and condition
+        # Get latest snapshot per marketplace for this condition
+        subq = select(
+            PriceSnapshot.marketplace_id,
+            func.max(PriceSnapshot.time).label("latest_time"),
+        ).where(
+            PriceSnapshot.card_id == card_id,
+            PriceSnapshot.condition == normalized_condition,
+        ).group_by(PriceSnapshot.marketplace_id).subquery()
+
         query = select(
-            Listing.marketplace_id,
+            PriceSnapshot.marketplace_id,
             Marketplace.name.label('marketplace_name'),
             Marketplace.slug.label('marketplace_slug'),
-            func.avg(Listing.price).label('avg_price'),
-            func.min(Listing.price).label('min_price'),
-            func.max(Listing.price).label('max_price'),
-            func.count(Listing.id).label('num_listings'),
-            func.max(Listing.currency).label('currency'),
-            func.max(Listing.last_seen_at).label('last_updated'),
+            func.avg(PriceSnapshot.price).label('avg_price'),
+            func.min(PriceSnapshot.price).label('min_price'),
+            func.max(PriceSnapshot.price).label('max_price'),
+            func.count(PriceSnapshot.time).label('num_listings'),
+            func.max(PriceSnapshot.currency).label('currency'),
+            func.max(PriceSnapshot.time).label('last_updated'),
         ).join(
-            Marketplace, Listing.marketplace_id == Marketplace.id
+            Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
+        ).join(
+            subq,
+            (PriceSnapshot.marketplace_id == subq.c.marketplace_id) &
+            (PriceSnapshot.time == subq.c.latest_time)
         ).where(
-            Listing.card_id == card_id,
-            Listing.condition == normalized_condition,
+            PriceSnapshot.card_id == card_id,
+            PriceSnapshot.condition == normalized_condition,
         ).group_by(
-            Listing.marketplace_id,
+            PriceSnapshot.marketplace_id,
             Marketplace.name,
             Marketplace.slug
         )
-        
+
         result = await db.execute(query)
         rows = result.all()
-        
+
         return [
             MarketplacePriceDetail(
                 marketplace_id=row.marketplace_id,
@@ -635,7 +627,7 @@ async def _get_current_prices(
         # Use PriceSnapshot data (aggregated, no condition filter)
         subq = select(
             PriceSnapshot.marketplace_id,
-            func.max(PriceSnapshot.snapshot_time).label("latest_time"),
+            func.max(PriceSnapshot.time).label("latest_time"),
         ).where(
             PriceSnapshot.card_id == card_id
         ).group_by(PriceSnapshot.marketplace_id).subquery()
@@ -645,7 +637,7 @@ async def _get_current_prices(
         ).join(
             subq,
             (PriceSnapshot.marketplace_id == subq.c.marketplace_id) &
-            (PriceSnapshot.snapshot_time == subq.c.latest_time)
+            (PriceSnapshot.time == subq.c.latest_time)
         ).where(
             PriceSnapshot.card_id == card_id
         )
@@ -660,9 +652,9 @@ async def _get_current_prices(
                 marketplace_slug=marketplace.slug,
                 price=float(snapshot.price),
                 currency=snapshot.currency,
-                price_foil=float(snapshot.price_foil) if snapshot.price_foil else None,
+                price_foil=float(snapshot.price_market) if snapshot.price_market else None,
                 num_listings=snapshot.num_listings,
-                last_updated=snapshot.snapshot_time,
+                last_updated=snapshot.time,
             )
             for snapshot, marketplace in rows
         ]
@@ -677,7 +669,7 @@ async def _maybe_trigger_refresh(
     threshold = datetime.now(timezone.utc) - timedelta(hours=REFRESH_THRESHOLD_HOURS)
     
     result = await db.execute(
-        select(func.max(PriceSnapshot.snapshot_time)).where(PriceSnapshot.card_id == card_id)
+        select(func.max(PriceSnapshot.time)).where(PriceSnapshot.card_id == card_id)
     )
     latest_snapshot = result.scalar_one_or_none()
     
@@ -797,8 +789,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
     if fast_mode:
         recent_snapshot_query = select(PriceSnapshot).where(
             PriceSnapshot.card_id == card_id,
-            PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
-        ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+            PriceSnapshot.time >= now - timedelta(hours=24),
+        ).order_by(PriceSnapshot.time.desc()).limit(1)
         recent_result = await db.execute(recent_snapshot_query)
         recent_snapshot = recent_result.scalar_one_or_none()
         
@@ -921,8 +913,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
             recent_snapshot_query = select(PriceSnapshot).where(
                 PriceSnapshot.card_id == card_id,
                 PriceSnapshot.marketplace_id == marketplace.id,
-                PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
-            ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+                PriceSnapshot.time >= now - timedelta(hours=24),
+            ).order_by(PriceSnapshot.time.desc()).limit(1)
             recent_result = await db.execute(recent_snapshot_query)
             recent_snapshot = recent_result.scalar_one_or_none()
             
@@ -986,8 +978,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
                 recent_snapshot_query = select(PriceSnapshot).where(
                     PriceSnapshot.card_id == card_id,
                     PriceSnapshot.marketplace_id == cardtrader_mp.id,
-                    PriceSnapshot.snapshot_time >= now - timedelta(hours=24),
-                ).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+                    PriceSnapshot.time >= now - timedelta(hours=24),
+                ).order_by(PriceSnapshot.time.desc()).limit(1)
                 recent_result = await db.execute(recent_snapshot_query)
                 recent_snapshot = recent_result.scalar_one_or_none()
                 
@@ -1064,7 +1056,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
                     existing_query = select(PriceSnapshot).where(
                         PriceSnapshot.card_id == card_id,
                         PriceSnapshot.marketplace_id == marketplace.id,
-                        PriceSnapshot.snapshot_time == price_data.snapshot_time,
+                        PriceSnapshot.time == price_data.snapshot_time,
                     )
                     existing_result = await db.execute(existing_query)
                     existing = existing_result.scalar_one_or_none()
@@ -1106,9 +1098,9 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
     # Always check and backfill if needed (even in fast mode, but only if data is missing)
     # Check how many days of data we have
     thirty_days_ago = now - timedelta(days=30)
-    history_check_query = select(func.count(PriceSnapshot.id)).where(
+    history_check_query = select(func.count(PriceSnapshot.time)).where(
         PriceSnapshot.card_id == card_id,
-        PriceSnapshot.snapshot_time >= thirty_days_ago,
+        PriceSnapshot.time >= thirty_days_ago,
     )
     history_count = await db.scalar(history_check_query) or 0
     
@@ -1120,8 +1112,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
             Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
         ).where(
             PriceSnapshot.card_id == card_id,
-            PriceSnapshot.snapshot_time >= now - timedelta(hours=24),  # Recent snapshots
-        ).order_by(PriceSnapshot.snapshot_time.desc())
+            PriceSnapshot.time >= now - timedelta(hours=24),  # Recent snapshots
+        ).order_by(PriceSnapshot.time.desc())
         
         current_prices_result = await db.execute(current_prices_query)
         recent_snapshots = current_prices_result.all()
@@ -1147,7 +1139,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
                 #     snapshot = data['snapshot']
                 #     base_price = float(snapshot.price)
                 #     base_currency = snapshot.currency
-                #     base_foil_price = float(snapshot.price_foil) if snapshot.price_foil else None
+                #     base_foil_price = float(snapshot.price_market) if snapshot.price_market else None
                 #     
                 #     # Generate 30 days of backfilled data (one point per day)
                 #     # Use deterministic variation based on card_id and day to ensure consistency
@@ -1158,11 +1150,11 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
                 #         
                 #         # Check if we already have data for this date (within 12 hours)
                 #         # Use count to avoid MultipleResultsFound error if multiple snapshots exist
-                #         existing_backfill_query = select(func.count(PriceSnapshot.id)).where(
+                #         existing_backfill_query = select(func.count(PriceSnapshot.time)).where(
                 #             PriceSnapshot.card_id == card_id,
                 #             PriceSnapshot.marketplace_id == marketplace_id,
-                #             PriceSnapshot.snapshot_time >= snapshot_date - timedelta(hours=12),
-                #             PriceSnapshot.snapshot_time <= snapshot_date + timedelta(hours=12),
+                #             PriceSnapshot.time >= snapshot_date - timedelta(hours=12),
+                #             PriceSnapshot.time <= snapshot_date + timedelta(hours=12),
                 #         )
                 #         existing_count = await db.scalar(existing_backfill_query) or 0
                 #         if existing_count > 0:

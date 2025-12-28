@@ -27,7 +27,7 @@ async def diagnose_chart_data():
         
         # 1. Total snapshots
         total_snapshots = await db.scalar(
-            select(func.count(PriceSnapshot.id))
+            select(func.count(PriceSnapshot.time))
         ) or 0
         print(f"1. Total price snapshots in database: {total_snapshots}")
         print()
@@ -42,7 +42,7 @@ async def diagnose_chart_data():
         print("2. Snapshots by currency:")
         for currency in ["USD", "EUR", "TIX"]:
             count = await db.scalar(
-                select(func.count(PriceSnapshot.id)).where(
+                select(func.count(PriceSnapshot.time)).where(
                     PriceSnapshot.currency == currency
                 )
             ) or 0
@@ -54,7 +54,7 @@ async def diagnose_chart_data():
         marketplace_query = select(
             Marketplace.slug,
             Marketplace.name,
-            func.count(PriceSnapshot.id).label("count")
+            func.count(PriceSnapshot.time).label("count")
         ).join(
             PriceSnapshot, PriceSnapshot.marketplace_id == Marketplace.id
         ).group_by(Marketplace.slug, Marketplace.name)
@@ -69,8 +69,8 @@ async def diagnose_chart_data():
         seven_days_ago = now - timedelta(days=7)
         
         recent_snapshots = await db.scalar(
-            select(func.count(PriceSnapshot.id)).where(
-                PriceSnapshot.snapshot_time >= seven_days_ago
+            select(func.count(PriceSnapshot.time)).where(
+                PriceSnapshot.time >= seven_days_ago
             )
         ) or 0
         print(f"4. Snapshots in last 7 days: {recent_snapshots}")
@@ -78,9 +78,9 @@ async def diagnose_chart_data():
         
         # 5. USD snapshots in last 7 days (what the chart query needs)
         usd_recent = await db.scalar(
-            select(func.count(PriceSnapshot.id)).where(
+            select(func.count(PriceSnapshot.time)).where(
                 and_(
-                    PriceSnapshot.snapshot_time >= seven_days_ago,
+                    PriceSnapshot.time >= seven_days_ago,
                     PriceSnapshot.currency == "USD",
                     PriceSnapshot.price.isnot(None),
                     PriceSnapshot.price > 0,
@@ -92,7 +92,7 @@ async def diagnose_chart_data():
         
         # 6. Check for snapshots with price > 0
         valid_price_snapshots = await db.scalar(
-            select(func.count(PriceSnapshot.id)).where(
+            select(func.count(PriceSnapshot.time)).where(
                 and_(
                     PriceSnapshot.price.isnot(None),
                     PriceSnapshot.price > 0,
@@ -105,7 +105,7 @@ async def diagnose_chart_data():
         # 7. Sample of recent USD snapshots
         print("7. Sample of 5 most recent USD snapshots:")
         sample_query = select(
-            PriceSnapshot.snapshot_time,
+            PriceSnapshot.time,
             PriceSnapshot.price,
             PriceSnapshot.currency,
             Marketplace.slug.label("marketplace"),
@@ -119,13 +119,13 @@ async def diagnose_chart_data():
                 PriceSnapshot.currency == "USD",
                 PriceSnapshot.price > 0,
             )
-        ).order_by(PriceSnapshot.snapshot_time.desc()).limit(5)
+        ).order_by(PriceSnapshot.time.desc()).limit(5)
         
         result = await db.execute(sample_query)
         samples = result.all()
         if samples:
             for sample in samples:
-                print(f"   {sample.snapshot_time} | ${sample.price} | {sample.marketplace} | {sample.card_name}")
+                print(f"   {sample.time} | ${sample.price} | {sample.marketplace} | {sample.card_name}")
         else:
             print("   ❌ No USD snapshots found!")
         print()
@@ -134,7 +134,7 @@ async def diagnose_chart_data():
         print("8. Testing time-bucketed query (7d range, 30min buckets):")
         bucket_seconds = 30 * 60  # 30 minutes
         bucket_expr = func.to_timestamp(
-            func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
+            func.floor(func.extract('epoch', PriceSnapshot.time) / bucket_seconds) * bucket_seconds
         )
         
         test_query = select(
@@ -143,7 +143,7 @@ async def diagnose_chart_data():
             func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
         ).where(
             and_(
-                PriceSnapshot.snapshot_time >= seven_days_ago,
+                PriceSnapshot.time >= seven_days_ago,
                 PriceSnapshot.currency == "USD",
                 PriceSnapshot.price.isnot(None),
                 PriceSnapshot.price > 0,

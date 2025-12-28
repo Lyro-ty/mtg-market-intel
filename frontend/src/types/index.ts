@@ -454,3 +454,58 @@ export interface ColorDistribution {
   isMockData?: boolean;
 }
 
+// WebSocket types
+export type WebSocketChannelType =
+  | 'market'
+  | 'card'
+  | 'dashboard'
+  | 'inventory'
+  | 'recommendations';
+
+export interface WebSocketMessage {
+  type: string;
+  channel?: string;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
+export interface WebSocketSubscription {
+  channel: WebSocketChannelType;
+  params?: Record<string, string | number>;
+}
+
+export interface MarketUpdateMessage extends WebSocketMessage {
+  type: 'market_update';
+  index_value?: number;
+  change_24h?: number;
+  volume_24h?: number;
+  currency?: string;
+}
+
+export interface CardUpdateMessage extends WebSocketMessage {
+  type: 'card_update';
+  card_id: number;
+  price?: number;
+  price_change?: number;
+  marketplace_id?: number;
+}
+
+export interface DashboardUpdateMessage extends WebSocketMessage {
+  type: 'dashboard_update';
+  section: string;
+  data?: Record<string, unknown>;
+}
+
+export interface InventoryUpdateMessage extends WebSocketMessage {
+  type: 'inventory_update';
+  item_id?: number;
+  action?: 'created' | 'updated' | 'deleted';
+  value_change?: number;
+}
+
+export interface RecommendationsUpdateMessage extends WebSocketMessage {
+  type: 'recommendations_updated';
+  count?: number;
+  new_recommendations?: number;
+}
+

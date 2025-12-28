@@ -1,15 +1,25 @@
 """
 Vectorization integration for ingestion pipeline.
+
+Note: The vectorize_listing and vectorize_listings_batch functions are DEPRECATED.
+The Listing model has been replaced by PriceSnapshot, which uses a composite primary key
+and is stored in a TimescaleDB hypertable. Individual listings are no longer vectorized;
+only cards are vectorized via vectorize_card and vectorize_card_by_attrs.
 """
-import json
-from typing import Any
+import warnings
+from typing import Any, TYPE_CHECKING
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Card, Listing, CardFeatureVector, ListingFeatureVector
+from app.models import Card, CardFeatureVector
 from app.services.vectorization.service import VectorizationService
+
+if TYPE_CHECKING:
+    # Only import for type hints - avoid triggering deprecation warning at import time
+    from app.models.listing import Listing
+    from app.models.feature_vector import ListingFeatureVector
 
 logger = structlog.get_logger()
 
@@ -124,22 +134,39 @@ async def vectorize_card_by_attrs(
 
 async def vectorize_listing(
     db: AsyncSession,
-    listing: Listing,
+    listing: "Listing",
     card_vector: CardFeatureVector | None,
     vectorizer: VectorizationService,
-) -> ListingFeatureVector | None:
+) -> "ListingFeatureVector | None":
     """
-    Vectorize a listing and store the feature vector.
-    
+    DEPRECATED: Vectorize a listing and store the feature vector.
+
+    This function is deprecated because the Listing model has been replaced by
+    PriceSnapshot, which uses a composite primary key and TimescaleDB hypertable.
+    Individual listings/price snapshots are no longer vectorized.
+
+    Use vectorize_card() or vectorize_card_by_attrs() for card-level vectorization.
+
     Args:
         db: Database session.
         listing: Listing to vectorize.
         card_vector: Pre-computed card feature vector (optional).
         vectorizer: Vectorization service instance.
-        
+
     Returns:
         ListingFeatureVector if successful, None otherwise.
     """
+    warnings.warn(
+        "vectorize_listing is deprecated. Listings are no longer vectorized; "
+        "use vectorize_card() for card-level vectors instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+
+    # Import deprecated models
+    from app.models.listing import Listing as ListingModel
+    from app.models.feature_vector import ListingFeatureVector
+
     try:
         # Get card vector if not provided
         if card_vector is None:
@@ -200,22 +227,35 @@ async def vectorize_listing(
 
 async def vectorize_listings_batch(
     db: AsyncSession,
-    listings: list[Listing],
+    listings: "list[Listing]",
     vectorizer: VectorizationService,
     batch_size: int = 50,
 ) -> int:
     """
-    Vectorize a batch of listings efficiently.
-    
+    DEPRECATED: Vectorize a batch of listings efficiently.
+
+    This function is deprecated because the Listing model has been replaced by
+    PriceSnapshot, which uses a composite primary key and TimescaleDB hypertable.
+    Individual listings/price snapshots are no longer vectorized.
+
+    Use vectorize_card() or vectorize_card_by_attrs() for card-level vectorization.
+
     Args:
         db: Database session.
         listings: List of listings to vectorize.
         vectorizer: Vectorization service instance.
         batch_size: Number of listings to process at once.
-        
+
     Returns:
         Number of listings successfully vectorized.
     """
+    warnings.warn(
+        "vectorize_listings_batch is deprecated. Listings are no longer vectorized; "
+        "use vectorize_card() for card-level vectors instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+
     if not listings:
         return 0
     

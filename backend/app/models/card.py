@@ -10,8 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.listing import Listing
     from app.models.price_snapshot import PriceSnapshot
+    from app.models.listing import Listing
     from app.models.metrics import MetricsCardsDaily
     from app.models.signal import Signal
     from app.models.recommendation import Recommendation
@@ -73,11 +73,11 @@ class Card(Base):
     )
     
     # Relationships
-    listings: Mapped[list["Listing"]] = relationship(
-        "Listing", back_populates="card", cascade="all, delete-orphan"
-    )
     price_snapshots: Mapped[list["PriceSnapshot"]] = relationship(
         "PriceSnapshot", back_populates="card", cascade="all, delete-orphan"
+    )
+    listings: Mapped[list["Listing"]] = relationship(
+        "Listing", back_populates="card", cascade="all, delete-orphan"
     )
     metrics: Mapped[list["MetricsCardsDaily"]] = relationship(
         "MetricsCardsDaily", back_populates="card", cascade="all, delete-orphan"

@@ -68,7 +68,7 @@ async def generate_history(
                 delete(PriceSnapshot)
                 .where(PriceSnapshot.card_id.in_(card_ids))
                 .where(PriceSnapshot.marketplace_id.in_(marketplace_ids))
-                .where(PriceSnapshot.snapshot_time >= horizon)
+                .where(PriceSnapshot.time >= horizon)
             )
             await session.commit()
         

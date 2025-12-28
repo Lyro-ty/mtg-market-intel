@@ -71,10 +71,9 @@ class Recommendation(Base):
         "Marketplace", back_populates="recommendations"
     )
     
-    # Indexes
+    # Indexes (action already has index=True on column definition)
     __table_args__ = (
         Index("ix_recommendations_card_action", "card_id", "action"),
-        Index("ix_recommendations_action", "action"),
         Index("ix_recommendations_active", "is_active"),
         Index("ix_recommendations_confidence", "confidence"),
     )

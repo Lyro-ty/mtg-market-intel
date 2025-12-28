@@ -69,9 +69,8 @@ class NewsArticle(Base):
         "CardNewsMention", back_populates="article", cascade="all, delete-orphan"
     )
     
-    # Indexes
+    # Indexes (published_at, source, external_id already have index=True on column definitions)
     __table_args__ = (
-        Index("ix_news_articles_published_at", "published_at"),
         Index("ix_news_articles_source_external_id", "source", "external_id", unique=True),
         Index("ix_news_articles_category", "category"),
     )

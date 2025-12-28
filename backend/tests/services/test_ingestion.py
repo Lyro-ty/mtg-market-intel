@@ -3,80 +3,34 @@ Tests for ingestion service.
 """
 import pytest
 
-from app.services.ingestion.adapters.mock import MockMarketplaceAdapter
 from app.services.ingestion import get_adapter, get_available_adapters
+from app.services.ingestion.scryfall import ScryfallAdapter
 
 
 def test_get_available_adapters():
     """Test getting list of available adapters."""
     adapters = get_available_adapters()
-    
+
+    # These adapters should be available in the current registry
     assert "scryfall" in adapters
     assert "tcgplayer" in adapters
-    assert "cardmarket" in adapters
-    assert "mock" in adapters
+    assert "cardtrader" in adapters
+    assert "manapool" in adapters
+    assert "mtgjson" in adapters
 
 
-def test_get_mock_adapter():
-    """Test getting mock adapter."""
-    adapter = get_adapter("mock")
-    
-    assert isinstance(adapter, MockMarketplaceAdapter)
-    assert adapter.marketplace_slug == "mock_market"
+def test_get_scryfall_adapter():
+    """Test getting Scryfall adapter."""
+    adapter = get_adapter("scryfall")
+
+    assert isinstance(adapter, ScryfallAdapter)
+    assert adapter.marketplace_slug == "scryfall"
 
 
-@pytest.mark.asyncio
-async def test_mock_adapter_fetch_price():
-    """Test mock adapter fetches price data."""
-    adapter = MockMarketplaceAdapter()
-    
-    price = await adapter.fetch_price(
-        card_name="Lightning Bolt",
-        set_code="M21",
-    )
-    
-    assert price is not None
-    assert price.price > 0
-    assert price.card_name == "Lightning Bolt"
+def test_get_unknown_adapter():
+    """Test that getting unknown adapter raises ValueError."""
+    with pytest.raises(ValueError) as exc_info:
+        get_adapter("nonexistent")
 
-
-@pytest.mark.asyncio
-async def test_mock_adapter_fetch_listings():
-    """Test mock adapter fetches listings."""
-    adapter = MockMarketplaceAdapter()
-    
-    listings = await adapter.fetch_listings(
-        card_name="Lightning Bolt",
-        set_code="M21",
-    )
-    
-    assert len(listings) > 0
-    assert all(l.price > 0 for l in listings)
-    assert all(l.card_name == "Lightning Bolt" for l in listings)
-
-
-@pytest.mark.asyncio
-async def test_mock_adapter_price_history():
-    """Test mock adapter generates price history."""
-    adapter = MockMarketplaceAdapter()
-    
-    history = await adapter.fetch_price_history(
-        card_name="Lightning Bolt",
-        set_code="M21",
-        days=7,
-    )
-    
-    assert len(history) == 7
-    assert all(h.price > 0 for h in history)
-
-
-@pytest.mark.asyncio
-async def test_mock_adapter_search():
-    """Test mock adapter search."""
-    adapter = MockMarketplaceAdapter()
-    
-    results = await adapter.search_cards("Dragon", limit=5)
-    
-    assert len(results) <= 5
-    assert all("Dragon" in r["name"] for r in results)
+    assert "Unknown adapter: nonexistent" in str(exc_info.value)
 

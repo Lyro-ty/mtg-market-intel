@@ -1,12 +1,21 @@
 """
 Base classes for marketplace adapters.
 
-Defines the interface that all marketplace adapters must implement.
+Defines the interface that all marketplace adapters must implement,
+including standardized data classes for price data ingestion.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+
+from app.core.constants import (
+    CardCondition,
+    CardLanguage,
+    normalize_condition,
+    normalize_language,
+    get_currency_for_marketplace,
+)
 
 
 @dataclass
@@ -22,6 +31,97 @@ class AdapterConfig:
     timeout_seconds: float = 30.0
     user_agent: str = "MTGMarketIntel/1.0"
     extra: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PriceData:
+    """
+    Standardized price data for ingestion into TimescaleDB.
+
+    This dataclass represents the normalized format used to insert
+    price snapshots into the database. All adapters should convert
+    their raw data to this format.
+
+    Attributes:
+        card_id: Database ID of the card
+        marketplace_id: Database ID of the marketplace
+        time: Timestamp of the price snapshot
+        price: Current/representative price
+        currency: Currency code (USD, EUR)
+        condition: Normalized card condition
+        is_foil: Whether this is a foil variant
+        language: Normalized card language
+        price_low: Low price tier
+        price_mid: Mid price tier
+        price_high: High price tier
+        price_market: Market price (if available)
+        num_listings: Number of active listings
+        total_quantity: Total quantity available
+    """
+    # Required fields
+    card_id: int
+    marketplace_id: int
+    price: float
+    currency: str
+
+    # Optional fields with defaults
+    time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    condition: CardCondition = CardCondition.NEAR_MINT
+    is_foil: bool = False
+    language: CardLanguage = CardLanguage.ENGLISH
+    price_low: float | None = None
+    price_mid: float | None = None
+    price_high: float | None = None
+    price_market: float | None = None
+    num_listings: int | None = None
+    total_quantity: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for database insertion."""
+        return {
+            "card_id": self.card_id,
+            "marketplace_id": self.marketplace_id,
+            "time": self.time.isoformat() if isinstance(self.time, datetime) else self.time,
+            "price": self.price,
+            "currency": self.currency,
+            "condition": self.condition.value,
+            "is_foil": self.is_foil,
+            "language": self.language.value,
+            "price_low": self.price_low,
+            "price_mid": self.price_mid,
+            "price_high": self.price_high,
+            "price_market": self.price_market,
+            "num_listings": self.num_listings,
+            "total_quantity": self.total_quantity,
+        }
+
+    @classmethod
+    def from_card_price(
+        cls,
+        card_price: "CardPrice",
+        card_id: int,
+        marketplace_id: int,
+        condition: CardCondition = CardCondition.NEAR_MINT,
+        is_foil: bool = False,
+        language: CardLanguage = CardLanguage.ENGLISH,
+    ) -> "PriceData":
+        """Create PriceData from a CardPrice object."""
+        return cls(
+            card_id=card_id,
+            marketplace_id=marketplace_id,
+            price=card_price.price,
+            currency=card_price.currency,
+            time=card_price.snapshot_time,
+            condition=condition,
+            is_foil=is_foil,
+            language=language,
+            price_low=card_price.price_low,
+            price_mid=card_price.price_mid,
+            price_high=card_price.price_high,
+            price_market=card_price.price_market,
+            num_listings=card_price.num_listings,
+            total_quantity=card_price.total_quantity,
+        )
 
 
 @dataclass
@@ -216,53 +316,72 @@ class MarketplaceAdapter(ABC):
         """
         return True
     
-    def normalize_condition(self, condition: str) -> str:
+    def normalize_condition(self, condition: str | None) -> CardCondition:
         """
-        Normalize condition strings to a standard format.
-        
+        Normalize condition strings to CardCondition enum.
+
+        Uses the centralized normalization from app.core.constants.
+
         Args:
             condition: Raw condition string from marketplace.
-            
+
         Returns:
-            Normalized condition string.
+            CardCondition enum value.
         """
-        condition_map = {
-            # Near Mint variations
-            "nm": "NM", "near mint": "NM", "nm-m": "NM", "mint": "NM",
-            # Lightly Played
-            "lp": "LP", "light play": "LP", "lightly played": "LP", "sp": "LP",
-            # Moderately Played
-            "mp": "MP", "moderately played": "MP", "played": "MP",
-            # Heavily Played
-            "hp": "HP", "heavily played": "HP", "heavy play": "HP",
-            # Damaged
-            "dmg": "DMG", "damaged": "DMG", "poor": "DMG",
-        }
-        normalized = condition_map.get(condition.lower().strip(), condition.upper())
-        return normalized
-    
-    def normalize_language(self, language: str) -> str:
+        return normalize_condition(condition)
+
+    def normalize_language(self, language: str | None) -> CardLanguage:
         """
-        Normalize language strings to a standard format.
-        
+        Normalize language strings to CardLanguage enum.
+
+        Uses the centralized normalization from app.core.constants.
+
         Args:
             language: Raw language string.
-            
+
         Returns:
-            Normalized language string.
+            CardLanguage enum value.
         """
-        language_map = {
-            "en": "English", "eng": "English", "english": "English",
-            "jp": "Japanese", "ja": "Japanese", "japanese": "Japanese",
-            "de": "German", "ger": "German", "german": "German",
-            "fr": "French", "fre": "French", "french": "French",
-            "it": "Italian", "ita": "Italian", "italian": "Italian",
-            "es": "Spanish", "spa": "Spanish", "spanish": "Spanish",
-            "pt": "Portuguese", "por": "Portuguese", "portuguese": "Portuguese",
-            "kr": "Korean", "ko": "Korean", "korean": "Korean",
-            "cn": "Chinese Simplified", "zhs": "Chinese Simplified",
-            "tw": "Chinese Traditional", "zht": "Chinese Traditional",
-            "ru": "Russian", "rus": "Russian", "russian": "Russian",
-        }
-        return language_map.get(language.lower().strip(), language.title())
+        return normalize_language(language)
+
+    def get_default_currency(self) -> str:
+        """
+        Get the default currency for this marketplace.
+
+        Returns:
+            Currency code (USD, EUR, etc.)
+        """
+        return get_currency_for_marketplace(self.marketplace_slug)
+
+    def to_price_data(
+        self,
+        card_price: CardPrice,
+        card_id: int,
+        marketplace_id: int,
+        condition: str | None = None,
+        is_foil: bool = False,
+        language: str | None = None,
+    ) -> PriceData:
+        """
+        Convert a CardPrice to PriceData with proper normalization.
+
+        Args:
+            card_price: Raw price data from adapter
+            card_id: Database card ID
+            marketplace_id: Database marketplace ID
+            condition: Raw condition string (will be normalized)
+            is_foil: Foil status
+            language: Raw language string (will be normalized)
+
+        Returns:
+            PriceData ready for database insertion
+        """
+        return PriceData.from_card_price(
+            card_price=card_price,
+            card_id=card_id,
+            marketplace_id=marketplace_id,
+            condition=self.normalize_condition(condition),
+            is_foil=is_foil,
+            language=self.normalize_language(language),
+        )
 

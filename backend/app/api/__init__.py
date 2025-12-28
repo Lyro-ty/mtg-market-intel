@@ -3,7 +3,18 @@ API module for FastAPI routes.
 """
 from fastapi import APIRouter
 
-from app.api.routes import auth, health, cards, recommendations, dashboard, settings, marketplaces, inventory, market
+from app.api.routes import (
+    auth,
+    health,
+    cards,
+    recommendations,
+    dashboard,
+    settings,
+    marketplaces,
+    inventory,
+    market,
+    websocket,
+)
 
 api_router = APIRouter()
 
@@ -17,4 +28,7 @@ api_router.include_router(settings.router, prefix="/settings", tags=["Settings"]
 api_router.include_router(marketplaces.router, prefix="/marketplaces", tags=["Marketplaces"])
 api_router.include_router(inventory.router, prefix="/inventory", tags=["Inventory"])
 api_router.include_router(market.router, prefix="/market", tags=["Market"])
+
+# WebSocket route (no prefix - connects at /api/ws)
+api_router.include_router(websocket.router, tags=["WebSocket"])
 

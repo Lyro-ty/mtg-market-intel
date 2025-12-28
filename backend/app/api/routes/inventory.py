@@ -860,18 +860,18 @@ async def get_inventory_market_index(
         # Get time-bucketed average prices from price snapshots for inventory cards
         bucket_seconds = bucket_minutes * 60
         bucket_expr = func.to_timestamp(
-            func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
+            func.floor(func.extract('epoch', PriceSnapshot.time) / bucket_seconds) * bucket_seconds
         )
         
         # Determine which price field to use based on foil filter
         if is_foil_bool is True:
             # Use foil prices only
-            price_field = PriceSnapshot.price_foil
-            price_condition = PriceSnapshot.price_foil.isnot(None)
+            price_field = PriceSnapshot.price_market
+            price_condition = PriceSnapshot.price_market.isnot(None)
         elif is_foil_bool is False:
             # Exclude foil prices (only non-foil)
             price_field = PriceSnapshot.price
-            price_condition = PriceSnapshot.price_foil.is_(None)
+            price_condition = PriceSnapshot.price_market.is_(None)
         else:
             # Default: use regular prices
             price_field = PriceSnapshot.price
@@ -879,7 +879,7 @@ async def get_inventory_market_index(
         
         # Build query conditions
         query_conditions = [
-            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.time >= start_date,
             PriceSnapshot.card_id.in_(card_ids),
             price_condition,
             price_field > 0,
@@ -1004,12 +1004,12 @@ async def get_inventory_market_index(
         if not points:
             # Log diagnostic info when no data found
             total_snapshots = await db.scalar(
-                select(func.count(PriceSnapshot.id))
+                select(func.count(PriceSnapshot.time))
             ) or 0
             
             # Check for snapshots with proper conditions
             recent_snapshot_conditions = [
-                PriceSnapshot.snapshot_time >= start_date,
+                PriceSnapshot.time >= start_date,
             ]
             if card_ids:
                 recent_snapshot_conditions.append(PriceSnapshot.card_id.in_(card_ids))
@@ -1017,14 +1017,14 @@ async def get_inventory_market_index(
                 recent_snapshot_conditions.append(PriceSnapshot.currency == currency)
             
             recent_snapshots = await db.scalar(
-                select(func.count(PriceSnapshot.id)).where(
+                select(func.count(PriceSnapshot.time)).where(
                     and_(*recent_snapshot_conditions) if recent_snapshot_conditions else True
                 )
             ) or 0
             
             # Also check snapshots for these cards regardless of date
             all_card_snapshots = await db.scalar(
-                select(func.count(PriceSnapshot.id)).where(
+                select(func.count(PriceSnapshot.time)).where(
                     PriceSnapshot.card_id.in_(card_ids) if card_ids else True
                 )
             ) or 0
@@ -1057,17 +1057,17 @@ async def get_inventory_market_index(
         # Calculate data freshness - find the most recent snapshot timestamp for inventory cards
         # Determine which price field to use based on foil filter
         if is_foil_bool is True:
-            freshness_price_field = PriceSnapshot.price_foil
-            freshness_price_condition = PriceSnapshot.price_foil.isnot(None)
+            freshness_price_field = PriceSnapshot.price_market
+            freshness_price_condition = PriceSnapshot.price_market.isnot(None)
         elif is_foil_bool is False:
             freshness_price_field = PriceSnapshot.price
-            freshness_price_condition = PriceSnapshot.price_foil.is_(None)
+            freshness_price_condition = PriceSnapshot.price_market.is_(None)
         else:
             freshness_price_field = PriceSnapshot.price
             freshness_price_condition = PriceSnapshot.price.isnot(None)
         
         latest_snapshot_conditions = [
-            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.time >= start_date,
             PriceSnapshot.card_id.in_(card_ids),
             freshness_price_condition,
             freshness_price_field > 0,
@@ -1076,7 +1076,7 @@ async def get_inventory_market_index(
             latest_snapshot_conditions.append(PriceSnapshot.currency == currency)
         
         latest_snapshot_query = select(
-            func.max(PriceSnapshot.snapshot_time)
+            func.max(PriceSnapshot.time)
         ).where(
             and_(*latest_snapshot_conditions)
         )
@@ -1127,12 +1127,12 @@ async def _get_inventory_currency_index(
     # Determine which price field to use based on foil filter
     if is_foil is True:
         # Use foil prices only
-        price_field = PriceSnapshot.price_foil
-        price_condition = PriceSnapshot.price_foil.isnot(None)
+        price_field = PriceSnapshot.price_market
+        price_condition = PriceSnapshot.price_market.isnot(None)
     elif is_foil is False:
         # Exclude foil prices (only non-foil)
         price_field = PriceSnapshot.price
-        price_condition = PriceSnapshot.price_foil.is_(None)
+        price_condition = PriceSnapshot.price_market.is_(None)
     else:
         # Default: use regular prices
         price_field = PriceSnapshot.price
@@ -1144,7 +1144,7 @@ async def _get_inventory_currency_index(
         func.avg(price_field).label("avg_price"),
     ).where(
         and_(
-            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.time >= start_date,
             PriceSnapshot.card_id.in_(card_ids),
             PriceSnapshot.currency == currency,
             price_condition,
@@ -1187,11 +1187,11 @@ async def _get_inventory_currency_index(
     # Calculate base value from first day
     base_date = start_date + timedelta(days=1)
     if is_foil is True:
-        base_price_field = PriceSnapshot.price_foil
-        base_condition = PriceSnapshot.price_foil.isnot(None)
+        base_price_field = PriceSnapshot.price_market
+        base_condition = PriceSnapshot.price_market.isnot(None)
     elif is_foil is False:
         base_price_field = PriceSnapshot.price
-        base_condition = PriceSnapshot.price_foil.is_(None)
+        base_condition = PriceSnapshot.price_market.is_(None)
     else:
         base_price_field = PriceSnapshot.price
         base_condition = PriceSnapshot.price.isnot(None)
@@ -1206,8 +1206,8 @@ async def _get_inventory_currency_index(
         func.sum(quantity_case).label("total_quantity")
     ).where(
         and_(
-            PriceSnapshot.snapshot_time >= start_date,
-            PriceSnapshot.snapshot_time < base_date,
+            PriceSnapshot.time >= start_date,
+            PriceSnapshot.time < base_date,
             PriceSnapshot.card_id.in_(card_ids),
             PriceSnapshot.currency == currency,
             base_condition,
