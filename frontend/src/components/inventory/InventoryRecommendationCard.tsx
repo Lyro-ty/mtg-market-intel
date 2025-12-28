@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { AlertTriangle, TrendingDown, Pause, Clock, DollarSign, Store } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils';
 import type { InventoryRecommendation } from '@/types';
 

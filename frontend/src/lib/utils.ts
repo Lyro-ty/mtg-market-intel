@@ -6,7 +6,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 /**
- * Merge Tailwind CSS classes
+ * Merge Tailwind CSS classes (shadcn/ui compatible)
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -20,7 +20,7 @@ export function formatCurrency(
   currency: string = 'USD'
 ): string {
   if (value === undefined || value === null) return '-';
-  
+
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
@@ -37,7 +37,7 @@ export function formatPercent(
   decimals: number = 1
 ): string {
   if (value === undefined || value === null) return '-';
-  
+
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(decimals)}%`;
 }
@@ -50,7 +50,7 @@ export function formatNumber(
   decimals: number = 0
 ): string {
   if (value === undefined || value === null) return '-';
-  
+
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -69,7 +69,7 @@ export function formatDate(
   }
 ): string {
   if (!date) return '-';
-  
+
   const d = typeof date === 'string' ? new Date(date) : date;
   return new Intl.DateTimeFormat('en-US', options).format(d);
 }
@@ -79,7 +79,7 @@ export function formatDate(
  */
 export function formatRelativeTime(date: string | Date | undefined | null): string {
   if (!date) return '-';
-  
+
   const d = typeof date === 'string' ? new Date(date) : date;
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -87,7 +87,7 @@ export function formatRelativeTime(date: string | Date | undefined | null): stri
   const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
-  
+
   if (diffDays > 0) return `${diffDays}d ago`;
   if (diffHours > 0) return `${diffHours}h ago`;
   if (diffMins > 0) return `${diffMins}m ago`;
@@ -154,10 +154,9 @@ export function debounce<T extends string>(
   wait: number
 ): (arg: T) => void {
   let timeout: NodeJS.Timeout | null = null;
-  
+
   return (arg: T) => {
     if (timeout) clearTimeout(timeout);
     timeout = setTimeout(() => func(arg), wait);
   };
 }
-

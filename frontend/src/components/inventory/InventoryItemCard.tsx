@@ -3,9 +3,9 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Sparkles, TrendingUp, TrendingDown, Package, Trash2, Edit2 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils';
 import type { InventoryItem } from '@/types';
 

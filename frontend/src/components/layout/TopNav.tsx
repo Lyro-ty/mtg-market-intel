@@ -17,7 +17,7 @@ import {
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 
 const navigation = [
   { name: 'Search Cards', href: '/cards', icon: Search },

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import './fonts.css';
 import './globals.css';
+import '@/styles/ornate.css';
 import { Providers } from './providers';
 import { AppLayout } from '@/components/layout/AppLayout';
 
@@ -22,9 +24,18 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} font-sans antialiased`}>
+        {/* Skip to main content link for accessibility */}
+        <a
+          href="#main-content"
+          className="skip-link sr-only-focusable"
+        >
+          Skip to main content
+        </a>
         <Providers>
           <AppLayout>
-            {children}
+            <main id="main-content">
+              {children}
+            </main>
           </AppLayout>
         </Providers>
       </body>

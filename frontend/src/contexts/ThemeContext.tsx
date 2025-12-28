@@ -1,44 +1,40 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-
-export type ManaTheme = 'white' | 'blue' | 'black' | 'red' | 'green';
+import { MANA_THEMES, ManaTheme, DEFAULT_THEME } from '@/config/theme.config';
 
 interface ThemeColors {
-  primary: string;
+  accent: string;
   glow: string;
   muted: string;
+  name: string;
+  hex: string;
 }
-
-const THEME_COLORS: Record<ManaTheme, ThemeColors> = {
-  white: { primary: '248 246 216', glow: '255 254 245', muted: '201 198 165' },
-  blue: { primary: '14 104 171', glow: '30 144 255', muted: '10 74 122' },
-  black: { primary: '139 92 246', glow: '167 139 250', muted: '109 40 217' },
-  red: { primary: '220 38 38', glow: '239 68 68', muted: '153 27 27' },
-  green: { primary: '22 163 74', glow: '34 197 94', muted: '21 128 61' },
-};
 
 interface ThemeContextType {
   theme: ManaTheme;
   setTheme: (theme: ManaTheme) => void;
   colors: ThemeColors;
+  themes: readonly ManaTheme[];
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const THEME_KEYS = Object.keys(MANA_THEMES) as ManaTheme[];
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ManaTheme>('blue');
+  const [theme, setThemeState] = useState<ManaTheme>(DEFAULT_THEME);
 
   useEffect(() => {
     const stored = localStorage.getItem('mana-theme') as ManaTheme | null;
-    if (stored && THEME_COLORS[stored]) {
+    if (stored && MANA_THEMES[stored]) {
       setThemeState(stored);
     }
   }, []);
 
   useEffect(() => {
-    const colors = THEME_COLORS[theme];
-    document.documentElement.style.setProperty('--accent', colors.primary);
+    const colors = MANA_THEMES[theme];
+    document.documentElement.style.setProperty('--accent', colors.accent);
     document.documentElement.style.setProperty('--accent-glow', colors.glow);
     document.documentElement.style.setProperty('--accent-muted', colors.muted);
     localStorage.setItem('mana-theme', theme);
@@ -49,7 +45,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, colors: THEME_COLORS[theme] }}>
+    <ThemeContext.Provider
+      value={{
+        theme,
+        setTheme,
+        colors: MANA_THEMES[theme],
+        themes: THEME_KEYS,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );
@@ -62,3 +65,6 @@ export function useTheme() {
   }
   return context;
 }
+
+// Re-export types for convenience
+export type { ManaTheme };

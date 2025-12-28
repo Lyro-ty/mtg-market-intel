@@ -12,8 +12,8 @@ import {
   Legend,
   Cell,
 } from 'recharts';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { formatPercent } from '@/lib/utils';
 import type { ColorDistribution } from '@/types';
 
