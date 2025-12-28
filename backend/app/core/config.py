@@ -22,7 +22,13 @@ class Settings(BaseSettings):
     # JWT Settings
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24  # 24 hours
-    
+
+    # OAuth settings
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+    OAUTH_ENABLED: bool = False
+
     # Domain settings for production
     domain: str = "localhost"
     frontend_url: str = "http://localhost:3000"
