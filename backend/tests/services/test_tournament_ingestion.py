@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, and_
 
 from app.models import (
     Card,
@@ -27,7 +27,7 @@ def mock_topdeck_client():
 
 
 @pytest.fixture
-async def sample_cards(test_db):
+async def sample_cards(db_session):
     """Create sample cards for testing."""
     cards = [
         Card(
@@ -51,9 +51,9 @@ async def sample_cards(test_db):
     ]
 
     for card in cards:
-        test_db.add(card)
+        db_session.add(card)
 
-    await test_db.commit()
+    await db_session.commit()
 
     return cards
 
@@ -119,16 +119,16 @@ def sample_decklist_data():
 class TestTournamentIngestionService:
     """Test tournament ingestion service."""
 
-    async def test_init(self, test_db, mock_topdeck_client):
+    async def test_init(self, db_session, mock_topdeck_client):
         """Test service initialization."""
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
 
-        assert service.db == test_db
+        assert service.db == db_session
         assert service.client == mock_topdeck_client
 
     async def test_ingest_recent_tournaments_success(
         self,
-        test_db,
+        db_session,
         mock_topdeck_client,
         sample_tournament_data,
         sample_standings_data,
@@ -151,7 +151,7 @@ class TestTournamentIngestionService:
         )
 
         # Create service and ingest
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
         stats = await service.ingest_recent_tournaments("modern", days=30)
 
         # Verify stats
@@ -161,7 +161,7 @@ class TestTournamentIngestionService:
         assert len(stats["errors"]) == 0
 
         # Verify tournament was created
-        tournament = await test_db.scalar(
+        tournament = await db_session.scalar(
             select(Tournament).where(Tournament.topdeck_id == "test-tournament-123")
         )
         assert tournament is not None
@@ -170,7 +170,7 @@ class TestTournamentIngestionService:
         assert tournament.player_count == 64
 
         # Verify standings were created
-        standings = await test_db.execute(
+        standings = await db_session.execute(
             select(TournamentStanding).where(
                 TournamentStanding.tournament_id == tournament.id
             )
@@ -183,7 +183,7 @@ class TestTournamentIngestionService:
 
     async def test_ingest_tournament_details_new(
         self,
-        test_db,
+        db_session,
         mock_topdeck_client,
         sample_tournament_data,
         sample_standings_data,
@@ -199,7 +199,7 @@ class TestTournamentIngestionService:
         mock_topdeck_client.get_decklist = AsyncMock(return_value=None)
 
         # Ingest tournament
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
         tournament = await service.ingest_tournament_details("test-tournament-123")
 
         # Verify tournament
@@ -210,15 +210,15 @@ class TestTournamentIngestionService:
         assert tournament.venue == "Local Game Store"
 
         # Verify it's persisted
-        await test_db.commit()
-        db_tournament = await test_db.scalar(
+        await db_session.commit()
+        db_tournament = await db_session.scalar(
             select(Tournament).where(Tournament.topdeck_id == "test-tournament-123")
         )
         assert db_tournament is not None
 
     async def test_ingest_tournament_details_existing(
         self,
-        test_db,
+        db_session,
         mock_topdeck_client,
         sample_tournament_data,
         sample_standings_data,
@@ -233,8 +233,8 @@ class TestTournamentIngestionService:
             player_count=32,
             topdeck_url="https://old.url",
         )
-        test_db.add(existing)
-        await test_db.commit()
+        db_session.add(existing)
+        await db_session.commit()
 
         # Setup mock client
         mock_topdeck_client.get_tournament = AsyncMock(
@@ -246,7 +246,7 @@ class TestTournamentIngestionService:
         mock_topdeck_client.get_decklist = AsyncMock(return_value=None)
 
         # Ingest tournament
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
         tournament = await service.ingest_tournament_details("test-tournament-123")
 
         # Verify tournament was updated
@@ -254,18 +254,18 @@ class TestTournamentIngestionService:
         assert tournament.name == "Test Modern Tournament"
         assert tournament.player_count == 64
 
-    async def test_ingest_tournament_not_found(self, test_db, mock_topdeck_client):
+    async def test_ingest_tournament_not_found(self, db_session, mock_topdeck_client):
         """Test handling tournament not found."""
         mock_topdeck_client.get_tournament = AsyncMock(return_value=None)
 
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
         tournament = await service.ingest_tournament_details("nonexistent")
 
         assert tournament is None
 
     async def test_process_decklist(
         self,
-        test_db,
+        db_session,
         mock_topdeck_client,
         sample_decklist_data,
         sample_cards,
@@ -280,8 +280,8 @@ class TestTournamentIngestionService:
             player_count=64,
             topdeck_url="https://test.url",
         )
-        test_db.add(tournament)
-        await test_db.flush()
+        db_session.add(tournament)
+        await db_session.flush()
 
         standing = TournamentStanding(
             tournament_id=tournament.id,
@@ -292,11 +292,11 @@ class TestTournamentIngestionService:
             draws=0,
             win_rate=1.0,
         )
-        test_db.add(standing)
-        await test_db.flush()
+        db_session.add(standing)
+        await db_session.flush()
 
         # Process decklist
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
         decklist = await service._process_decklist(standing, sample_decklist_data)
 
         # Verify decklist
@@ -304,10 +304,10 @@ class TestTournamentIngestionService:
         assert decklist.standing_id == standing.id
         assert decklist.archetype_name == "Burn"
 
-        await test_db.flush()
+        await db_session.flush()
 
         # Verify cards were added
-        cards = await test_db.execute(
+        cards = await db_session.execute(
             select(DecklistCard).where(DecklistCard.decklist_id == decklist.id)
         )
         card_list = list(cards.scalars())
@@ -321,7 +321,7 @@ class TestTournamentIngestionService:
 
     async def test_add_decklist_card_not_found(
         self,
-        test_db,
+        db_session,
         mock_topdeck_client,
     ):
         """Test handling card not found in database."""
@@ -334,8 +334,8 @@ class TestTournamentIngestionService:
             player_count=64,
             topdeck_url="https://test.url",
         )
-        test_db.add(tournament)
-        await test_db.flush()
+        db_session.add(tournament)
+        await db_session.flush()
 
         standing = TournamentStanding(
             tournament_id=tournament.id,
@@ -346,18 +346,18 @@ class TestTournamentIngestionService:
             draws=0,
             win_rate=1.0,
         )
-        test_db.add(standing)
-        await test_db.flush()
+        db_session.add(standing)
+        await db_session.flush()
 
         decklist = Decklist(
             standing_id=standing.id,
             archetype_name="Test",
         )
-        test_db.add(decklist)
-        await test_db.flush()
+        db_session.add(decklist)
+        await db_session.flush()
 
         # Try to add non-existent card
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
         result = await service._add_decklist_card(
             decklist,
             "Nonexistent Card",
@@ -370,7 +370,7 @@ class TestTournamentIngestionService:
 
     async def test_update_card_meta_stats(
         self,
-        test_db,
+        db_session,
         mock_topdeck_client,
         sample_cards,
     ):
@@ -384,8 +384,8 @@ class TestTournamentIngestionService:
             player_count=64,
             topdeck_url="https://test.url",
         )
-        test_db.add(tournament)
-        await test_db.flush()
+        db_session.add(tournament)
+        await db_session.flush()
 
         # Create standings and decklists
         for i in range(10):
@@ -398,15 +398,15 @@ class TestTournamentIngestionService:
                 draws=0,
                 win_rate=(6 - i // 2) / 6.0,
             )
-            test_db.add(standing)
-            await test_db.flush()
+            db_session.add(standing)
+            await db_session.flush()
 
             decklist = Decklist(
                 standing_id=standing.id,
                 archetype_name="Test Deck",
             )
-            test_db.add(decklist)
-            await test_db.flush()
+            db_session.add(decklist)
+            await db_session.flush()
 
             # Add Lightning Bolt to 8/10 decks
             if i < 8:
@@ -416,7 +416,7 @@ class TestTournamentIngestionService:
                     quantity=4,
                     section="mainboard",
                 )
-                test_db.add(decklist_card)
+                db_session.add(decklist_card)
 
             # Add Counterspell to 3/10 decks (first 3)
             if i < 3:
@@ -426,19 +426,19 @@ class TestTournamentIngestionService:
                     quantity=2,
                     section="mainboard",
                 )
-                test_db.add(decklist_card)
+                db_session.add(decklist_card)
 
-        await test_db.commit()
+        await db_session.commit()
 
         # Update meta stats
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
         count = await service.update_card_meta_stats("modern", "30d")
 
         # Should update stats for cards that appear in decklists
         assert count >= 2
 
         # Verify Lightning Bolt stats
-        bolt_stats = await test_db.scalar(
+        bolt_stats = await db_session.scalar(
             select(CardMetaStats).where(
                 and_(
                     CardMetaStats.card_id == sample_cards[0].id,
@@ -455,11 +455,11 @@ class TestTournamentIngestionService:
 
     async def test_update_card_meta_stats_no_tournaments(
         self,
-        test_db,
+        db_session,
         mock_topdeck_client,
     ):
         """Test meta stats update with no tournaments."""
-        service = TournamentIngestionService(test_db, mock_topdeck_client)
+        service = TournamentIngestionService(db_session, mock_topdeck_client)
         count = await service.update_card_meta_stats("modern", "30d")
 
         # Should return 0 when no tournaments exist
