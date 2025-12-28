@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.notification import Notification
     from app.models.settings import AppSettings
     from app.models.session import UserSession
+    from app.models.user_milestone import UserMilestone
     from app.models.want_list import WantListItem
 
 
@@ -92,6 +93,11 @@ class User(Base):
         "CollectionStats",
         back_populates="user",
         uselist=False,
+        cascade="all, delete-orphan"
+    )
+    milestones: Mapped[list["UserMilestone"]] = relationship(
+        "UserMilestone",
+        back_populates="user",
         cascade="all, delete-orphan"
     )
 
