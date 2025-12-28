@@ -19,7 +19,7 @@ class NotificationResponse(BaseModel):
     title: str
     message: str
     card_id: Optional[int] = None
-    metadata: Optional[dict[str, Any]] = None
+    extra_data: Optional[dict[str, Any]] = None
     read: bool
     read_at: Optional[datetime] = None
     created_at: datetime

@@ -62,7 +62,7 @@ class Notification(Base):
         nullable=True,
         index=True
     )
-    metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    extra_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     read_at: Mapped[Optional[datetime]] = mapped_column(

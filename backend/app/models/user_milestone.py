@@ -49,7 +49,7 @@ class UserMilestone(Base):
         index=True
     )
 
-    metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    extra_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="milestones")

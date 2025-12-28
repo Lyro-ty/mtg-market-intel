@@ -287,7 +287,7 @@ async def _check_milestones(
                     priority=NotificationPriority.MEDIUM,
                     title=f"Milestone Achieved: {threshold} Cards!",
                     message=f"Congratulations! Your collection has grown to {threshold} cards.",
-                    metadata={"milestone_type": "cards_owned", "threshold": threshold},
+                    extra_data={"milestone_type": "cards_owned", "threshold": threshold},
                 )
                 db.add(notification)
                 milestones_created += 1
@@ -315,7 +315,7 @@ async def _check_milestones(
                     priority=NotificationPriority.MEDIUM,
                     title=f"Milestone Achieved: ${threshold} Collection Value!",
                     message=f"Congratulations! Your collection is now worth ${threshold}.",
-                    metadata={"milestone_type": "collection_value", "threshold": threshold},
+                    extra_data={"milestone_type": "collection_value", "threshold": threshold},
                 )
                 db.add(notification)
                 milestones_created += 1
@@ -340,7 +340,7 @@ async def _check_milestones(
                     priority=NotificationPriority.MEDIUM,
                     title=f"Milestone Achieved: {threshold} Sets Started!",
                     message=f"Congratulations! You've started collecting from {threshold} different sets.",
-                    metadata={"milestone_type": "sets_started", "threshold": threshold},
+                    extra_data={"milestone_type": "sets_started", "threshold": threshold},
                 )
                 db.add(notification)
                 milestones_created += 1

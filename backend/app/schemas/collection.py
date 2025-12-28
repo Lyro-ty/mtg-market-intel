@@ -49,7 +49,7 @@ class MilestoneResponse(BaseModel):
     description: Optional[str] = None
     threshold: int
     achieved_at: datetime
-    metadata: Optional[dict] = None
+    extra_data: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 

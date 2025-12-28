@@ -662,7 +662,7 @@ export interface Notification {
   title: string;
   message: string;
   card_id?: number;
-  metadata?: Record<string, unknown>;
+  extra_data?: Record<string, unknown>;
   read: boolean;
   read_at?: string;
   created_at: string;
@@ -713,7 +713,7 @@ export interface Milestone {
   description?: string;
   threshold: number;
   achieved_at: string;
-  metadata?: Record<string, unknown>;
+  extra_data?: Record<string, unknown>;
 }
 
 export interface MilestoneList {

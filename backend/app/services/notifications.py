@@ -59,7 +59,7 @@ async def create_notification(
     message: str,
     priority: NotificationPriority = NotificationPriority.MEDIUM,
     card_id: Optional[int] = None,
-    metadata: Optional[dict] = None,
+    extra_data: Optional[dict] = None,
     expires_at: Optional[datetime] = None,
 ) -> Optional[Notification]:
     """
@@ -77,7 +77,7 @@ async def create_notification(
         message: Full notification message
         priority: Notification priority level (default: MEDIUM)
         card_id: Optional related card ID
-        metadata: Optional JSON metadata
+        extra_data: Optional JSON extra data
         expires_at: Optional expiration datetime
 
     Returns:
@@ -114,7 +114,7 @@ async def create_notification(
         title=title,
         message=message,
         card_id=card_id,
-        metadata=metadata,
+        extra_data=extra_data,
         expires_at=expires_at,
         dedup_hash=dedup_hash,
         read=False,
@@ -167,7 +167,7 @@ async def create_price_alert(
         f"Current price: ${current_price:.2f} (Target: ${target_price:.2f})"
     )
 
-    metadata = {
+    extra_data = {
         "card_name": card_name,
         "current_price": str(current_price),
         "target_price": str(target_price),
@@ -181,7 +181,7 @@ async def create_price_alert(
         message=message,
         priority=NotificationPriority.HIGH,
         card_id=card_id,
-        metadata=metadata,
+        extra_data=extra_data,
     )
 
 
@@ -211,7 +211,7 @@ async def create_milestone_notification(
     title = f"Milestone Achieved: {milestone_name}"
     message = f"Congratulations! You've reached {threshold:,} for {milestone_name}!"
 
-    metadata = {
+    extra_data = {
         "milestone_type": milestone_type,
         "milestone_name": milestone_name,
         "threshold": threshold,
@@ -224,7 +224,7 @@ async def create_milestone_notification(
         title=title,
         message=message,
         priority=NotificationPriority.MEDIUM,
-        metadata=metadata,
+        extra_data=extra_data,
     )
 
 
