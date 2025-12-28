@@ -30,7 +30,6 @@ import { SearchBar } from '@/components/cards/SearchBar';
 import { InventoryImportModal } from '@/components/inventory/InventoryImportModal';
 import { InventoryItemCard } from '@/components/inventory/InventoryItemCard';
 import { InventoryRecommendationCard } from '@/components/inventory/InventoryRecommendationCard';
-import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import {
   getInventory,
   getInventoryAnalytics,
@@ -807,9 +806,5 @@ function InventoryPageContent(): JSX.Element {
 }
 
 export default function InventoryPage(): JSX.Element {
-  return (
-    <ProtectedRoute>
-      <InventoryPageContent />
-    </ProtectedRoute>
-  );
+  return <InventoryPageContent />;
 }
