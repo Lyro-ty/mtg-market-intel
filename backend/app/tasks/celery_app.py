@@ -100,6 +100,13 @@ celery_app.conf.update(
             "task": "update_collection_stats",
             "schedule": crontab(minute=30),  # Every hour at :30
         },
+
+        # MTG sets sync: Daily at 2 AM
+        # Syncs set metadata from Scryfall for collection completion tracking
+        "sets-sync": {
+            "task": "sync_mtg_sets",
+            "schedule": crontab(hour=2, minute=0),  # Daily at 2 AM
+        },
     },
 
     # Task routing
@@ -114,6 +121,7 @@ celery_app.conf.update(
         "check_want_list_prices": {"queue": "analytics"},
         "update_collection_stats": {"queue": "analytics"},
         "update_user_collection_stats": {"queue": "analytics"},
+        "sync_mtg_sets": {"queue": "ingestion"},
     },
 
     # Default queue
