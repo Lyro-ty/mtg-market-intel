@@ -25,6 +25,8 @@ celery_app = Celery(
         "app.tasks.tournaments",
         "app.tasks.search",
         "app.tasks.want_list_check",
+        "app.tasks.collection_stats",
+        "app.tasks.sets_sync",
     ],
 )
 
@@ -91,6 +93,13 @@ celery_app.conf.update(
             "task": "check_want_list_prices",
             "schedule": crontab(minute="*/15"),  # Every 15 minutes
         },
+
+        # Collection stats update: Every hour
+        # Updates stats for users with stale collection data
+        "collection-stats-update": {
+            "task": "update_collection_stats",
+            "schedule": crontab(minute=30),  # Every hour at :30
+        },
     },
 
     # Task routing
@@ -103,6 +112,8 @@ celery_app.conf.update(
         "app.tasks.search.*": {"queue": "ingestion"},
         "app.tasks.tournaments.*": {"queue": "ingestion"},
         "check_want_list_prices": {"queue": "analytics"},
+        "update_collection_stats": {"queue": "analytics"},
+        "update_user_collection_stats": {"queue": "analytics"},
     },
 
     # Default queue
