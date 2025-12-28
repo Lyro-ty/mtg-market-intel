@@ -16,6 +16,8 @@ from app.api.routes import (
     websocket,
     tournaments,
     search,
+    oauth,
+    sessions,
 )
 
 api_router = APIRouter()
@@ -23,6 +25,7 @@ api_router = APIRouter()
 # Include all route modules
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(oauth.router, prefix="/auth", tags=["OAuth"])
 api_router.include_router(cards.router, prefix="/cards", tags=["Cards"])
 api_router.include_router(recommendations.router, prefix="/recommendations", tags=["Recommendations"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
@@ -38,4 +41,7 @@ api_router.include_router(search.router, prefix="/search", tags=["Search"])
 
 # WebSocket route (no prefix - connects at /api/ws)
 api_router.include_router(websocket.router, tags=["WebSocket"])
+
+# Session management
+api_router.include_router(sessions.router)
 

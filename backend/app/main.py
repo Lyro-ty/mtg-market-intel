@@ -6,22 +6,18 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 
 from app.api import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.middleware.rate_limit import RateLimitMiddleware
 from app.services.ingestion import enable_adapter_caching
 
 # Setup logging
 setup_logging()
 logger = structlog.get_logger()
-
-# Rate limiter
-limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -149,10 +145,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add rate limiter
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -160,6 +152,22 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Add rate limiting middleware (after CORS)
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=60,
+    auth_requests_per_minute=5,
+)
+
+# Add session middleware for OAuth state management
+# Note: CSRF protection is inherently provided by JWT in Authorization headers
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    same_site="lax",
+    https_only=not settings.api_debug,
 )
 
 
