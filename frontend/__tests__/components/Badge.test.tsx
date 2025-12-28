@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { Badge, ActionBadge } from '@/components/ui/Badge';
+import { Badge, ActionBadge } from '@/components/ui/badge';
 
 describe('Badge', () => {
   it('renders children correctly', () => {
@@ -10,19 +10,19 @@ describe('Badge', () => {
   it('applies default variant styles', () => {
     render(<Badge>Default</Badge>);
     const badge = screen.getByText('Default');
-    expect(badge).toHaveClass('bg-[rgb(var(--secondary))]');
+    expect(badge).toHaveClass('bg-primary');
   });
 
   it('applies success variant styles', () => {
     render(<Badge variant="success">Success</Badge>);
     const badge = screen.getByText('Success');
-    expect(badge).toHaveClass('bg-green-100');
+    expect(badge).toHaveClass('text-[rgb(var(--success))]');
   });
 
   it('applies danger variant styles', () => {
     render(<Badge variant="danger">Danger</Badge>);
     const badge = screen.getByText('Danger');
-    expect(badge).toHaveClass('bg-red-100');
+    expect(badge).toHaveClass('text-[rgb(var(--destructive))]');
   });
 });
 
