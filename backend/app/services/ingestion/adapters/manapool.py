@@ -39,7 +39,7 @@ class ManapoolAdapter(MarketplaceAdapter):
     # Flag to indicate this adapter is not ready for production
     IS_IMPLEMENTED = False
     
-    BASE_URL = "https://api.manapool.com"  # To be verified
+    BASE_URL = "https://manapool.com/api"
     RATE_LIMIT_REQUESTS = 10
     RATE_LIMIT_WINDOW = 1  # seconds
     
