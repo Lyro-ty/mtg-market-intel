@@ -46,7 +46,7 @@ interface SearchResultCard extends CardType {
 }
 
 interface SearchResponse {
-  cards: SearchResultCard[];
+  results: SearchResultCard[];
   total: number;
   page: number;
   page_size: number;
@@ -363,7 +363,7 @@ function CardsPageContent() {
           status={error instanceof Error && 'status' in error ? (error as { status: number }).status : undefined}
           onRetry={() => queryClient.invalidateQueries({ queryKey: ['cards', 'search', query, searchMode, page, selectedColors, cardType, cmcMin, cmcMax] })}
         />
-      ) : data?.cards.length === 0 ? (
+      ) : (data?.results?.length ?? 0) === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <SearchIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
@@ -389,7 +389,7 @@ function CardsPageContent() {
 
           {/* Card Grid with Similarity Scores */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {data?.cards.map((card) => {
+            {data?.results?.map((card) => {
               const cardRarity = normalizeRarity(card.rarity);
               return (
                 <Link key={card.id} href={`/cards/${card.id}`}>
