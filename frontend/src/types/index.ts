@@ -509,3 +509,121 @@ export interface RecommendationsUpdateMessage extends WebSocketMessage {
   new_recommendations?: number;
 }
 
+// Tournament types
+export type DecklistSection = 'mainboard' | 'sideboard' | 'commander';
+
+export type MetaPeriod = '7d' | '30d' | '90d';
+
+export interface Tournament {
+  id: number;
+  topdeck_id: string;
+  name: string;
+  format: string;
+  date: string;
+  player_count: number;
+  swiss_rounds?: number;
+  top_cut_size?: number;
+  city?: string;
+  venue?: string;
+  topdeck_url: string;
+}
+
+export interface TournamentListResponse {
+  tournaments: Tournament[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+  attribution: string;
+}
+
+export interface DecklistSummary {
+  id: number;
+  archetype_name?: string;
+  card_count?: number;
+}
+
+export interface Standing {
+  id: number;
+  tournament_id: number;
+  player_name: string;
+  player_id?: string;
+  rank: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  win_rate: number;
+  decklist?: DecklistSummary;
+}
+
+export interface TournamentDetail {
+  id: number;
+  topdeck_id: string;
+  name: string;
+  format: string;
+  date: string;
+  player_count: number;
+  swiss_rounds?: number;
+  top_cut_size?: number;
+  city?: string;
+  venue?: string;
+  topdeck_url: string;
+  standings: Standing[];
+  attribution: string;
+}
+
+export interface DecklistCard {
+  card_id: number;
+  card_name: string;
+  quantity: number;
+  section: DecklistSection;
+  card_set?: string;
+  card_image_url?: string;
+}
+
+export interface DecklistDetail {
+  id: number;
+  archetype_name?: string;
+  tournament_id: number;
+  tournament_name: string;
+  tournament_format: string;
+  player_name: string;
+  rank: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  cards: DecklistCard[];
+  mainboard_count: number;
+  sideboard_count: number;
+  attribution: string;
+}
+
+export interface CardMetaStats {
+  card_id: number;
+  card_name: string;
+  card_set?: string;
+  card_image_url?: string;
+  format: string;
+  period: MetaPeriod;
+  deck_inclusion_rate: number;
+  avg_copies: number;
+  top8_rate: number;
+  win_rate_delta: number;
+}
+
+export interface MetaCardsListResponse {
+  cards: CardMetaStats[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+  attribution: string;
+}
+
+export interface CardMetaResponse {
+  card_id: number;
+  card_name: string;
+  stats: CardMetaStats[];
+  attribution: string;
+}
+
