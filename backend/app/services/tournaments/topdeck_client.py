@@ -40,7 +40,7 @@ class TopDeckClient:
     Rate limit: ~200 requests per minute
     """
 
-    BASE_URL = "https://topdeck.gg/api/v1"
+    BASE_URL = "https://topdeck.gg/api/v2"
     RATE_LIMIT_REQUESTS = 200
     RATE_LIMIT_WINDOW = 60  # seconds
 
@@ -73,7 +73,7 @@ class TopDeckClient:
             }
 
             if self.api_key:
-                headers["X-API-Key"] = self.api_key
+                headers["Authorization"] = self.api_key
 
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
@@ -224,13 +224,25 @@ class TopDeckClient:
         Raises:
             TopDeckAPIError: On API errors
         """
-        endpoint = f"/tournaments?format={format}&days={days}"
+        endpoint = "/tournaments"
+
+        # Calculate start date for filtering
+        from datetime import timedelta
+        start_date = datetime.now(timezone.utc) - timedelta(days=days)
+
+        # v2 API uses POST with JSON body
+        payload = {
+            "game": "Magic: The Gathering",
+            "format": [format],
+            "start": start_date.strftime("%Y-%m-%d"),
+        }
 
         try:
-            response = await self._make_request(endpoint)
+            response = await self._make_request(endpoint, method="POST", json=payload)
             data = response.json()
 
-            tournaments = data.get("tournaments", [])
+            # v2 API returns list directly, not nested under "tournaments"
+            tournaments = data if isinstance(data, list) else data.get("tournaments", [])
 
             # Convert to our standard format with snake_case
             result = []

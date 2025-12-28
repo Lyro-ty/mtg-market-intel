@@ -95,6 +95,10 @@ services:
       - SCRYFALL_BASE_URL=${SCRYFALL_BASE_URL:-https://api.scryfall.com}
       - CARDTRADER_API_TOKEN=${CARDTRADER_API_TOKEN:-}
       - CARDTRADER_SECRET_KEY=${CARDTRADER_SECRET_KEY:-}
+      - TCGPLAYER_API_KEY=${TCGPLAYER_API_KEY:-}
+      - TCGPLAYER_API_SECRET=${TCGPLAYER_API_SECRET:-}
+      - MANAPOOL_API_TOKEN=${MANAPOOL_API_TOKEN:-}
+      - TOPDECK_API_KEY=${TOPDECK_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -141,6 +145,10 @@ services:
       - SCRYFALL_BASE_URL=${SCRYFALL_BASE_URL:-https://api.scryfall.com}
       - CARDTRADER_API_TOKEN=${CARDTRADER_API_TOKEN:-}
       - CARDTRADER_SECRET_KEY=${CARDTRADER_SECRET_KEY:-}
+      - TCGPLAYER_API_KEY=${TCGPLAYER_API_KEY:-}
+      - TCGPLAYER_API_SECRET=${TCGPLAYER_API_SECRET:-}
+      - MANAPOOL_API_TOKEN=${MANAPOOL_API_TOKEN:-}
+      - TOPDECK_API_KEY=${TOPDECK_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
