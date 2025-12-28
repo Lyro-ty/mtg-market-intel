@@ -161,7 +161,8 @@ app.add_middleware(
     auth_requests_per_minute=5,
 )
 
-# Add session middleware for CSRF protection
+# Add session middleware for OAuth state management
+# Note: CSRF protection is inherently provided by JWT in Authorization headers
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,

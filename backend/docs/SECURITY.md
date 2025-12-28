@@ -10,7 +10,7 @@
 - 60 requests/minute for general endpoints
 - 5 requests/minute for auth endpoints
 - IP-based limiting via Redis
-- Fails open if Redis unavailable
+- Fails open if Redis unavailable (requests are allowed to proceed)
 
 ## Password Requirements
 - Minimum 12 characters
@@ -40,6 +40,7 @@
 - Logout all devices option
 
 ## CSRF Protection
-- JWT in Authorization header (not cookies) provides inherent CSRF protection
-- SessionMiddleware with SameSite=lax for additional protection
-- Attackers cannot read localStorage cross-origin
+- JWT tokens in Authorization header (not cookies) provide inherent CSRF protection
+- Attackers cannot read localStorage cross-origin to steal tokens
+- Cross-site requests cannot include the Authorization header with the JWT
+- SessionMiddleware used for OAuth state management (not CSRF)
