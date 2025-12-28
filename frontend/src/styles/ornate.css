@@ -1,0 +1,108 @@
+/* frontend/src/styles/ornate.css */
+
+/* Subtle noise overlay */
+.texture-noise {
+  position: relative;
+}
+.texture-noise::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  border-radius: inherit;
+}
+
+/* Parchment effect */
+.texture-parchment {
+  background:
+    radial-gradient(ellipse at center, transparent 0%, rgb(var(--background)) 70%),
+    linear-gradient(
+      180deg,
+      rgb(var(--card)) 0%,
+      rgb(var(--secondary)) 50%,
+      rgb(var(--card)) 100%
+    );
+}
+
+/* Vignette */
+.vignette {
+  box-shadow: inset 0 0 150px 50px rgb(var(--background));
+}
+
+/* Glow effects */
+.glow-accent {
+  transition: box-shadow 0.2s ease;
+}
+.glow-accent:hover {
+  box-shadow:
+    0 0 20px rgb(var(--accent) / 0.15),
+    0 0 40px rgb(var(--accent) / 0.1);
+}
+
+.glow-magic {
+  box-shadow:
+    0 0 10px rgb(var(--magic-purple) / 0.3),
+    0 0 20px rgb(var(--magic-green) / 0.2);
+}
+
+.glow-gold {
+  box-shadow:
+    0 0 15px rgb(var(--magic-gold) / 0.3),
+    inset 0 0 15px rgb(var(--magic-gold) / 0.1);
+}
+
+/* Foil shimmer */
+.foil-shimmer {
+  background: linear-gradient(
+    125deg,
+    rgb(255 0 128) 0%,
+    rgb(0 255 255) 25%,
+    rgb(255 255 0) 50%,
+    rgb(0 255 255) 75%,
+    rgb(255 0 128) 100%
+  );
+  background-size: 400% 400%;
+  animation: shimmer 8s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@keyframes shimmer {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Fire gradient for price spikes */
+.gradient-fire {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--fire-edge)) 0%,
+    rgb(var(--fire-core)) 100%
+  );
+}
+
+/* Ice gradient for price drops */
+.gradient-ice {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--ice-edge)) 0%,
+    rgb(var(--ice-core)) 100%
+  );
+}
+
+/* Arcane gradient (logo colors) */
+.gradient-arcane {
+  background: linear-gradient(
+    135deg,
+    rgb(var(--magic-purple)) 0%,
+    rgb(var(--magic-green)) 100%
+  );
+}
