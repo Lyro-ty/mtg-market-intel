@@ -2,9 +2,9 @@
 import time
 from typing import Callable
 
-from fastapi import Request, HTTPException
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 import redis.asyncio as redis
 
 from app.core.config import settings
@@ -38,7 +38,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/health", "/api/health"]:
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        # Handle X-Forwarded-For for proxy detection
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            client_ip = forwarded.split(",")[0].strip()
+        else:
+            client_ip = request.client.host if request.client else "unknown"
 
         # Use stricter limits for auth endpoints
         is_auth_endpoint = "/auth/" in request.url.path or "/login" in request.url.path
@@ -52,14 +57,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         try:
             r = await self.get_redis()
-            current = await r.incr(key)
-            if current == 1:
-                await r.expire(key, 60)  # Expire after 1 minute
+            # Use pipelining to avoid race condition between INCR and EXPIRE
+            pipe = r.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, 60)
+            results = await pipe.execute()
+            current = results[0]
 
             if current > limit:
-                raise HTTPException(
+                return JSONResponse(
                     status_code=429,
-                    detail="Too many requests. Please try again later.",
+                    content={"detail": "Too many requests. Please try again later."},
                     headers={"Retry-After": "60"},
                 )
         except redis.RedisError:
