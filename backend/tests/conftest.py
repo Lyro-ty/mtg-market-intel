@@ -3,6 +3,7 @@ Pytest configuration and fixtures.
 """
 import asyncio
 from typing import AsyncGenerator
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -54,7 +55,7 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    
+
     async with async_session_maker() as session:
         yield session
         await session.rollback()
@@ -62,15 +63,22 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
-    """Create test HTTP client."""
-    
+    """Create test HTTP client with rate limiting disabled."""
+
     async def override_get_db():
         yield db_session
-    
+
     app.dependency_overrides[get_db] = override_get_db
-    
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        yield ac
-    
+
+    # Mock Redis to disable rate limiting during tests
+    mock_redis = AsyncMock()
+    mock_pipeline = AsyncMock()
+    mock_pipeline.execute = AsyncMock(return_value=[1, True])  # Always under limit
+    mock_redis.pipeline = lambda: mock_pipeline
+
+    with patch("app.middleware.rate_limit.redis.from_url", return_value=mock_redis):
+        async with AsyncClient(app=app, base_url="http://test") as ac:
+            yield ac
+
     app.dependency_overrides.clear()
 

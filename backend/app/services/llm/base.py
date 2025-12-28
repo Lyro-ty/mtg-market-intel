@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
+
 from app.services.llm.cache import get_cached_response, cache_response
 from app.services.llm.enhanced_prompts import (
     get_enhanced_explanation_prompt,
@@ -14,6 +16,8 @@ from app.services.llm.enhanced_prompts import (
     format_signals_context,
     format_historical_context,
 )
+
+logger = structlog.get_logger()
 
 
 @dataclass

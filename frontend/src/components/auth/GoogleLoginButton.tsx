@@ -31,7 +31,7 @@ export function GoogleLoginButton({ disabled }: GoogleLoginButtonProps) {
   const handleGoogleLogin = () => {
     // Redirect to backend OAuth endpoint
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-    window.location.href = `${apiUrl}/api/v1/auth/google/login`;
+    window.location.href = `${apiUrl}/api/auth/google/login`;
   };
 
   return (

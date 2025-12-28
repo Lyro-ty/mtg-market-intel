@@ -11,104 +11,102 @@ Note: These tests require a running PostgreSQL/TimescaleDB instance.
 They will be skipped if the database is unavailable.
 """
 import pytest
-import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select, and_, func, text
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
 from app.core.constants import CardCondition, CardLanguage
 from app.models import Card, Marketplace, PriceSnapshot
-from app.db.base import Base
 
 
-# Skip all tests if not using PostgreSQL
+# Skip all tests if using SQLite (integration tests require PostgreSQL)
 pytestmark = pytest.mark.skipif(
-    "sqlite" in settings.database_url.lower(),
+    "sqlite" in (settings.database_url or "sqlite").lower(),
     reason="Composite key tests require PostgreSQL/TimescaleDB"
 )
 
 
-# Note: event_loop fixture is now handled automatically by pytest-asyncio >= 0.23.0
-# with asyncio_mode = "auto" in pytest.ini
+@pytest.fixture(scope="module")
+def event_loop_policy():
+    """Use default event loop policy for module-scoped async fixtures."""
+    import asyncio
+    return asyncio.DefaultEventLoopPolicy()
 
 
 @pytest.fixture(scope="module")
-async def test_engine():
-    """Create test database engine connected to real PostgreSQL."""
-    # Use the real database URL from settings
+async def pg_engine():
+    """Create PostgreSQL engine for integration tests."""
+    if not settings.database_url or "sqlite" in settings.database_url.lower():
+        pytest.skip("PostgreSQL required for integration tests")
+
     engine = create_async_engine(
         settings.database_url,
         echo=False,
+        pool_pre_ping=True,
     )
     yield engine
     await engine.dispose()
 
 
 @pytest.fixture(scope="function")
-async def db_session(test_engine) -> AsyncSession:
-    """Create test database session."""
-    async_session_maker = async_sessionmaker(
-        test_engine,
+async def pg_session(pg_engine) -> AsyncSession:
+    """Create isolated PostgreSQL session for each test."""
+    session_maker = async_sessionmaker(
+        pg_engine,
         class_=AsyncSession,
         expire_on_commit=False,
+        autoflush=False,
     )
 
-    async with async_session_maker() as session:
-        yield session
-        await session.rollback()
+    async with session_maker() as session:
+        # Start a savepoint so we can rollback without affecting other tests
+        async with session.begin():
+            yield session
+            # Rollback happens automatically when exiting the context
 
 
 @pytest.fixture(scope="function")
-async def test_card(db_session: AsyncSession) -> Card:
+async def test_card(pg_session: AsyncSession) -> Card:
     """Create a test card for use in tests."""
-    # Check if test card already exists
-    result = await db_session.execute(
-        select(Card).where(Card.scryfall_id == "test-composite-key-card")
-    )
-    existing = result.scalar_one_or_none()
-    if existing:
-        return existing
+    # Use unique ID per test to avoid conflicts
+    import uuid
+    unique_id = str(uuid.uuid4())[:8]
 
     card = Card(
-        scryfall_id="test-composite-key-card",
-        oracle_id="test-oracle-id",
+        scryfall_id=f"test-composite-key-card-{unique_id}",
+        oracle_id=f"test-oracle-id-{unique_id}",
         name="Test Composite Key Card",
         set_code="TST",
         set_name="Test Set",
         collector_number="001",
         rarity="rare",
     )
-    db_session.add(card)
-    await db_session.flush()
+    pg_session.add(card)
+    await pg_session.flush()
     return card
 
 
 @pytest.fixture(scope="function")
-async def test_marketplace(db_session: AsyncSession) -> Marketplace:
+async def test_marketplace(pg_session: AsyncSession) -> Marketplace:
     """Create a test marketplace for use in tests."""
-    # Check if test marketplace already exists
-    result = await db_session.execute(
-        select(Marketplace).where(Marketplace.slug == "test-composite-mp")
-    )
-    existing = result.scalar_one_or_none()
-    if existing:
-        return existing
+    import uuid
+    unique_id = str(uuid.uuid4())[:8]
 
     marketplace = Marketplace(
         name="Test Composite Marketplace",
-        slug="test-composite-mp",
+        slug=f"test-composite-mp-{unique_id}",
         base_url="https://test-composite.example.com",
         is_enabled=True,
         supports_api=True,
         default_currency="USD",
         rate_limit_seconds=1.0,
     )
-    db_session.add(marketplace)
-    await db_session.flush()
+    pg_session.add(marketplace)
+    await pg_session.flush()
     return marketplace
 
 
@@ -116,7 +114,7 @@ class TestCompositeKeyInsert:
     """Tests for inserting price snapshots with composite keys."""
 
     async def test_insert_single_snapshot(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test inserting a single price snapshot."""
         now = datetime.now(timezone.utc)
@@ -131,11 +129,11 @@ class TestCompositeKeyInsert:
             price=Decimal("10.99"),
             currency="USD",
         )
-        db_session.add(snapshot)
-        await db_session.flush()
+        pg_session.add(snapshot)
+        await pg_session.flush()
 
         # Verify the snapshot was inserted
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(PriceSnapshot).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -150,7 +148,7 @@ class TestCompositeKeyInsert:
         assert fetched.condition == CardCondition.NEAR_MINT.value
 
     async def test_insert_multiple_conditions(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test inserting snapshots with different conditions at same time."""
         now = datetime.now(timezone.utc)
@@ -173,12 +171,12 @@ class TestCompositeKeyInsert:
                 price=price,
                 currency="USD",
             )
-            db_session.add(snapshot)
+            pg_session.add(snapshot)
 
-        await db_session.flush()
+        await pg_session.flush()
 
         # Verify all snapshots were inserted
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(func.count(PriceSnapshot.time)).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -191,7 +189,7 @@ class TestCompositeKeyInsert:
         assert count == 4
 
     async def test_insert_foil_and_nonfoil(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test inserting both foil and non-foil snapshots at same time."""
         now = datetime.now(timezone.utc)
@@ -220,12 +218,12 @@ class TestCompositeKeyInsert:
             currency="USD",
         )
 
-        db_session.add(snapshot_regular)
-        db_session.add(snapshot_foil)
-        await db_session.flush()
+        pg_session.add(snapshot_regular)
+        pg_session.add(snapshot_foil)
+        await pg_session.flush()
 
         # Verify both were inserted (one foil, one non-foil)
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(PriceSnapshot).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -243,7 +241,7 @@ class TestCompositeKeyInsert:
         assert prices[True] == 25.99
 
     async def test_insert_multiple_languages(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test inserting snapshots with different languages at same time."""
         now = datetime.now(timezone.utc)
@@ -265,12 +263,12 @@ class TestCompositeKeyInsert:
                 price=price,
                 currency="USD",
             )
-            db_session.add(snapshot)
+            pg_session.add(snapshot)
 
-        await db_session.flush()
+        await pg_session.flush()
 
         # Verify all were inserted
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(func.count(PriceSnapshot.time)).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -287,7 +285,7 @@ class TestCompositeKeyUpsert:
     """Tests for upsert operations with composite keys."""
 
     async def test_upsert_insert_new(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test upsert inserts when no conflict."""
         now = datetime.now(timezone.utc) + timedelta(hours=1)  # Different time
@@ -309,11 +307,11 @@ class TestCompositeKeyUpsert:
             set_={'price': stmt.excluded.price}
         )
 
-        await db_session.execute(stmt)
-        await db_session.flush()
+        await pg_session.execute(stmt)
+        await pg_session.flush()
 
         # Verify insert
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(PriceSnapshot).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -326,7 +324,7 @@ class TestCompositeKeyUpsert:
         assert float(snapshot.price) == 11.99
 
     async def test_upsert_update_existing(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test upsert updates when there's a conflict."""
         now = datetime.now(timezone.utc) + timedelta(hours=2)
@@ -348,8 +346,8 @@ class TestCompositeKeyUpsert:
             index_elements=['time', 'card_id', 'marketplace_id', 'condition', 'is_foil', 'language'],
             set_={'price': stmt1.excluded.price}
         )
-        await db_session.execute(stmt1)
-        await db_session.flush()
+        await pg_session.execute(stmt1)
+        await pg_session.flush()
 
         # Second upsert with updated price
         updated_values = {
@@ -368,11 +366,11 @@ class TestCompositeKeyUpsert:
             index_elements=['time', 'card_id', 'marketplace_id', 'condition', 'is_foil', 'language'],
             set_={'price': stmt2.excluded.price}
         )
-        await db_session.execute(stmt2)
-        await db_session.flush()
+        await pg_session.execute(stmt2)
+        await pg_session.flush()
 
         # Verify only one row exists with updated price
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(PriceSnapshot).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -388,7 +386,7 @@ class TestCompositeKeyUpsert:
         assert float(snapshots[0].price) == 12.50
 
     async def test_upsert_different_conditions_same_time(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test that different conditions create separate rows even with upsert."""
         now = datetime.now(timezone.utc) + timedelta(hours=3)
@@ -412,12 +410,12 @@ class TestCompositeKeyUpsert:
                 index_elements=['time', 'card_id', 'marketplace_id', 'condition', 'is_foil', 'language'],
                 set_={'price': stmt.excluded.price}
             )
-            await db_session.execute(stmt)
+            await pg_session.execute(stmt)
 
-        await db_session.flush()
+        await pg_session.flush()
 
         # Verify two separate rows exist
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(func.count(PriceSnapshot.time)).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -433,7 +431,7 @@ class TestCompositeKeyQueries:
     """Tests for querying price snapshots using composite keys."""
 
     async def test_query_by_full_key(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test querying by the full composite key."""
         now = datetime.now(timezone.utc) + timedelta(hours=4)
@@ -448,11 +446,11 @@ class TestCompositeKeyQueries:
             price=Decimal("9.99"),
             currency="USD",
         )
-        db_session.add(snapshot)
-        await db_session.flush()
+        pg_session.add(snapshot)
+        await pg_session.flush()
 
         # Query by full composite key
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(PriceSnapshot).where(
                 and_(
                     PriceSnapshot.time == now,
@@ -469,7 +467,7 @@ class TestCompositeKeyQueries:
         assert float(fetched.price) == 9.99
 
     async def test_query_by_partial_key(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test querying by partial key (card_id, marketplace_id)."""
         now = datetime.now(timezone.utc) + timedelta(hours=5)
@@ -486,12 +484,12 @@ class TestCompositeKeyQueries:
                 price=Decimal(f"{10.00 + i}"),
                 currency="USD",
             )
-            db_session.add(snapshot)
+            pg_session.add(snapshot)
 
-        await db_session.flush()
+        await pg_session.flush()
 
         # Query by partial key
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(PriceSnapshot).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -504,7 +502,7 @@ class TestCompositeKeyQueries:
         assert len(snapshots) >= 3
 
     async def test_query_time_range(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test querying snapshots within a time range."""
         base_time = datetime.now(timezone.utc) + timedelta(hours=6)
@@ -521,12 +519,12 @@ class TestCompositeKeyQueries:
                 price=Decimal(f"{10.00 + i}"),
                 currency="USD",
             )
-            db_session.add(snapshot)
+            pg_session.add(snapshot)
 
-        await db_session.flush()
+        await pg_session.flush()
 
         # Query middle 3 hours
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(PriceSnapshot).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -539,7 +537,7 @@ class TestCompositeKeyQueries:
         assert len(snapshots) == 3
 
     async def test_query_aggregate_by_condition(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test aggregating prices by condition."""
         now = datetime.now(timezone.utc) + timedelta(hours=10)
@@ -562,12 +560,12 @@ class TestCompositeKeyQueries:
                 price=price,
                 currency="USD",
             )
-            db_session.add(snapshot)
+            pg_session.add(snapshot)
 
-        await db_session.flush()
+        await pg_session.flush()
 
         # Aggregate by condition
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(
                 PriceSnapshot.condition,
                 func.avg(PriceSnapshot.price).label("avg_price")
@@ -589,7 +587,7 @@ class TestCompositeKeyConstraints:
     """Tests for composite key constraint behavior."""
 
     async def test_duplicate_key_raises_error(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test that inserting duplicate composite key raises an error."""
         now = datetime.now(timezone.utc) + timedelta(hours=11)
@@ -604,8 +602,8 @@ class TestCompositeKeyConstraints:
             price=Decimal("10.00"),
             currency="USD",
         )
-        db_session.add(snapshot1)
-        await db_session.flush()
+        pg_session.add(snapshot1)
+        await pg_session.flush()
 
         # Try to insert duplicate
         snapshot2 = PriceSnapshot(
@@ -618,17 +616,17 @@ class TestCompositeKeyConstraints:
             price=Decimal("11.00"),
             currency="USD",
         )
-        db_session.add(snapshot2)
+        pg_session.add(snapshot2)
 
         from sqlalchemy.exc import IntegrityError
         with pytest.raises(IntegrityError):
-            await db_session.flush()
+            await pg_session.flush()
 
         # Rollback to continue with other tests
-        await db_session.rollback()
+        await pg_session.rollback()
 
     async def test_different_time_same_other_keys_allowed(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test that different times with same other keys are allowed."""
         base_time = datetime.now(timezone.utc) + timedelta(hours=12)
@@ -644,13 +642,13 @@ class TestCompositeKeyConstraints:
                 price=Decimal(f"{10.00 + i}"),
                 currency="USD",
             )
-            db_session.add(snapshot)
+            pg_session.add(snapshot)
 
         # Should not raise
-        await db_session.flush()
+        await pg_session.flush()
 
         # Verify all three exist
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(func.count(PriceSnapshot.time)).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -666,7 +664,7 @@ class TestHelperFunctions:
     """Tests for helper functions that work with composite keys."""
 
     async def test_get_latest_price_for_condition(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test getting the latest price for a specific condition."""
         base_time = datetime.now(timezone.utc) + timedelta(hours=13)
@@ -683,12 +681,12 @@ class TestHelperFunctions:
                 price=Decimal(f"{10.00 + i}"),
                 currency="USD",
             )
-            db_session.add(snapshot)
+            pg_session.add(snapshot)
 
-        await db_session.flush()
+        await pg_session.flush()
 
         # Get latest price
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(PriceSnapshot).where(
                 and_(
                     PriceSnapshot.card_id == test_card.id,
@@ -703,7 +701,7 @@ class TestHelperFunctions:
         assert float(latest.price) == 14.00  # Last price (10 + 4)
 
     async def test_get_price_spread_across_conditions(
-        self, db_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
+        self, pg_session: AsyncSession, test_card: Card, test_marketplace: Marketplace
     ):
         """Test calculating price spread across conditions."""
         now = datetime.now(timezone.utc) + timedelta(hours=14)
@@ -727,12 +725,12 @@ class TestHelperFunctions:
                 price=price,
                 currency="USD",
             )
-            db_session.add(snapshot)
+            pg_session.add(snapshot)
 
-        await db_session.flush()
+        await pg_session.flush()
 
         # Calculate spread
-        result = await db_session.execute(
+        result = await pg_session.execute(
             select(
                 func.min(PriceSnapshot.price).label("min_price"),
                 func.max(PriceSnapshot.price).label("max_price"),
