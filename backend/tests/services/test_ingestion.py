@@ -12,11 +12,12 @@ def test_get_available_adapters():
     adapters = get_available_adapters()
 
     # These adapters should be available in the current registry
+    # Note: manapool was removed (not a working API)
     assert "scryfall" in adapters
     assert "tcgplayer" in adapters
     assert "cardtrader" in adapters
-    assert "manapool" in adapters
     assert "mtgjson" in adapters
+    assert len(adapters) == 4
 
 
 def test_get_scryfall_adapter():

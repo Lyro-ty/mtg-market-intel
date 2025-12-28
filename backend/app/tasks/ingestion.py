@@ -23,7 +23,7 @@ from app.services.ingestion.base import AdapterConfig
 from app.services.agents.normalization import NormalizationService
 from app.services.vectorization import get_vectorization_service
 from app.services.vectorization.service import VectorizationService
-from app.services.vectorization.ingestion import vectorize_card, vectorize_listing
+from app.services.vectorization.ingestion import vectorize_card
 from app.tasks.utils import create_task_session_maker, run_async
 
 logger = structlog.get_logger()
@@ -348,7 +348,6 @@ async def _collect_price_data_async() -> dict[str, Any]:
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "scryfall_snapshots": 0,
                 "cardtrader_snapshots": 0,
-                "manapool_snapshots": 0,
                 "tcgplayer_snapshots": 0,
                 "mtgjson_snapshots": 0,
                 "total_snapshots": 0,
@@ -618,95 +617,7 @@ async def _collect_price_data_async() -> dict[str, Any]:
                             continue
                 else:
                     logger.info("CardTrader API token not configured - skipping CardTrader collection")
-                
-                # Collect prices from Manapool
-                if settings.manapool_api_token:
-                    from app.services.ingestion.adapters.manapool import ManapoolAdapter
-                    manapool_config = AdapterConfig(
-                        base_url="https://api.manapool.com",
-                        api_url="https://api.manapool.com",
-                        api_key=settings.manapool_api_token,
-                        rate_limit_seconds=0.05,  # 200 requests per 10 seconds (per CardTrader API docs)
-                        timeout_seconds=30.0,
-                    )
-                    manapool = ManapoolAdapter(manapool_config)
-                    manapool_mp = await _get_or_create_manapool_marketplace(db)
-                    
-                    logger.info("Collecting Manapool price data", card_count=len(cards))
-                    
-                    for i, card in enumerate(cards):
-                        try:
-                            price_data = await manapool.fetch_price(
-                                card_name=card.name,
-                                set_code=card.set_code,
-                                collector_number=card.collector_number,
-                                scryfall_id=card.scryfall_id,
-                            )
-                            
-                            if price_data and price_data.price > 0:
-                                now = datetime.now(timezone.utc)
-                                two_hours_ago = now - timedelta(hours=2)
-                                recent_snapshot_query = select(PriceSnapshot).where(
-                                    and_(
-                                        PriceSnapshot.card_id == card.id,
-                                        PriceSnapshot.marketplace_id == manapool_mp.id,
-                                        PriceSnapshot.time >= two_hours_ago,
-                                    )
-                                ).order_by(PriceSnapshot.time.desc()).limit(1)
-                                recent_result = await db.execute(recent_snapshot_query)
-                                recent_snapshot = recent_result.scalar_one_or_none()
-                                
-                                if not recent_snapshot:
-                                    await _upsert_price_snapshot(
-                                        db=db,
-                                        card_id=card.id,
-                                        marketplace_id=manapool_mp.id,
-                                        time=now,
-                                        price=price_data.price,
-                                        currency=price_data.currency,
-                                        price_market=price_data.price_foil,  # Legacy: price_foil mapped to price_market
-                                        price_low=price_data.price_low,
-                                        price_high=price_data.price_high,
-                                        num_listings=price_data.num_listings,
-                                    )
-                                    results["manapool_snapshots"] += 1
-                                    results["total_snapshots"] += 1
-                                else:
-                                    price_diff = abs(float(recent_snapshot.price) - float(price_data.price))
-                                    price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
-                                    
-                                    if price_change_pct > 2.0:
-                                        await _upsert_price_snapshot(
-                                            db=db,
-                                            card_id=card.id,
-                                            marketplace_id=manapool_mp.id,
-                                            time=now,
-                                            price=price_data.price,
-                                            currency=price_data.currency,
-                                            price_market=price_data.price_foil,  # Legacy: price_foil mapped to price_market
-                                            price_low=price_data.price_low,
-                                            price_high=price_data.price_high,
-                                            num_listings=price_data.num_listings,
-                                        )
-                                        results["manapool_snapshots"] += 1
-                                        results["total_snapshots"] += 1
-                        
-                        except Exception as e:
-                            if i < 5:
-                                logger.info(
-                                    "Manapool price fetch failed",
-                                    card_id=card.id,
-                                    card_name=card.name,
-                                    error=str(e),
-                                )
-                            else:
-                                logger.debug("Manapool price fetch failed", card_id=card.id, error=str(e))
-                            continue
-                    
-                    await manapool.close()
-                else:
-                    logger.info("Manapool API token not configured - skipping Manapool collection")
-                
+
                 # Collect prices from TCGPlayer
                 if settings.tcgplayer_api_key and settings.tcgplayer_api_secret:
                     from app.services.ingestion.adapters.tcgplayer import TCGPlayerAdapter
@@ -804,7 +715,6 @@ async def _collect_price_data_async() -> dict[str, Any]:
                     cards_processed=results["cards_processed"],
                     scryfall_snapshots=results["scryfall_snapshots"],
                     cardtrader_snapshots=results.get("cardtrader_snapshots", 0),
-                    manapool_snapshots=results.get("manapool_snapshots", 0),
                     tcgplayer_snapshots=results.get("tcgplayer_snapshots", 0),
                     backfilled_snapshots=results["backfilled_snapshots"],
                     total_snapshots=results["total_snapshots"],
@@ -858,29 +768,6 @@ async def _get_or_create_cardtrader_marketplace(db: AsyncSession) -> Marketplace
             is_enabled=True,
             supports_api=True,
             default_currency="USD",  # Default to USD for USD listings tracking
-            rate_limit_seconds=0.1,  # 10 requests per second
-        )
-        db.add(mp)
-        await db.flush()
-    
-    return mp
-
-
-async def _get_or_create_manapool_marketplace(db: AsyncSession) -> Marketplace:
-    """Get or create Manapool marketplace entry."""
-    query = select(Marketplace).where(Marketplace.slug == "manapool")
-    result = await db.execute(query)
-    mp = result.scalar_one_or_none()
-    
-    if not mp:
-        mp = Marketplace(
-            name="Manapool",
-            slug="manapool",
-            base_url="https://manapool.com",
-            api_url="https://api.manapool.com",
-            is_enabled=True,
-            supports_api=True,
-            default_currency="USD",
             rate_limit_seconds=0.1,  # 10 requests per second
         )
         db.add(mp)
