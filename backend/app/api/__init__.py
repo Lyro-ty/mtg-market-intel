@@ -45,6 +45,7 @@ api_router.include_router(search.router, prefix="/search", tags=["Search"])
 api_router.include_router(sets.router, tags=["Sets"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(collection.router, prefix="/collection", tags=["Collection"])
+api_router.include_router(want_list.router, prefix="/want-list", tags=["Want List"])
 
 # WebSocket route (no prefix - connects at /api/ws)
 api_router.include_router(websocket.router, tags=["WebSocket"])
