@@ -16,6 +16,7 @@ from app.api.routes import (
     websocket,
     tournaments,
     oauth,
+    sessions,
 )
 
 api_router = APIRouter()
@@ -37,4 +38,7 @@ api_router.include_router(tournaments.cards_meta_router, prefix="/cards", tags=[
 
 # WebSocket route (no prefix - connects at /api/ws)
 api_router.include_router(websocket.router, tags=["WebSocket"])
+
+# Session management
+api_router.include_router(sessions.router)
 
