@@ -11,17 +11,21 @@ import { LoadingPage } from '@/components/ui/Loading';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ornate/page-header';
+import { RarityBadge } from '@/components/ornate/rarity-badge';
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete';
-import { formatCurrency, getRarityColor } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import type { Card as CardType } from '@/types';
+import type { CardRarity } from '@/components/ornate/ornate-card';
 
-// MTG color definitions with mana symbols
+// MTG color definitions with mana symbols - dark mode only styling
 const MTG_COLORS = [
-  { code: 'W', name: 'White', bgClass: 'bg-amber-50 dark:bg-amber-900/30', textClass: 'text-amber-800 dark:text-amber-200', borderClass: 'border-amber-300 dark:border-amber-700' },
-  { code: 'U', name: 'Blue', bgClass: 'bg-blue-100 dark:bg-blue-900/30', textClass: 'text-blue-800 dark:text-blue-200', borderClass: 'border-blue-300 dark:border-blue-700' },
-  { code: 'B', name: 'Black', bgClass: 'bg-gray-200 dark:bg-gray-700', textClass: 'text-gray-800 dark:text-gray-200', borderClass: 'border-gray-400 dark:border-gray-600' },
-  { code: 'R', name: 'Red', bgClass: 'bg-red-100 dark:bg-red-900/30', textClass: 'text-red-800 dark:text-red-200', borderClass: 'border-red-300 dark:border-red-700' },
-  { code: 'G', name: 'Green', bgClass: 'bg-green-100 dark:bg-green-900/30', textClass: 'text-green-800 dark:text-green-200', borderClass: 'border-green-300 dark:border-green-700' },
+  { code: 'W', name: 'White', bgClass: 'bg-amber-900/30', textClass: 'text-amber-200', borderClass: 'border-amber-700' },
+  { code: 'U', name: 'Blue', bgClass: 'bg-blue-900/30', textClass: 'text-blue-200', borderClass: 'border-blue-700' },
+  { code: 'B', name: 'Black', bgClass: 'bg-gray-700', textClass: 'text-gray-200', borderClass: 'border-gray-600' },
+  { code: 'R', name: 'Red', bgClass: 'bg-red-900/30', textClass: 'text-red-200', borderClass: 'border-red-700' },
+  { code: 'G', name: 'Green', bgClass: 'bg-green-900/30', textClass: 'text-green-200', borderClass: 'border-green-700' },
 ];
 
 // Common card types
@@ -48,6 +52,16 @@ interface SearchResponse {
   page_size: number;
   has_more: boolean;
   search_mode?: string;
+}
+
+// Helper to convert rarity string to CardRarity type
+function normalizeRarity(rarity: string | undefined): CardRarity | undefined {
+  if (!rarity) return undefined;
+  const lower = rarity.toLowerCase();
+  if (lower === 'common' || lower === 'uncommon' || lower === 'rare' || lower === 'mythic') {
+    return lower as CardRarity;
+  }
+  return undefined;
 }
 
 export default function CardsPage() {
@@ -157,26 +171,24 @@ function CardsPageContent() {
   return (
     <div className="space-y-6 animate-in">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-[rgb(var(--foreground))]">Search Cards</h1>
-        <p className="text-[rgb(var(--muted-foreground))] mt-1">
-          Find MTG cards using semantic or text search
-        </p>
-      </div>
+      <PageHeader
+        title="Search Cards"
+        subtitle="Find MTG cards using semantic or text search"
+      />
 
       {/* Search Controls */}
-      <Card>
+      <Card className="glow-accent">
         <CardContent className="p-4 space-y-4">
           {/* Search Mode Toggle + Search Input */}
           <div className="flex flex-col sm:flex-row gap-4">
             {/* Search Mode Toggle */}
-            <div className="flex rounded-lg border border-[rgb(var(--border))] overflow-hidden shrink-0">
+            <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
               <button
                 onClick={() => { setSearchMode('semantic'); setPage(1); }}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${
                   searchMode === 'semantic'
-                    ? 'bg-[rgb(var(--accent))] text-white'
-                    : 'bg-[rgb(var(--background))] text-[rgb(var(--muted-foreground))] hover:bg-[rgb(var(--secondary))]'
+                    ? 'gradient-arcane text-white'
+                    : 'bg-background text-muted-foreground hover:bg-secondary hover:text-foreground'
                 }`}
                 aria-pressed={searchMode === 'semantic'}
               >
@@ -185,10 +197,10 @@ function CardsPageContent() {
               </button>
               <button
                 onClick={() => { setSearchMode('text'); setPage(1); }}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${
                   searchMode === 'text'
-                    ? 'bg-[rgb(var(--accent))] text-white'
-                    : 'bg-[rgb(var(--background))] text-[rgb(var(--muted-foreground))] hover:bg-[rgb(var(--secondary))]'
+                    ? 'gradient-arcane text-white'
+                    : 'bg-background text-muted-foreground hover:bg-secondary hover:text-foreground'
                 }`}
                 aria-pressed={searchMode === 'text'}
               >
@@ -215,8 +227,8 @@ function CardsPageContent() {
           {/* Manual Search Input for query-based search */}
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[rgb(var(--muted-foreground))]" />
-              <input
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground z-10" />
+              <Input
                 type="text"
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setPage(1); }}
@@ -224,12 +236,12 @@ function CardsPageContent() {
                   ? "Search by concept or description..."
                   : "Search by card name..."
                 }
-                className="w-full pl-10 pr-4 py-2 bg-[rgb(var(--background))] border border-[rgb(var(--border))] rounded-lg text-[rgb(var(--foreground))] placeholder:text-[rgb(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))] focus:ring-opacity-20 focus:border-[rgb(var(--accent))]"
+                className="pl-10 pr-10"
               />
               {query && (
                 <button
                   onClick={() => { setQuery(''); setPage(1); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--muted-foreground))] hover:text-[rgb(var(--foreground))]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors z-10"
                   aria-label="Clear search"
                 >
                   <X className="w-4 h-4" />
@@ -244,7 +256,7 @@ function CardsPageContent() {
               {showFilters ? <ChevronUp className="w-4 h-4 mr-2" /> : <ChevronDown className="w-4 h-4 mr-2" />}
               Filters
               {hasActiveFilters && (
-                <span className="ml-2 px-1.5 py-0.5 text-xs bg-[rgb(var(--accent))] text-white rounded-full">
+                <span className="ml-2 px-1.5 py-0.5 text-xs gradient-arcane text-white rounded-full">
                   {selectedColors.length + (cardType ? 1 : 0) + (cmcMin !== undefined ? 1 : 0) + (cmcMax !== undefined ? 1 : 0)}
                 </span>
               )}
@@ -253,10 +265,10 @@ function CardsPageContent() {
 
           {/* Expandable Filters */}
           {showFilters && (
-            <div className="pt-4 border-t border-[rgb(var(--border))] space-y-4">
+            <div className="pt-4 border-t border-border space-y-4">
               {/* Color Filter */}
               <div>
-                <label className="block text-sm font-medium text-[rgb(var(--foreground))] mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Colors
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -266,8 +278,8 @@ function CardsPageContent() {
                       onClick={() => toggleColor(color.code)}
                       className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
                         selectedColors.includes(color.code)
-                          ? `${color.bgClass} ${color.textClass} ${color.borderClass} ring-2 ring-offset-1 ring-[rgb(var(--accent))]`
-                          : `bg-[rgb(var(--secondary))] text-[rgb(var(--muted-foreground))] border-transparent hover:border-[rgb(var(--border))]`
+                          ? `${color.bgClass} ${color.textClass} ${color.borderClass} ring-2 ring-offset-1 ring-offset-background ring-[rgb(var(--accent))]`
+                          : `bg-secondary text-muted-foreground border-transparent hover:border-border`
                       }`}
                       aria-pressed={selectedColors.includes(color.code)}
                     >
@@ -279,13 +291,13 @@ function CardsPageContent() {
 
               {/* Card Type Filter */}
               <div>
-                <label className="block text-sm font-medium text-[rgb(var(--foreground))] mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Card Type
                 </label>
                 <select
                   value={cardType}
                   onChange={(e) => { setCardType(e.target.value); setPage(1); }}
-                  className="w-full sm:w-auto px-3 py-2 bg-[rgb(var(--background))] border border-[rgb(var(--border))] rounded-lg text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))] focus:ring-opacity-20 focus:border-[rgb(var(--accent))]"
+                  className="w-full sm:w-auto px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
                 >
                   <option value="">All Types</option>
                   {CARD_TYPES.map((type) => (
@@ -296,28 +308,28 @@ function CardsPageContent() {
 
               {/* CMC Range Filter */}
               <div>
-                <label className="block text-sm font-medium text-[rgb(var(--foreground))] mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Mana Value (CMC)
                 </label>
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="number"
-                    min="0"
-                    max="20"
+                    min={0}
+                    max={20}
                     value={cmcMin ?? ''}
                     onChange={(e) => { setCmcMin(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
                     placeholder="Min"
-                    className="w-20 px-3 py-2 bg-[rgb(var(--background))] border border-[rgb(var(--border))] rounded-lg text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))] focus:ring-opacity-20 focus:border-[rgb(var(--accent))]"
+                    className="w-20"
                   />
-                  <span className="text-[rgb(var(--muted-foreground))]">to</span>
-                  <input
+                  <span className="text-muted-foreground">to</span>
+                  <Input
                     type="number"
-                    min="0"
-                    max="20"
+                    min={0}
+                    max={20}
                     value={cmcMax ?? ''}
                     onChange={(e) => { setCmcMax(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
                     placeholder="Max"
-                    className="w-20 px-3 py-2 bg-[rgb(var(--background))] border border-[rgb(var(--border))] rounded-lg text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))] focus:ring-opacity-20 focus:border-[rgb(var(--accent))]"
+                    className="w-20"
                   />
                 </div>
               </div>
@@ -336,8 +348,8 @@ function CardsPageContent() {
 
       {/* Search Mode Indicator */}
       {searchMode === 'semantic' && query && (
-        <div className="flex items-center gap-2 text-sm text-[rgb(var(--muted-foreground))]">
-          <Sparkles className="w-4 h-4 text-[rgb(var(--accent))]" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Sparkles className="w-4 h-4 text-[rgb(var(--magic-purple))]" />
           <span>Using semantic search to find cards matching: &quot;{query}&quot;</span>
         </div>
       )}
@@ -354,8 +366,8 @@ function CardsPageContent() {
       ) : data?.cards.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <SearchIcon className="w-12 h-12 mx-auto text-[rgb(var(--muted-foreground))] mb-4" />
-            <p className="text-[rgb(var(--muted-foreground))]">
+            <SearchIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">
               {query ? 'No cards found matching your search' : 'Start typing to search for cards'}
             </p>
             {hasActiveFilters && (
@@ -369,7 +381,7 @@ function CardsPageContent() {
         <>
           {/* Results count */}
           <div className="flex items-center justify-between">
-            <p className="text-sm text-[rgb(var(--muted-foreground))]">
+            <p className="text-sm text-muted-foreground">
               Found {data?.total || 0} cards
               {searchMode === 'semantic' && ' (sorted by relevance)'}
             </p>
@@ -377,59 +389,60 @@ function CardsPageContent() {
 
           {/* Card Grid with Similarity Scores */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {data?.cards.map((card) => (
-              <Link key={card.id} href={`/cards/${card.id}`}>
-                <Card className="group hover:border-primary-500/50 transition-all cursor-pointer overflow-hidden p-0">
-                  {/* Card Image */}
-                  <div className="aspect-[5/7] relative bg-[rgb(var(--secondary))] overflow-hidden">
-                    {card.image_url_small || card.image_url ? (
-                      <Image
-                        src={card.image_url_small || card.image_url || ''}
-                        alt={card.name}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-300"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-[rgb(var(--muted-foreground))]">
-                        No Image
-                      </div>
-                    )}
-                    {/* Similarity Score Badge */}
-                    {searchMode === 'semantic' && card.similarity_score !== undefined && (
-                      <div className="absolute top-2 right-2">
-                        <Badge variant="accent" className="bg-[rgb(var(--accent))]/90 text-white border-none">
-                          {Math.round(card.similarity_score * 100)}% match
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card Info */}
-                  <div className="p-4">
-                    <h3 className="font-semibold text-[rgb(var(--foreground))] truncate group-hover:text-primary-500 transition-colors">
-                      {card.name}
-                    </h3>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-sm text-[rgb(var(--muted-foreground))]">
-                        {card.set_code}
-                      </span>
-                      {card.rarity && (
-                        <Badge className={getRarityColor(card.rarity)}>
-                          {card.rarity}
-                        </Badge>
+            {data?.cards.map((card) => {
+              const cardRarity = normalizeRarity(card.rarity);
+              return (
+                <Link key={card.id} href={`/cards/${card.id}`}>
+                  <Card className="group hover:border-[rgb(var(--accent))]/50 hover:shadow-[0_0_15px_rgb(var(--accent)/0.1)] transition-all cursor-pointer overflow-hidden p-0">
+                    {/* Card Image */}
+                    <div className="aspect-[5/7] relative bg-secondary overflow-hidden">
+                      {card.image_url_small || card.image_url ? (
+                        <Image
+                          src={card.image_url_small || card.image_url || ''}
+                          alt={card.name}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                          No Image
+                        </div>
+                      )}
+                      {/* Similarity Score Badge */}
+                      {searchMode === 'semantic' && card.similarity_score !== undefined && (
+                        <div className="absolute top-2 right-2">
+                          <Badge className="gradient-arcane text-white border-none">
+                            {Math.round(card.similarity_score * 100)}% match
+                          </Badge>
+                        </div>
                       )}
                     </div>
-                    {/* Card Type */}
-                    {card.type_line && (
-                      <p className="text-xs text-[rgb(var(--muted-foreground))] mt-2 truncate">
-                        {card.type_line}
-                      </p>
-                    )}
-                  </div>
-                </Card>
-              </Link>
-            ))}
+
+                    {/* Card Info */}
+                    <div className="p-4">
+                      <h3 className="font-semibold text-foreground truncate group-hover:text-[rgb(var(--accent))] transition-colors">
+                        {card.name}
+                      </h3>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-sm text-muted-foreground">
+                          {card.set_code}
+                        </span>
+                        {cardRarity && (
+                          <RarityBadge rarity={cardRarity} />
+                        )}
+                      </div>
+                      {/* Card Type */}
+                      {card.type_line && (
+                        <p className="text-xs text-muted-foreground mt-2 truncate">
+                          {card.type_line}
+                        </p>
+                      )}
+                    </div>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
 
           {/* Pagination */}
@@ -443,7 +456,7 @@ function CardsPageContent() {
               >
                 Previous
               </Button>
-              <span className="text-sm text-[rgb(var(--muted-foreground))]">
+              <span className="text-sm text-muted-foreground">
                 Page {page} of {Math.ceil(data.total / 20)}
               </span>
               <Button
@@ -461,4 +474,3 @@ function CardsPageContent() {
     </div>
   );
 }
-
