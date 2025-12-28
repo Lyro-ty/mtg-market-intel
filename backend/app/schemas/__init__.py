@@ -38,6 +38,11 @@ from app.schemas.inventory import (
     InventoryRecommendationResponse,
     InventoryRecommendationListResponse,
 )
+from app.schemas.sets import (
+    MTGSetResponse,
+    MTGSetList,
+    SetSearchQuery,
+)
 from app.schemas.typed_dicts import (
     # Market types
     MarketIndexPoint,
@@ -124,6 +129,10 @@ __all__ = [
     "InventoryAnalytics",
     "InventoryRecommendationResponse",
     "InventoryRecommendationListResponse",
+    # Sets schemas
+    "MTGSetResponse",
+    "MTGSetList",
+    "SetSearchQuery",
     # TypedDict schemas - Market
     "MarketIndexPoint",
     "MarketIndexResponse",
