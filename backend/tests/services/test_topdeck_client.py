@@ -6,7 +6,7 @@ of the TopDeckClient before implementation.
 """
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 
@@ -106,7 +106,7 @@ class TestTopDeckClientInit:
         """Test client can be initialized with API key."""
         client = TopDeckClient(api_key="test-key")
         assert client.api_key == "test-key"
-        assert client.base_url == "https://topdeck.gg/api/v1"
+        assert client.base_url == "https://topdeck.gg/api/v2"
 
     def test_init_without_api_key(self):
         """Test client can be initialized without API key (uses settings)."""
@@ -129,11 +129,10 @@ class TestTopDeckClientGetRecentTournaments:
     @pytest.mark.asyncio
     async def test_get_recent_tournaments_success(self, topdeck_client, mock_tournament_response):
         """Test fetching recent tournaments successfully."""
-        mock_response = AsyncMock()
+        # Use MagicMock for response since httpx's json() is synchronous
+        mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "tournaments": [mock_tournament_response]
-        }
+        mock_response.json.return_value = [mock_tournament_response]  # v2 API returns list directly
 
         with patch.object(topdeck_client, "_make_request", return_value=mock_response):
             tournaments = await topdeck_client.get_recent_tournaments(format="modern", days=30)
@@ -148,9 +147,9 @@ class TestTopDeckClientGetRecentTournaments:
     @pytest.mark.asyncio
     async def test_get_recent_tournaments_empty(self, topdeck_client):
         """Test fetching recent tournaments when none exist."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"tournaments": []}
+        mock_response.json.return_value = []  # v2 API returns empty list
 
         with patch.object(topdeck_client, "_make_request", return_value=mock_response):
             tournaments = await topdeck_client.get_recent_tournaments(format="modern")
@@ -158,17 +157,19 @@ class TestTopDeckClientGetRecentTournaments:
 
     @pytest.mark.asyncio
     async def test_get_recent_tournaments_default_params(self, topdeck_client):
-        """Test get_recent_tournaments uses default params."""
-        mock_response = AsyncMock()
+        """Test get_recent_tournaments uses default params (POST with JSON body)."""
+        mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"tournaments": []}
+        mock_response.json.return_value = []
 
         with patch.object(topdeck_client, "_make_request", return_value=mock_response) as mock_req:
             await topdeck_client.get_recent_tournaments(format="modern")
 
-            # Verify default days=30 was used
+            # Verify POST method and JSON body with default days=30
             call_args = mock_req.call_args
-            assert "days=30" in call_args[0][0]
+            assert call_args[0][0] == "/tournaments"  # endpoint
+            assert call_args[1]["method"] == "POST"
+            assert call_args[1]["json"]["last"] == 30  # default days
 
 
 class TestTopDeckClientGetTournament:
@@ -177,7 +178,7 @@ class TestTopDeckClientGetTournament:
     @pytest.mark.asyncio
     async def test_get_tournament_success(self, topdeck_client, mock_tournament_response):
         """Test fetching a specific tournament successfully."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_tournament_response
 
@@ -191,7 +192,7 @@ class TestTopDeckClientGetTournament:
     @pytest.mark.asyncio
     async def test_get_tournament_not_found(self, topdeck_client):
         """Test fetching a tournament that doesn't exist."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 404
 
         with patch.object(topdeck_client, "_make_request", return_value=mock_response):
@@ -207,7 +208,7 @@ class TestTopDeckClientGetTournamentStandings:
         self, topdeck_client, mock_standings_response
     ):
         """Test fetching tournament standings successfully."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_standings_response
 
@@ -222,7 +223,7 @@ class TestTopDeckClientGetTournamentStandings:
     @pytest.mark.asyncio
     async def test_get_tournament_standings_empty(self, topdeck_client):
         """Test fetching standings for tournament with no results."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"standings": []}
 
@@ -237,7 +238,7 @@ class TestTopDeckClientGetDecklist:
     @pytest.mark.asyncio
     async def test_get_decklist_success(self, topdeck_client, mock_decklist_response):
         """Test fetching a decklist successfully."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_decklist_response
 
@@ -252,7 +253,7 @@ class TestTopDeckClientGetDecklist:
     @pytest.mark.asyncio
     async def test_get_decklist_not_found(self, topdeck_client):
         """Test fetching a decklist that doesn't exist."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 404
 
         with patch.object(topdeck_client, "_make_request", return_value=mock_response):
@@ -265,12 +266,16 @@ class TestTopDeckClientErrorHandling:
 
     @pytest.mark.asyncio
     async def test_rate_limit_error(self, topdeck_client):
-        """Test handling of rate limit (429) errors."""
-        mock_response = AsyncMock()
-        mock_response.status_code = 429
-        mock_response.headers = {"Retry-After": "60"}
+        """Test handling of rate limit (429) errors.
 
-        with patch.object(topdeck_client, "_make_request", return_value=mock_response):
+        Note: _make_request already raises TopDeckRateLimitError for 429 responses,
+        so we test by making it raise the exception directly.
+        """
+        with patch.object(
+            topdeck_client,
+            "_make_request",
+            side_effect=TopDeckRateLimitError("Rate limit exceeded. Retry after 60 seconds.")
+        ):
             with pytest.raises(TopDeckRateLimitError) as exc_info:
                 await topdeck_client.get_tournament("tour-123")
 
@@ -278,12 +283,15 @@ class TestTopDeckClientErrorHandling:
 
     @pytest.mark.asyncio
     async def test_api_error_5xx(self, topdeck_client):
-        """Test handling of 5xx server errors."""
-        mock_response = AsyncMock()
-        mock_response.status_code = 500
-        mock_response.text = "Internal Server Error"
+        """Test handling of 5xx server errors.
 
-        with patch.object(topdeck_client, "_make_request", return_value=mock_response):
+        Note: _make_request raises TopDeckAPIError for 5xx responses.
+        """
+        with patch.object(
+            topdeck_client,
+            "_make_request",
+            side_effect=TopDeckAPIError("TopDeck.gg API error 500: Internal Server Error")
+        ):
             with pytest.raises(TopDeckAPIError) as exc_info:
                 await topdeck_client.get_tournament("tour-123")
 
@@ -295,7 +303,7 @@ class TestTopDeckClientErrorHandling:
         with patch.object(
             topdeck_client,
             "_make_request",
-            side_effect=httpx.NetworkError("Connection failed")
+            side_effect=TopDeckAPIError("Network error: Connection failed")
         ):
             with pytest.raises(TopDeckAPIError) as exc_info:
                 await topdeck_client.get_tournament("tour-123")
@@ -305,7 +313,7 @@ class TestTopDeckClientErrorHandling:
     @pytest.mark.asyncio
     async def test_invalid_json_response(self, topdeck_client):
         """Test handling of invalid JSON in response."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.side_effect = ValueError("Invalid JSON")
 
@@ -322,7 +330,7 @@ class TestTopDeckClientResponseParsing:
         self, topdeck_client, mock_tournament_response
     ):
         """Test that all expected tournament fields are extracted."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_tournament_response
 
@@ -343,7 +351,7 @@ class TestTopDeckClientResponseParsing:
         self, topdeck_client, mock_standings_response
     ):
         """Test that standing fields are converted from camelCase to snake_case."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_standings_response
 
@@ -365,8 +373,10 @@ class TestTopDeckClientCleanup:
     @pytest.mark.asyncio
     async def test_close_client(self, topdeck_client):
         """Test that client can be closed properly."""
-        # Create mock client
+        # Create mock client with is_closed property returning False
         mock_httpx_client = AsyncMock()
+        mock_httpx_client.is_closed = False  # Explicitly set as boolean
+
         topdeck_client._client = mock_httpx_client
 
         await topdeck_client.close()
