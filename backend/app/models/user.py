@@ -53,6 +53,10 @@ class User(Base):
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_login_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # OAuth fields
+    oauth_provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    oauth_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     
     # Relationships
     inventory_items: Mapped[list["InventoryItem"]] = relationship(
