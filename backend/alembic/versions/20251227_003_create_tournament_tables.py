@@ -27,12 +27,10 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Drop existing tables to recreate with new schema
     # Note: This is a destructive migration - any existing tournament data will be lost
-    # Use raw SQL for IF EXISTS since op.drop_table doesn't support it
-    from sqlalchemy import text
-    conn = op.get_bind()
-    for table in ['card_tournament_usage', 'decklists', 'tournaments']:
-        conn.execute(text(f"DROP TABLE IF EXISTS {table} CASCADE"))
-        conn.commit()
+    # Use op.execute for raw SQL - do NOT call conn.commit() as Alembic manages the transaction
+    op.execute("DROP TABLE IF EXISTS card_tournament_usage CASCADE")
+    op.execute("DROP TABLE IF EXISTS decklists CASCADE")
+    op.execute("DROP TABLE IF EXISTS tournaments CASCADE")
 
     # Create tournaments table with TopDeck.gg schema
     op.create_table(
