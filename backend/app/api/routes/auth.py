@@ -28,6 +28,7 @@ from app.services.auth import (
     update_password,
     verify_password,
 )
+from app.utils.password import validate_password_strength, is_common_password
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -61,7 +62,18 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already taken",
         )
-    
+
+    # Validate password strength
+    is_valid, error_msg = validate_password_strength(user_data.password)
+    if not is_valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+
+    if is_common_password(user_data.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is too common. Please choose a more secure password.",
+        )
+
     # Create user
     user = await create_user(db, user_data)
     
