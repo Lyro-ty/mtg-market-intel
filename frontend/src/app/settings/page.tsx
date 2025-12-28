@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { LoadingPage } from '@/components/ui/Loading';
 import { ThemePicker } from '@/components/ui/ThemePicker';
 import { getSettings, updateSettings, getMarketplaces, toggleMarketplace } from '@/lib/api';
+import { SessionsManager } from '@/components/settings/SessionsManager';
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -229,6 +230,9 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Sessions */}
+      <SessionsManager />
     </div>
   );
 }
