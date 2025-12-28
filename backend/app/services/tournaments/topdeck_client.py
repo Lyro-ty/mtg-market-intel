@@ -226,15 +226,13 @@ class TopDeckClient:
         """
         endpoint = "/tournaments"
 
-        # Calculate start date for filtering
-        from datetime import timedelta
-        start_date = datetime.now(timezone.utc) - timedelta(days=days)
-
         # v2 API uses POST with JSON body
+        # 'last' = number of days back, 'game' and 'format' are case-sensitive
         payload = {
             "game": "Magic: The Gathering",
-            "format": [format],
-            "start": start_date.strftime("%Y-%m-%d"),
+            "format": format,  # Case-sensitive: "Modern", "EDH", "Pioneer", etc.
+            "last": days,
+            "columns": ["name", "decklist", "wins", "draws", "losses"],
         }
 
         try:
