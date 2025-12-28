@@ -32,6 +32,12 @@ import type {
   InventoryCondition,
   InventoryUrgency,
   ActionType,
+  TournamentListResponse,
+  TournamentDetail,
+  DecklistDetail,
+  MetaCardsListResponse,
+  CardMetaResponse,
+  MetaPeriod,
 } from '@/types';
 
 // Use /api proxy when in browser, or direct URL when server-side or in development
@@ -610,28 +616,28 @@ export async function runInventoryRecommendations(itemIds?: number[]): Promise<{
 export async function exportInventory(format: 'csv' | 'txt' | 'cardtrader' = 'csv'): Promise<void> {
   const url = `${API_BASE}/inventory/export?format=${format}`;
   const token = getStoredToken();
-  
+
   if (!token) {
     throw new ApiError('Authentication required', 401);
   }
-  
+
   const response = await fetch(url, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-  
+
   if (!response.ok) {
     throw new ApiError(`Export failed: ${response.statusText}`, response.status);
   }
-  
+
   // Get the blob and trigger download
   const blob = await response.blob();
   const downloadUrl = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = downloadUrl;
-  
+
   // Get filename from Content-Disposition header or use default
   const contentDisposition = response.headers.get('Content-Disposition');
   let filename = `inventory.${format === 'cardtrader' ? 'csv' : format}`;
@@ -641,12 +647,59 @@ export async function exportInventory(format: 'csv' | 'txt' | 'cardtrader' = 'cs
       filename = filenameMatch[1];
     }
   }
-  
+
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   window.URL.revokeObjectURL(downloadUrl);
+}
+
+// Tournament API
+export async function getTournaments(options: {
+  format?: string;
+  days?: number;
+  minPlayers?: number;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<TournamentListResponse> {
+  const params = new URLSearchParams();
+
+  if (options.format) params.set('format', options.format);
+  if (options.days !== undefined) params.set('days', String(options.days));
+  if (options.minPlayers !== undefined) params.set('min_players', String(options.minPlayers));
+  params.set('page', String(options.page || 1));
+  params.set('page_size', String(options.pageSize || 20));
+
+  return fetchApi(`/tournaments?${params}`);
+}
+
+export async function getTournament(tournamentId: number): Promise<TournamentDetail> {
+  return fetchApi(`/tournaments/${tournamentId}`);
+}
+
+export async function getDecklist(tournamentId: number, decklistId: number): Promise<DecklistDetail> {
+  return fetchApi(`/tournaments/${tournamentId}/decklists/${decklistId}`);
+}
+
+export async function getMetaCards(options: {
+  format: string;
+  period?: MetaPeriod;
+  page?: number;
+  pageSize?: number;
+} = { format: 'Modern' }): Promise<MetaCardsListResponse> {
+  const params = new URLSearchParams();
+
+  params.set('format', options.format);
+  if (options.period) params.set('period', options.period);
+  params.set('page', String(options.page || 1));
+  params.set('page_size', String(options.pageSize || 50));
+
+  return fetchApi(`/meta/cards?${params}`);
+}
+
+export async function getCardMeta(cardId: number): Promise<CardMetaResponse> {
+  return fetchApi(`/cards/${cardId}/meta`);
 }
 
 // Export error class for use in components
