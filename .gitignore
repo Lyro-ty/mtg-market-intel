@@ -2,3 +2,21 @@ backend/data/scryfall_default_cards.json
 
 # Worktrees
 .worktrees/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Node
+node_modules/
+.next/
