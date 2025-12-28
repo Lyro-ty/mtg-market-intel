@@ -39,7 +39,9 @@ from app.schemas.inventory import (
     ActionType,
     InventoryTopMoversResponse,
     TopMoverCard,
+    InventorySummaryResponse,
 )
+from app.services.pricing.valuation import InventoryValuator
 
 
 def map_condition_to_cardtrader(condition: str) -> str:
@@ -788,6 +790,78 @@ async def create_inventory_item(
 
 # IMPORTANT: These specific routes must come BEFORE the /{item_id} route
 # Otherwise FastAPI will try to match "top-movers" and "market-index" as item_id values
+
+
+@router.get("/summary", response_model=InventorySummaryResponse)
+async def get_inventory_summary(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> InventorySummaryResponse:
+    """
+    Get portfolio summary with acquisition-cost-based index.
+
+    Index = (current_value / acquisition_cost) * 100
+    - 100 = break even
+    - >100 = profit
+    - <100 = loss
+    """
+    # Use SQL aggregation instead of loading all items into memory
+    stats_result = await db.execute(
+        select(
+            func.count(InventoryItem.id).label("total_items"),
+            func.sum(InventoryItem.quantity).label("total_quantity"),
+            func.sum(
+                func.coalesce(InventoryItem.current_value, 0.0) * InventoryItem.quantity
+            ).label("total_value"),
+            func.sum(
+                func.coalesce(InventoryItem.acquisition_price, 0.0) * InventoryItem.quantity
+            ).label("total_acquisition"),
+            func.max(InventoryItem.last_valued_at).label("last_valued")
+        ).where(InventoryItem.user_id == current_user.id)
+    )
+    stats = stats_result.one()
+
+    total_items = stats.total_items or 0
+    total_quantity = stats.total_quantity or 0
+    total_value = float(stats.total_value or 0)
+    total_acquisition = float(stats.total_acquisition or 0)
+
+    if total_items == 0:
+        return InventorySummaryResponse(
+            total_items=0,
+            total_quantity=0,
+            total_value=0.0,
+            total_acquisition_cost=0.0,
+            profit_loss=0.0,
+            profit_loss_pct=0.0,
+            index_value=100.0,
+            last_valued_at=None,
+        )
+
+    profit_loss = total_value - total_acquisition
+    profit_loss_pct = (
+        (profit_loss / total_acquisition * 100)
+        if total_acquisition > 0 else 0.0
+    )
+
+    index_value = InventoryValuator.calculate_portfolio_index(
+        total_current_value=total_value,
+        total_acquisition_cost=total_acquisition
+    )
+
+    last_valued = stats.last_valued
+
+    return InventorySummaryResponse(
+        total_items=total_items,
+        total_quantity=total_quantity,
+        total_value=round(total_value, 2),
+        total_acquisition_cost=round(total_acquisition, 2),
+        profit_loss=round(profit_loss, 2),
+        profit_loss_pct=round(profit_loss_pct, 1),
+        index_value=round(index_value, 1),
+        last_valued_at=last_valued.isoformat() if last_valued else None,
+    )
+
 
 @router.get("/market-index")
 async def get_inventory_market_index(

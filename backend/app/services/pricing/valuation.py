@@ -70,8 +70,9 @@ class InventoryValuator:
             "profit_loss_pct": profit_loss_pct,
         }
 
+    @classmethod
     def calculate_portfolio_index(
-        self,
+        cls,
         total_current_value: float,
         total_acquisition_cost: float,
     ) -> float:
