@@ -22,9 +22,9 @@ import {
   getInventoryMarketIndex,
   getInventoryTopMovers,
 } from '@/lib/api';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { LoadingPage, Loading } from '@/components/ui/Loading';
 import { SearchBar } from '@/components/cards/SearchBar';
 import { InventoryImportModal } from '@/components/inventory/InventoryImportModal';

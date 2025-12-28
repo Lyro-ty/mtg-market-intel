@@ -14,14 +14,14 @@ import {
   Target,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   Skeleton,
   StatsSkeleton,
   ChartSkeleton,
   CardSkeleton,
-} from '@/components/ui/Skeleton';
+} from '@/components/ui/skeleton';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { getInventoryAnalytics, getInventoryTopMovers, getRecommendations } from '@/lib/api';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';

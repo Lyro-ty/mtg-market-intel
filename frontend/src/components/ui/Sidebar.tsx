@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },

@@ -11,7 +11,7 @@ import {
   Cell,
 } from 'recharts';
 import { formatDistanceToNow } from 'date-fns';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import type { MarketplacePrice } from '@/types';
 

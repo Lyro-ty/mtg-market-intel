@@ -11,8 +11,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { format } from 'date-fns';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { formatPercent } from '@/lib/utils';
 import type { MarketIndex } from '@/types';
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import { ThemePicker } from '@/components/ui/ThemePicker';
 
 const WELCOME_SEEN_KEY = 'mtg-welcome-seen';

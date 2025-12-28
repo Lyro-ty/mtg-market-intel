@@ -2,9 +2,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Monitor, Smartphone, Trash2, LogOut } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { fetchApi } from '@/lib/api';
 
 interface Session {

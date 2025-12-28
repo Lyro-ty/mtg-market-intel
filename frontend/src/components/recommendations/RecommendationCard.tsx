@@ -2,8 +2,8 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Card, CardContent } from '@/components/ui/Card';
-import { ActionBadge, Badge } from '@/components/ui/Badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { ActionBadge, Badge } from '@/components/ui/badge';
 import { formatCurrency, formatPercent, formatRelativeTime } from '@/lib/utils';
 import type { Recommendation } from '@/types';
 
