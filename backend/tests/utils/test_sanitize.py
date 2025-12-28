@@ -53,3 +53,23 @@ def test_sanitize_username_too_short():
 def test_sanitize_username_too_long():
     with pytest.raises(ValueError):
         sanitize_username("a" * 51)
+
+
+def test_sanitize_email_none():
+    with pytest.raises(ValueError, match="cannot be None"):
+        sanitize_email(None)
+
+
+def test_sanitize_email_empty():
+    with pytest.raises(ValueError, match="cannot be empty"):
+        sanitize_email("")
+
+
+def test_sanitize_username_none():
+    with pytest.raises(ValueError, match="cannot be None"):
+        sanitize_username(None)
+
+
+def test_sanitize_username_empty():
+    with pytest.raises(ValueError, match="cannot be empty"):
+        sanitize_username("")
