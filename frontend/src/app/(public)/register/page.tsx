@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
+import { GoogleLoginButton } from '@/components/auth/GoogleLoginButton';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -228,6 +229,19 @@ export default function RegisterPage() {
               )}
             </Button>
           </form>
+
+          {/* OAuth Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-card text-muted-foreground">Or continue with</span>
+            </div>
+          </div>
+
+          {/* Google Sign Up */}
+          <GoogleLoginButton disabled={isLoading} />
 
           {/* Login link */}
           <p className="mt-6 text-center text-sm text-muted-foreground">
