@@ -14,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from app.api import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.middleware.rate_limit import RateLimitMiddleware
 from app.services.ingestion import enable_adapter_caching
 
 # Setup logging
@@ -160,6 +161,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Add rate limiting middleware (after CORS)
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=60,
+    auth_requests_per_minute=5,
 )
 
 
