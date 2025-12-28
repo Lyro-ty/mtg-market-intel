@@ -19,7 +19,13 @@ from app.models.settings import AppSettings
 from app.models.inventory import InventoryItem, InventoryRecommendation, InventoryCondition
 from app.models.user import User
 from app.models.feature_vector import CardFeatureVector
-from app.models.tournament import Tournament, Decklist, CardTournamentUsage
+from app.models.tournament import (
+    Tournament,
+    TournamentStanding,
+    Decklist,
+    DecklistCard,
+    CardMetaStats,
+)
 from app.models.news import NewsArticle, CardNewsMention
 
 
@@ -102,8 +108,10 @@ __all__ = [
     "User",
     "CardFeatureVector",
     "Tournament",
+    "TournamentStanding",
     "Decklist",
-    "CardTournamentUsage",
+    "DecklistCard",
+    "CardMetaStats",
     "NewsArticle",
     "CardNewsMention",
     # Deprecated models (emit warnings when used)
