@@ -139,6 +139,9 @@ class PriceSnapshot(HypertableBase):
     num_listings: Mapped[int | None] = mapped_column(nullable=True)
     total_quantity: Mapped[int | None] = mapped_column(nullable=True)
 
+    # Source tracking: 'bulk', 'api', 'tcgplayer', 'calculated'
+    source: Mapped[str] = mapped_column(String(20), default='bulk', nullable=False)
+
     # Relationships
     card: Mapped["Card"] = relationship("Card", back_populates="price_snapshots")
     marketplace: Mapped["Marketplace"] = relationship("Marketplace", back_populates="price_snapshots")
