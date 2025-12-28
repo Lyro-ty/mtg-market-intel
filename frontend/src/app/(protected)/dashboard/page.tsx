@@ -22,6 +22,7 @@ import {
   ChartSkeleton,
   CardSkeleton,
 } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ornate/page-header';
 import { getInventoryAnalytics, getInventoryTopMovers, getRecommendations } from '@/lib/api';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 
@@ -38,9 +39,9 @@ interface StatCardProps {
 function StatCard({ title, value, change, trend, icon, className }: StatCardProps) {
   const trendColor =
     trend === 'up'
-      ? 'text-green-500'
+      ? 'text-[rgb(var(--success))]'
       : trend === 'down'
-        ? 'text-red-500'
+        ? 'text-[rgb(var(--destructive))]'
         : 'text-[rgb(var(--muted-foreground))]';
 
   const TrendIcon =
@@ -95,22 +96,18 @@ function EmptyDashboard({ username }: { username: string }) {
   return (
     <div className="space-y-6 animate-in">
       {/* Greeting */}
-      <div>
-        <h1 className="text-2xl font-bold text-[rgb(var(--foreground))]">
-          Welcome, {username}!
-        </h1>
-        <p className="text-[rgb(var(--muted-foreground))]">
-          Let&apos;s get started with your MTG collection
-        </p>
-      </div>
+      <PageHeader
+        title={`Welcome, ${username}!`}
+        subtitle="Let's get started with your MTG collection"
+      />
 
       {/* Empty state card */}
       <Card className="bg-gradient-to-br from-[rgba(var(--accent),0.1)] to-[rgba(var(--accent),0.05)] border-[rgba(var(--accent),0.2)]">
         <CardContent className="py-12 text-center">
-          <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-6">
+          <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-[rgb(var(--magic-gold))] to-[rgb(var(--mythic-orange))] flex items-center justify-center mb-6">
             <Package className="w-8 h-8 text-white" />
           </div>
-          <h2 className="text-xl font-semibold text-[rgb(var(--foreground))] mb-2">
+          <h2 className="text-xl font-heading font-semibold text-[rgb(var(--foreground))] mb-2">
             Your collection is empty
           </h2>
           <p className="text-[rgb(var(--muted-foreground))] mb-6 max-w-md mx-auto">
@@ -121,7 +118,7 @@ function EmptyDashboard({ username }: { username: string }) {
             <Link href="/inventory">
               <Button
                 variant="primary"
-                className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
+                className="bg-gradient-to-r from-[rgb(var(--magic-gold))] to-[rgb(var(--mythic-orange))] hover:from-[rgb(var(--magic-gold))]/90 hover:to-[rgb(var(--mythic-orange))]/90"
               >
                 <Package className="w-4 h-4 mr-2" />
                 Import Cards
@@ -141,8 +138,8 @@ function EmptyDashboard({ username }: { username: string }) {
       <div className="grid md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-6 text-center">
-            <BarChart3 className="w-10 h-10 mx-auto text-amber-500 mb-4" />
-            <h3 className="font-semibold text-[rgb(var(--foreground))] mb-2">
+            <BarChart3 className="w-10 h-10 mx-auto text-[rgb(var(--magic-gold))] mb-4" />
+            <h3 className="font-heading font-semibold text-[rgb(var(--foreground))] mb-2">
               Track Value
             </h3>
             <p className="text-sm text-[rgb(var(--muted-foreground))]">
@@ -153,8 +150,8 @@ function EmptyDashboard({ username }: { username: string }) {
 
         <Card>
           <CardContent className="p-6 text-center">
-            <TrendingUp className="w-10 h-10 mx-auto text-green-500 mb-4" />
-            <h3 className="font-semibold text-[rgb(var(--foreground))] mb-2">
+            <TrendingUp className="w-10 h-10 mx-auto text-[rgb(var(--success))] mb-4" />
+            <h3 className="font-heading font-semibold text-[rgb(var(--foreground))] mb-2">
               Price Alerts
             </h3>
             <p className="text-sm text-[rgb(var(--muted-foreground))]">
@@ -165,8 +162,8 @@ function EmptyDashboard({ username }: { username: string }) {
 
         <Card>
           <CardContent className="p-6 text-center">
-            <Sparkles className="w-10 h-10 mx-auto text-purple-500 mb-4" />
-            <h3 className="font-semibold text-[rgb(var(--foreground))] mb-2">
+            <Sparkles className="w-10 h-10 mx-auto text-[rgb(var(--magic-purple))] mb-4" />
+            <h3 className="font-heading font-semibold text-[rgb(var(--foreground))] mb-2">
               AI Recommendations
             </h3>
             <p className="text-sm text-[rgb(var(--muted-foreground))]">
@@ -202,7 +199,7 @@ function MoverItem({ name, setCode, price, changePct }: MoverItemProps) {
         <p
           className={cn(
             'text-sm font-medium',
-            isPositive ? 'text-green-500' : 'text-red-500'
+            isPositive ? 'text-[rgb(var(--success))]' : 'text-[rgb(var(--destructive))]'
           )}
         >
           {formatPercent(changePct)}
@@ -264,14 +261,10 @@ function DashboardPageContent() {
   return (
     <div className="space-y-6 animate-in">
       {/* Greeting */}
-      <div>
-        <h1 className="text-2xl font-bold text-[rgb(var(--foreground))]">
-          Welcome back, {username}
-        </h1>
-        <p className="text-[rgb(var(--muted-foreground))]">
-          Here&apos;s what&apos;s happening with your collection
-        </p>
-      </div>
+      <PageHeader
+        title={`Welcome back, ${username}`}
+        subtitle="Here's what's happening with your collection"
+      />
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -326,7 +319,7 @@ function DashboardPageContent() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-500" />
+                <TrendingUp className="w-5 h-5 text-[rgb(var(--success))]" />
                 Top Movers Today
               </CardTitle>
               <Link
@@ -396,7 +389,7 @@ function DashboardPageContent() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-amber-500" />
+              <Target className="w-5 h-5 text-[rgb(var(--magic-gold))]" />
               Recent Recommendations
             </CardTitle>
             <Link
@@ -453,10 +446,10 @@ function DashboardPageContent() {
                     className={cn(
                       'px-3 py-1 rounded-full text-xs font-semibold',
                       rec.action === 'BUY'
-                        ? 'bg-green-500/20 text-green-500'
+                        ? 'bg-[rgb(var(--success))]/20 text-[rgb(var(--success))]'
                         : rec.action === 'SELL'
-                          ? 'bg-red-500/20 text-red-500'
-                          : 'bg-yellow-500/20 text-yellow-500'
+                          ? 'bg-[rgb(var(--destructive))]/20 text-[rgb(var(--destructive))]'
+                          : 'bg-[rgb(var(--warning))]/20 text-[rgb(var(--warning))]'
                     )}
                   >
                     {rec.action}
