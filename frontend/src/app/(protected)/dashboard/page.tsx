@@ -22,7 +22,6 @@ import {
   ChartSkeleton,
   CardSkeleton,
 } from '@/components/ui/skeleton';
-import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { getInventoryAnalytics, getInventoryTopMovers, getRecommendations } from '@/lib/api';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 
@@ -481,9 +480,5 @@ function DashboardPageContent() {
 }
 
 export default function DashboardPage() {
-  return (
-    <ProtectedRoute>
-      <DashboardPageContent />
-    </ProtectedRoute>
-  );
+  return <DashboardPageContent />;
 }
