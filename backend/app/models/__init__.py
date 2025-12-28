@@ -29,6 +29,7 @@ from app.models.tournament import (
     CardMetaStats,
 )
 from app.models.news import NewsArticle, CardNewsMention
+from app.models.session import UserSession
 
 
 # DEPRECATED: Listing model - use PriceSnapshot instead
@@ -116,6 +117,7 @@ __all__ = [
     "CardMetaStats",
     "NewsArticle",
     "CardNewsMention",
+    "UserSession",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
     "ListingFeatureVector",  # DEPRECATED: Use CardFeatureVector
