@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Search, Sparkles, TrendingUp, Shield } from 'lucide-react';
 
@@ -32,6 +33,18 @@ export function Hero() {
       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent" />
 
       <div className="relative max-w-5xl mx-auto px-6 text-center">
+        {/* Logo */}
+        <div className="mb-8 animate-fade-in">
+          <Image
+            src="/logo.png"
+            alt="Dualcaster Deals"
+            width={150}
+            height={150}
+            className="mx-auto rounded-2xl shadow-2xl shadow-[rgb(var(--accent))]/20"
+            priority
+          />
+        </div>
+
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[rgb(var(--accent))]/10 border border-[rgb(var(--accent))]/20 text-sm text-[rgb(var(--accent))] mb-8 animate-fade-in">
           <Sparkles className="w-4 h-4" />
