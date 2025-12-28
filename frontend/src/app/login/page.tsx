@@ -15,19 +15,37 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, refreshUser } = useAuth();
   const router = useRouter();
 
   // Handle OAuth callback token
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    if (token) {
-      // Store token and redirect
-      localStorage.setItem('token', token);
-      router.push('/dashboard');
-    }
-  }, [router]);
+    const handleOAuthCallback = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      const error = params.get('error');
+
+      if (error) {
+        setError('Google login failed. Please try again.');
+        // Clean URL to remove error parameter
+        window.history.replaceState({}, '', '/login');
+        return;
+      }
+
+      if (token) {
+        // Store token
+        localStorage.setItem('token', token);
+        // Clean URL to remove sensitive token
+        window.history.replaceState({}, '', '/login');
+        // Sync auth state
+        await refreshUser();
+        // Redirect to inventory (consistent with normal login)
+        router.push('/inventory');
+      }
+    };
+
+    handleOAuthCallback();
+  }, [router, refreshUser]);
 
   // Redirect if already authenticated
   if (isAuthenticated) {
