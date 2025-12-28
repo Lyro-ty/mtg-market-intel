@@ -72,19 +72,13 @@ module.exports = {
   			}
   		},
   		fontFamily: {
-  			sans: [
-  				'var(--font-geist-sans)',
-  				'system-ui',
-  				'sans-serif'
-  			],
+  			display: ['Cinzel Decorative', 'serif'],
+  			heading: ['Cinzel', 'serif'],
+  			sans: ['Inter', 'sans-serif'],
   			mono: [
   				'var(--font-geist-mono)',
   				'monospace'
   			],
-  			display: [
-  				'Cinzel',
-  				'serif'
-  			]
   		},
   		animation: {
   			'fade-in': 'fadeIn 0.3s ease-in-out',
