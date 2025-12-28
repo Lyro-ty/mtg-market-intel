@@ -65,8 +65,8 @@ class AnalyticsAgent:
         # This makes metrics computation more robust with sparse data
         snapshots_query = select(PriceSnapshot).where(
             PriceSnapshot.card_id == card_id,
-            func.date(PriceSnapshot.snapshot_time) >= target_date - timedelta(days=1),
-            func.date(PriceSnapshot.snapshot_time) <= target_date,
+            func.date(PriceSnapshot.time) >= target_date - timedelta(days=1),
+            func.date(PriceSnapshot.time) <= target_date,
             PriceSnapshot.currency == "USD",  # USD-only mode
         )
         result = await self.db.execute(snapshots_query)
@@ -182,8 +182,8 @@ class AnalyticsAgent:
         # More lenient window to handle sparse data
         current_query = select(func.avg(PriceSnapshot.price)).where(
             PriceSnapshot.card_id == card_id,
-            func.date(PriceSnapshot.snapshot_time) >= target_date - timedelta(days=2),
-            func.date(PriceSnapshot.snapshot_time) <= target_date,
+            func.date(PriceSnapshot.time) >= target_date - timedelta(days=2),
+            func.date(PriceSnapshot.time) <= target_date,
             PriceSnapshot.price.isnot(None),
             PriceSnapshot.price > 0,
             PriceSnapshot.currency == "USD",  # USD-only mode
@@ -195,8 +195,8 @@ class AnalyticsAgent:
         # More lenient window for past data since it's older
         past_query = select(func.avg(PriceSnapshot.price)).where(
             PriceSnapshot.card_id == card_id,
-            func.date(PriceSnapshot.snapshot_time) >= past_date - timedelta(days=2),
-            func.date(PriceSnapshot.snapshot_time) <= past_date + timedelta(days=2),
+            func.date(PriceSnapshot.time) >= past_date - timedelta(days=2),
+            func.date(PriceSnapshot.time) <= past_date + timedelta(days=2),
             PriceSnapshot.price.isnot(None),
             PriceSnapshot.price > 0,
             PriceSnapshot.currency == "USD",  # USD-only mode
@@ -219,8 +219,8 @@ class AnalyticsAgent:
         
         query = select(func.avg(PriceSnapshot.price)).where(
             PriceSnapshot.card_id == card_id,
-            func.date(PriceSnapshot.snapshot_time) >= start_date,
-            func.date(PriceSnapshot.snapshot_time) <= target_date,
+            func.date(PriceSnapshot.time) >= start_date,
+            func.date(PriceSnapshot.time) <= target_date,
             PriceSnapshot.currency == "USD",  # USD-only mode
         )
         result = await self.db.execute(query)
@@ -239,14 +239,14 @@ class AnalyticsAgent:
         
         # Get daily average prices (USD only)
         query = select(
-            func.date(PriceSnapshot.snapshot_time).label('date'),
+            func.date(PriceSnapshot.time).label('date'),
             func.avg(PriceSnapshot.price).label('avg_price'),
         ).where(
             PriceSnapshot.card_id == card_id,
-            func.date(PriceSnapshot.snapshot_time) >= start_date,
-            func.date(PriceSnapshot.snapshot_time) <= target_date,
+            func.date(PriceSnapshot.time) >= start_date,
+            func.date(PriceSnapshot.time) <= target_date,
             PriceSnapshot.currency == "USD",  # USD-only mode
-        ).group_by(func.date(PriceSnapshot.snapshot_time)).order_by('date')
+        ).group_by(func.date(PriceSnapshot.time)).order_by('date')
         
         result = await self.db.execute(query)
         rows = result.all()

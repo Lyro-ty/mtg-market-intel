@@ -11,7 +11,7 @@ from app.models import Card
 @pytest.mark.asyncio
 async def test_search_cards_empty(client: AsyncClient):
     """Test card search with no cards returns empty list."""
-    response = await client.get("/cards/search?q=test")
+    response = await client.get("/api/cards/search?q=test")
     assert response.status_code == 200
     data = response.json()
     assert data["cards"] == []
@@ -32,7 +32,7 @@ async def test_search_cards_with_results(client: AsyncClient, db_session: AsyncS
     db_session.add(card)
     await db_session.commit()
     
-    response = await client.get("/cards/search?q=Lightning")
+    response = await client.get("/api/cards/search?q=Lightning")
     assert response.status_code == 200
     data = response.json()
     assert len(data["cards"]) == 1
@@ -42,7 +42,7 @@ async def test_search_cards_with_results(client: AsyncClient, db_session: AsyncS
 @pytest.mark.asyncio
 async def test_get_card_not_found(client: AsyncClient):
     """Test getting non-existent card returns 404."""
-    response = await client.get("/cards/999")
+    response = await client.get("/api/cards/999")
     assert response.status_code == 404
 
 
@@ -62,7 +62,7 @@ async def test_get_card_detail(client: AsyncClient, db_session: AsyncSession):
     await db_session.commit()
     await db_session.refresh(card)
     
-    response = await client.get(f"/cards/{card.id}")
+    response = await client.get(f"/api/cards/{card.id}")
     assert response.status_code == 200
     data = response.json()
     assert data["card"]["name"] == "Black Lotus"

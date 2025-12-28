@@ -65,9 +65,8 @@ class Tournament(Base):
         "Decklist", back_populates="tournament", cascade="all, delete-orphan"
     )
     
-    # Indexes
+    # Indexes (start_date already has index=True on column definition)
     __table_args__ = (
-        Index("ix_tournaments_start_date", "start_date"),
         Index("ix_tournaments_source", "source"),
         Index("ix_tournaments_external_id_source", "external_id", "source", unique=True),
     )

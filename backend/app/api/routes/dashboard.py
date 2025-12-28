@@ -39,7 +39,7 @@ async def get_dashboard_summary(
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     cards_with_prices = await db.scalar(
         select(func.count(func.distinct(PriceSnapshot.card_id))).where(
-            PriceSnapshot.snapshot_time >= week_ago
+            PriceSnapshot.time >= week_ago
         )
     ) or 0
     
@@ -192,7 +192,7 @@ async def _get_highest_spreads(
         Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
     ).where(
         PriceSnapshot.card_id.in_(card_ids),
-        func.date(PriceSnapshot.snapshot_time) == latest_date,
+        func.date(PriceSnapshot.time) == latest_date,
     ).subquery()
     
     lowest_query = select(
@@ -214,7 +214,7 @@ async def _get_highest_spreads(
         Marketplace, PriceSnapshot.marketplace_id == Marketplace.id
     ).where(
         PriceSnapshot.card_id.in_(card_ids),
-        func.date(PriceSnapshot.snapshot_time) == latest_date,
+        func.date(PriceSnapshot.time) == latest_date,
     ).subquery()
     
     highest_query = select(

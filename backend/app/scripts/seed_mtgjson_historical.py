@@ -70,7 +70,7 @@ async def has_recent_mtgjson_data(db, card_id: int, days: int) -> bool:
         and_(
             PriceSnapshot.card_id == card_id,
             Marketplace.slug.in_(["tcgplayer", "cardmarket"]),
-            PriceSnapshot.snapshot_time >= cutoff_date,
+            PriceSnapshot.time >= cutoff_date,
         )
     ).limit(1)
     
@@ -191,7 +191,7 @@ async def seed_mtgjson_historical(
                                 and_(
                                     PriceSnapshot.card_id == card.id,
                                     PriceSnapshot.marketplace_id == marketplace.id,
-                                    PriceSnapshot.snapshot_time == price_data.snapshot_time,
+                                    PriceSnapshot.time == price_data.snapshot_time,
                                 )
                             )
                             existing_result = await db.execute(existing_query)

@@ -19,22 +19,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add created_at and updated_at to card_feature_vectors
-    op.add_column('card_feature_vectors', 
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
-    op.add_column('card_feature_vectors', 
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
-    
-    # Add created_at and updated_at to listing_feature_vectors
-    op.add_column('listing_feature_vectors', 
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
-    op.add_column('listing_feature_vectors', 
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
+    # NOTE: Migration 005 already creates these tables with created_at and updated_at columns.
+    # This migration is now a no-op to avoid "column already exists" errors.
+    # The columns were originally added in migration 005.
+    pass
 
 
 def downgrade() -> None:
-    op.drop_column('listing_feature_vectors', 'updated_at')
-    op.drop_column('listing_feature_vectors', 'created_at')
-    op.drop_column('card_feature_vectors', 'updated_at')
-    op.drop_column('card_feature_vectors', 'created_at')
+    # No-op since columns are created in migration 005
+    pass
 

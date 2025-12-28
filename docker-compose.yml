@@ -1,7 +1,7 @@
 services:
-  # PostgreSQL Database
+  # TimescaleDB Database (PostgreSQL with time-series extensions)
   db:
-    image: postgres:16-alpine
+    image: timescale/timescaledb:latest-pg16
     container_name: ${COMPOSE_PROJECT_NAME:-dualcaster}-db
     restart: ${RESTART_POLICY:-always}
     environment:
@@ -20,8 +20,23 @@ services:
       retries: 5
     networks:
       - dualcaster-network
+    # TimescaleDB-optimized PostgreSQL settings
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=timescaledb"
+      - "-c"
+      - "timescaledb.telemetry_level=off"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "work_mem=16MB"
 
-  # Redis for Celery
+  # Redis for Celery, caching, and WebSocket Pub/Sub
   redis:
     image: redis:7-alpine
     container_name: ${COMPOSE_PROJECT_NAME:-dualcaster}-redis
@@ -38,6 +53,15 @@ services:
       retries: 5
     networks:
       - dualcaster-network
+    # Redis persistence and memory management
+    command:
+      - "redis-server"
+      - "--appendonly"
+      - "yes"
+      - "--maxmemory"
+      - "256mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
 
   # FastAPI Backend
   backend:

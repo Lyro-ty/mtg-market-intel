@@ -90,7 +90,7 @@ async def export_training_data(
                 snapshots_query = select(PriceSnapshot).where(
                     PriceSnapshot.card_id == card.id,
                     PriceSnapshot.price > 0
-                ).order_by(PriceSnapshot.snapshot_time.desc())
+                ).order_by(PriceSnapshot.time.desc())
                 snapshots_result = await db.execute(snapshots_query)
                 card_snapshots = snapshots_result.scalars().all()
                 
@@ -107,16 +107,18 @@ async def export_training_data(
                     
                     # Create snapshot feature vector by combining card vector with snapshot features
                     # Features: card vector + timestamp features + marketplace features
+                    # Note: PriceSnapshot uses composite PK (time, card_id, marketplace_id, condition, is_foil, language)
+                    # and doesn't have avg_price, median_price, or id columns
                     snapshot_features = np.concatenate([
                         card_vec,
                         np.array([
-                            snapshot.snapshot_time.timestamp() if snapshot.snapshot_time else 0,
+                            snapshot.time.timestamp() if snapshot.time else 0,
                             float(snapshot.price) if snapshot.price else 0,
-                            float(snapshot.price_foil) if snapshot.price_foil else 0,
-                            float(snapshot.min_price) if snapshot.min_price else 0,
-                            float(snapshot.max_price) if snapshot.max_price else 0,
-                            float(snapshot.avg_price) if snapshot.avg_price else 0,
-                            float(snapshot.median_price) if snapshot.median_price else 0,
+                            float(snapshot.price_market) if snapshot.price_market else 0,
+                            float(snapshot.price_low) if snapshot.price_low else 0,
+                            float(snapshot.price_high) if snapshot.price_high else 0,
+                            float(snapshot.price_mid) if snapshot.price_mid else 0,  # Use price_mid instead of avg_price
+                            float(snapshot.price) if snapshot.price else 0,  # Use price instead of median_price
                             int(snapshot.num_listings) if snapshot.num_listings else 0,
                             int(snapshot.total_quantity) if snapshot.total_quantity else 0,
                             snapshot.marketplace_id or 0,
@@ -131,17 +133,28 @@ async def export_training_data(
                         # For now, use current price as label
                         labels.append(float(snapshot.price) if snapshot.price else 0.0)
                     
+                    # Composite key for PriceSnapshot: (time, card_id, marketplace_id, condition, is_foil, language)
                     metadata.append({
                         "card_id": card.id,
                         "card_name": card.name,
                         "set_code": card.set_code,
-                        "snapshot_id": snapshot.id,
+                        "snapshot_key": {
+                            "time": snapshot.time.isoformat() if snapshot.time else None,
+                            "card_id": snapshot.card_id,
+                            "marketplace_id": snapshot.marketplace_id,
+                            "condition": snapshot.condition,
+                            "is_foil": snapshot.is_foil,
+                            "language": snapshot.language,
+                        },
                         "price": float(snapshot.price) if snapshot.price else 0.0,
-                        "price_foil": float(snapshot.price_foil) if snapshot.price_foil else None,
+                        "price_foil": float(snapshot.price_market) if snapshot.price_market else None,
                         "marketplace_id": snapshot.marketplace_id,
                         "marketplace_slug": marketplace.slug if marketplace else None,
-                        "snapshot_time": snapshot.snapshot_time.isoformat() if snapshot.snapshot_time else None,
+                        "snapshot_time": snapshot.time.isoformat() if snapshot.time else None,
                         "currency": snapshot.currency,
+                        "condition": snapshot.condition,
+                        "is_foil": snapshot.is_foil,
+                        "language": snapshot.language,
                     })
             
             # Convert to numpy arrays
@@ -236,7 +249,7 @@ async def _export_historical_prices(
         select(PriceSnapshot, Card)
         .join(Card, PriceSnapshot.card_id == Card.id)
         .where(PriceSnapshot.marketplace_id == mtgjson_marketplace.id)
-        .order_by(Card.id, PriceSnapshot.snapshot_time)
+        .order_by(Card.id, PriceSnapshot.time)
     )
     result = await db.execute(snapshots_query)
     snapshots = result.all()
@@ -257,10 +270,10 @@ async def _export_historical_prices(
             }
         
         price_history[card.id]["prices"].append({
-            "snapshot_time": snapshot.snapshot_time.isoformat(),
+            "snapshot_time": snapshot.time.isoformat(),
             "price": float(snapshot.price),
             "currency": snapshot.currency,
-            "price_foil": float(snapshot.price_foil) if snapshot.price_foil else None,
+            "price_foil": float(snapshot.price_market) if snapshot.price_market else None,
         })
     
     # Save as JSON

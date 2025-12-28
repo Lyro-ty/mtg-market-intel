@@ -11,7 +11,7 @@ from app.models import Card, Recommendation
 @pytest.mark.asyncio
 async def test_get_recommendations_empty(client: AsyncClient):
     """Test getting recommendations when none exist."""
-    response = await client.get("/recommendations")
+    response = await client.get("/api/recommendations")
     assert response.status_code == 200
     data = response.json()
     assert data["recommendations"] == []
@@ -48,7 +48,7 @@ async def test_get_recommendations_with_filter(client: AsyncClient, db_session: 
     await db_session.commit()
     
     # Test filter by BUY
-    response = await client.get("/recommendations?action=BUY")
+    response = await client.get("/api/recommendations?action=BUY")
     assert response.status_code == 200
     data = response.json()
     assert len(data["recommendations"]) == 1
@@ -58,6 +58,6 @@ async def test_get_recommendations_with_filter(client: AsyncClient, db_session: 
 @pytest.mark.asyncio
 async def test_get_recommendation_not_found(client: AsyncClient):
     """Test getting non-existent recommendation returns 404."""
-    response = await client.get("/recommendations/999")
+    response = await client.get("/api/recommendations/999")
     assert response.status_code == 404
 

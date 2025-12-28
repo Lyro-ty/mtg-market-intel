@@ -19,7 +19,6 @@ from app.models import (
     Card,
     MetricsCardsDaily,
     PriceSnapshot,
-    Listing,
     Marketplace,
 )
 from app.schemas.dashboard import TopCard
@@ -56,31 +55,31 @@ async def get_market_diagnostics(
     
     # Count total snapshots
     total_snapshots = await db.scalar(
-        select(func.count(PriceSnapshot.id))
+        select(func.count(PriceSnapshot.time))
     ) or 0
     
     # Count snapshots in different time ranges
     recent_7d = await db.scalar(
-        select(func.count(PriceSnapshot.id)).where(
-            PriceSnapshot.snapshot_time >= seven_days_ago
+        select(func.count(PriceSnapshot.time)).where(
+            PriceSnapshot.time >= seven_days_ago
         )
     ) or 0
     
     recent_30d = await db.scalar(
-        select(func.count(PriceSnapshot.id)).where(
-            PriceSnapshot.snapshot_time >= thirty_days_ago
+        select(func.count(PriceSnapshot.time)).where(
+            PriceSnapshot.time >= thirty_days_ago
         )
     ) or 0
     
     # Count by currency
     usd_count = await db.scalar(
-        select(func.count(PriceSnapshot.id)).where(
+        select(func.count(PriceSnapshot.time)).where(
             PriceSnapshot.currency == "USD"
         )
     ) or 0
     
     eur_count = await db.scalar(
-        select(func.count(PriceSnapshot.id)).where(
+        select(func.count(PriceSnapshot.time)).where(
             PriceSnapshot.currency == "EUR"
         )
     ) or 0
@@ -96,12 +95,12 @@ async def get_market_diagnostics(
     ) or 0
     
     # Get sample snapshot
-    sample_query = select(PriceSnapshot).order_by(PriceSnapshot.snapshot_time.desc()).limit(1)
+    sample_query = select(PriceSnapshot).order_by(PriceSnapshot.time.desc()).limit(1)
     sample_result = await db.execute(sample_query)
     sample = sample_result.scalar_one_or_none()
     
     # Get oldest and newest snapshots
-    oldest_query = select(PriceSnapshot).order_by(PriceSnapshot.snapshot_time.asc()).limit(1)
+    oldest_query = select(PriceSnapshot).order_by(PriceSnapshot.time.asc()).limit(1)
     oldest_result = await db.execute(oldest_query)
     oldest = oldest_result.scalar_one_or_none()
     
@@ -109,7 +108,7 @@ async def get_market_diagnostics(
     test_start_date = now - timedelta(days=7)
     test_bucket_seconds = 30 * 60  # 30 minutes
     test_bucket_expr = func.to_timestamp(
-        func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / test_bucket_seconds) * test_bucket_seconds
+        func.floor(func.extract('epoch', PriceSnapshot.time) / test_bucket_seconds) * test_bucket_seconds
     )
     test_query = select(
         test_bucket_expr.label("bucket_time"),
@@ -117,7 +116,7 @@ async def get_market_diagnostics(
         func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
     ).where(
         and_(
-            PriceSnapshot.snapshot_time >= test_start_date,
+            PriceSnapshot.time >= test_start_date,
             PriceSnapshot.currency == "USD",  # Chart defaults to USD
             PriceSnapshot.price.isnot(None),
             PriceSnapshot.price > 0,
@@ -129,9 +128,9 @@ async def get_market_diagnostics(
     
     # Count USD snapshots in last 7 days (what chart needs)
     usd_recent_7d = await db.scalar(
-        select(func.count(PriceSnapshot.id)).where(
+        select(func.count(PriceSnapshot.time)).where(
             and_(
-                PriceSnapshot.snapshot_time >= test_start_date,
+                PriceSnapshot.time >= test_start_date,
                 PriceSnapshot.currency == "USD",
                 PriceSnapshot.price.isnot(None),
                 PriceSnapshot.price > 0,
@@ -160,12 +159,12 @@ async def get_market_diagnostics(
             "card_id": sample.card_id if sample else None,
             "marketplace_id": sample.marketplace_id if sample else None,
             "marketplace_slug": sample_marketplace.slug if sample_marketplace else None,
-            "snapshot_time": sample.snapshot_time.isoformat() if sample else None,
+            "snapshot_time": sample.time.isoformat() if sample else None,
             "price": float(sample.price) if sample else None,
             "currency": sample.currency if sample else None,
         } if sample else None,
         "oldest_snapshot": {
-            "snapshot_time": oldest.snapshot_time.isoformat() if oldest else None,
+            "snapshot_time": oldest.time.isoformat() if oldest else None,
             "price": float(oldest.price) if oldest else None,
             "currency": oldest.currency if oldest else None,
         } if oldest else None,
@@ -214,8 +213,8 @@ async def get_market_overview(
     
     total_snapshots = await handle_database_query(
         lambda: db.scalar(
-            select(func.count(PriceSnapshot.id)).where(
-                PriceSnapshot.snapshot_time >= day_ago
+            select(func.count(PriceSnapshot.time)).where(
+                PriceSnapshot.time >= day_ago
             )
         ),
         default_value=0,
@@ -233,7 +232,7 @@ async def get_market_overview(
                     PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)
                 )
             ).where(
-                PriceSnapshot.snapshot_time >= day_ago,
+                PriceSnapshot.time >= day_ago,
                 PriceSnapshot.currency == "USD",
                 PriceSnapshot.price > 0
             )
@@ -252,7 +251,7 @@ async def get_market_overview(
                         PriceSnapshot.price * func.coalesce(PriceSnapshot.num_listings, 1)
                     )
                 ).where(
-                    PriceSnapshot.snapshot_time >= day_ago,
+                    PriceSnapshot.time >= day_ago,
                     PriceSnapshot.price > 0
                 )
             ),
@@ -366,12 +365,12 @@ async def _get_currency_index(
     # Determine which price field to use based on foil filter
     if is_foil is True:
         # Use foil prices only
-        price_field = PriceSnapshot.price_foil
-        price_condition = PriceSnapshot.price_foil.isnot(None)
+        price_field = PriceSnapshot.price_market
+        price_condition = PriceSnapshot.price_market.isnot(None)
     elif is_foil is False:
         # Exclude foil prices (only non-foil)
         price_field = PriceSnapshot.price
-        price_condition = PriceSnapshot.price_foil.is_(None)
+        price_condition = PriceSnapshot.price_market.is_(None)
     else:
         # Default: use regular prices
         price_field = PriceSnapshot.price
@@ -383,7 +382,7 @@ async def _get_currency_index(
         func.count(func.distinct(PriceSnapshot.card_id)).label("card_count"),
     ).where(
         and_(
-            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.time >= start_date,
             PriceSnapshot.currency == currency,  # Filter by currency
             price_condition,
             price_field > 0,
@@ -411,18 +410,18 @@ async def _get_currency_index(
     # Use fixed base point: average of first day's data (or first point if less than a day)
     base_date = start_date + timedelta(days=1)
     if is_foil is True:
-        base_price_field = PriceSnapshot.price_foil
-        base_condition = PriceSnapshot.price_foil.isnot(None)
+        base_price_field = PriceSnapshot.price_market
+        base_condition = PriceSnapshot.price_market.isnot(None)
     elif is_foil is False:
         base_price_field = PriceSnapshot.price
-        base_condition = PriceSnapshot.price_foil.is_(None)
+        base_condition = PriceSnapshot.price_market.is_(None)
     else:
         base_price_field = PriceSnapshot.price
         base_condition = PriceSnapshot.price.isnot(None)
     base_query = select(func.avg(base_price_field)).where(
         and_(
-            PriceSnapshot.snapshot_time >= start_date,
-            PriceSnapshot.snapshot_time < base_date,
+            PriceSnapshot.time >= start_date,
+            PriceSnapshot.time < base_date,
             PriceSnapshot.currency == currency,
             base_condition,
             base_price_field > 0,
@@ -517,18 +516,18 @@ async def get_market_index(
     
     # Create bucket expression: floor(epoch / bucket_seconds) * bucket_seconds, then convert back to timestamp
     bucket_expr = func.to_timestamp(
-        func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
+        func.floor(func.extract('epoch', PriceSnapshot.time) / bucket_seconds) * bucket_seconds
     )
     
     # Determine which price field to use based on foil filter
     if is_foil_bool is True:
         # Use foil prices only
-        price_field = PriceSnapshot.price_foil
-        price_condition = PriceSnapshot.price_foil.isnot(None)
+        price_field = PriceSnapshot.price_market
+        price_condition = PriceSnapshot.price_market.isnot(None)
     elif is_foil_bool is False:
         # Exclude foil prices (only non-foil)
         price_field = PriceSnapshot.price
-        price_condition = PriceSnapshot.price_foil.is_(None)
+        price_condition = PriceSnapshot.price_market.is_(None)
     else:
         # Default: use regular prices
         price_field = PriceSnapshot.price
@@ -536,7 +535,7 @@ async def get_market_index(
     
     # Standard query with optional currency and foil filters
     query_conditions = [
-        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.time >= start_date,
         price_condition,
         price_field > 0,
         PriceSnapshot.currency == "USD",
@@ -614,28 +613,28 @@ async def get_market_index(
         # Log diagnostic info when no data found
         # Check if there's any price snapshot data at all
         total_snapshots = await db.scalar(
-            select(func.count(PriceSnapshot.id))
+            select(func.count(PriceSnapshot.time))
         ) or 0
         
         recent_snapshots = await db.scalar(
-            select(func.count(PriceSnapshot.id)).where(
-                PriceSnapshot.snapshot_time >= start_date
+            select(func.count(PriceSnapshot.time)).where(
+                PriceSnapshot.time >= start_date
             )
         ) or 0
         
         # Check snapshots with price conditions
         price_field_name = "price_foil" if is_foil_bool is True else "price"
         if is_foil_bool is True:
-            price_condition_check = PriceSnapshot.price_foil.isnot(None)
+            price_condition_check = PriceSnapshot.price_market.isnot(None)
         elif is_foil_bool is False:
-            price_condition_check = PriceSnapshot.price_foil.is_(None)
+            price_condition_check = PriceSnapshot.price_market.is_(None)
         else:
             price_condition_check = PriceSnapshot.price.isnot(None)
         
         snapshots_with_price = await db.scalar(
-            select(func.count(PriceSnapshot.id)).where(
+            select(func.count(PriceSnapshot.time)).where(
                 and_(
-                    PriceSnapshot.snapshot_time >= start_date,
+                    PriceSnapshot.time >= start_date,
                     price_condition_check,
                 )
             )
@@ -645,9 +644,9 @@ async def get_market_index(
         currency_snapshots = recent_snapshots
         if currency:
             currency_snapshots = await db.scalar(
-                select(func.count(PriceSnapshot.id)).where(
+                select(func.count(PriceSnapshot.time)).where(
                     and_(
-                        PriceSnapshot.snapshot_time >= start_date,
+                        PriceSnapshot.time >= start_date,
                         PriceSnapshot.currency == currency,
                     )
                 )
@@ -657,16 +656,16 @@ async def get_market_index(
         currency_distribution = await db.execute(
             select(
                 PriceSnapshot.currency,
-                func.count(PriceSnapshot.id).label("count")
+                func.count(PriceSnapshot.time).label("count")
             ).where(
-                PriceSnapshot.snapshot_time >= start_date
+                PriceSnapshot.time >= start_date
             ).group_by(PriceSnapshot.currency)
         )
         available_currencies = {row.currency: row.count for row in currency_distribution.all()}
         
         # Additional diagnostic: check if there are ANY snapshots with this currency
         any_currency_snapshots = await db.scalar(
-            select(func.count(PriceSnapshot.id)).where(
+            select(func.count(PriceSnapshot.time)).where(
                 PriceSnapshot.currency == currency
             )
         ) or 0
@@ -838,10 +837,10 @@ async def get_market_index(
     
     # Calculate data freshness - find the most recent snapshot timestamp
     latest_snapshot_query = select(
-        func.max(PriceSnapshot.snapshot_time)
+        func.max(PriceSnapshot.time)
     ).where(
         and_(
-            PriceSnapshot.snapshot_time >= start_date,
+            PriceSnapshot.time >= start_date,
             price_condition,
             price_field > 0,
             PriceSnapshot.currency == currency,
@@ -1089,7 +1088,7 @@ async def get_volume_by_format(
     
     # Create bucket expression for time bucketing
     bucket_expr = func.to_timestamp(
-        func.floor(func.extract('epoch', PriceSnapshot.snapshot_time) / bucket_seconds) * bucket_seconds
+        func.floor(func.extract('epoch', PriceSnapshot.time) / bucket_seconds) * bucket_seconds
     )
     
     # Get cards with legalities and their price snapshots, grouped by time bucket
@@ -1100,7 +1099,7 @@ async def get_volume_by_format(
     ).join(
         PriceSnapshot, Card.id == PriceSnapshot.card_id
     ).where(
-        PriceSnapshot.snapshot_time >= start_date,
+        PriceSnapshot.time >= start_date,
         PriceSnapshot.price.isnot(None),
         PriceSnapshot.price > 0,
         Card.legalities.isnot(None),

@@ -25,7 +25,7 @@ RECOMMENDATIONS_FRESHNESS_HOURS = 6  # Recommendations considered fresh if < 6 h
 async def get_latest_price_snapshot_time(db: AsyncSession) -> Optional[datetime]:
     """Get the timestamp of the most recent price snapshot."""
     result = await db.scalar(
-        select(func.max(PriceSnapshot.snapshot_time))
+        select(func.max(PriceSnapshot.time))
     )
     return result
 
@@ -54,7 +54,7 @@ async def get_latest_recommendation_time(db: AsyncSession) -> Optional[datetime]
 async def get_price_snapshot_count(db: AsyncSession) -> int:
     """Get total count of price snapshots."""
     result = await db.scalar(
-        select(func.count(PriceSnapshot.id))
+        select(func.count(PriceSnapshot.time))
     )
     return result or 0
 
