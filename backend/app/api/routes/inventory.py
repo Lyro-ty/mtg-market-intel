@@ -1453,6 +1453,9 @@ async def get_inventory_top_movers(
         # Calculate data freshness
         if current_prices:
             latest_time = max(t for _, t in current_prices.values())
+            # Ensure timezone-aware comparison
+            if latest_time.tzinfo is None:
+                latest_time = latest_time.replace(tzinfo=timezone.utc)
             freshness_hours = (now - latest_time).total_seconds() / 3600
         else:
             freshness_hours = 999

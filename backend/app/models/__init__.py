@@ -9,6 +9,8 @@ The Listing model is kept for backward compatibility during migration.
 """
 import warnings
 
+# Import Listing first since Card has a relationship to it
+from app.models.listing import Listing as _Listing
 from app.models.card import Card
 from app.models.marketplace import Marketplace
 from app.models.price_snapshot import PriceSnapshot

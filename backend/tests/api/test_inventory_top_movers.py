@@ -1,7 +1,7 @@
 """
 Tests for inventory top movers endpoint.
 
-Tests the GET /api/v1/inventory/top-movers endpoint which uses direct
+Tests the GET /api/inventory/top-movers endpoint which uses direct
 price_snapshot comparison to calculate gainers and losers.
 """
 import pytest
@@ -62,14 +62,14 @@ async def auth_headers(test_user: User, client: AsyncClient) -> dict:
 
 @pytest.mark.asyncio
 class TestTopMovers:
-    """Test GET /api/v1/inventory/top-movers endpoint."""
+    """Test GET /api/inventory/top-movers endpoint."""
 
     async def test_returns_empty_for_empty_inventory(
         self, client: AsyncClient, auth_headers: dict, test_user: User
     ):
         """Should return empty lists when user has no inventory."""
         response = await client.get(
-            "/api/v1/inventory/top-movers?window=24h",
+            "/api/inventory/top-movers?window=24h",
             headers=auth_headers
         )
 
@@ -175,7 +175,7 @@ class TestTopMovers:
         await db_session.commit()
 
         response = await client.get(
-            "/api/v1/inventory/top-movers?window=24h",
+            "/api/inventory/top-movers?window=24h",
             headers=auth_headers
         )
 
@@ -249,7 +249,7 @@ class TestTopMovers:
         await db_session.commit()
 
         response = await client.get(
-            "/api/v1/inventory/top-movers?window=7d",
+            "/api/inventory/top-movers?window=7d",
             headers=auth_headers
         )
 
@@ -317,7 +317,7 @@ class TestTopMovers:
         await db_session.commit()
 
         response = await client.get(
-            "/api/v1/inventory/top-movers?window=24h",
+            "/api/inventory/top-movers?window=24h",
             headers=auth_headers
         )
 
@@ -408,7 +408,7 @@ class TestTopMovers:
         await db_session.commit()
 
         response = await client.get(
-            "/api/v1/inventory/top-movers?window=24h",
+            "/api/inventory/top-movers?window=24h",
             headers=auth_headers
         )
 
@@ -501,7 +501,7 @@ class TestTopMovers:
         await db_session.commit()
 
         response = await client.get(
-            "/api/v1/inventory/top-movers?window=24h",
+            "/api/inventory/top-movers?window=24h",
             headers=auth_headers
         )
 
