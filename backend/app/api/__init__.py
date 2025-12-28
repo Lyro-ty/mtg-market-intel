@@ -18,6 +18,8 @@ from app.api.routes import (
     search,
     oauth,
     sessions,
+    sets,
+    notifications,
 )
 
 api_router = APIRouter()
@@ -38,6 +40,8 @@ api_router.include_router(tournaments.meta_router, prefix="/meta", tags=["Meta"]
 api_router.include_router(tournaments.cards_meta_router, prefix="/cards", tags=["Cards"])
 
 api_router.include_router(search.router, prefix="/search", tags=["Search"])
+api_router.include_router(sets.router, tags=["Sets"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 
 # WebSocket route (no prefix - connects at /api/ws)
 api_router.include_router(websocket.router, tags=["WebSocket"])
