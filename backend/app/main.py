@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import api_router
@@ -158,6 +159,14 @@ app.add_middleware(
     RateLimitMiddleware,
     requests_per_minute=60,
     auth_requests_per_minute=5,
+)
+
+# Add session middleware for CSRF protection
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    same_site="lax",
+    https_only=not settings.api_debug,
 )
 
 
