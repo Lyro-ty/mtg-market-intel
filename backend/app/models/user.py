@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.inventory import InventoryItem
     from app.models.settings import AppSettings
     from app.models.session import UserSession
+    from app.models.want_list import WantListItem
 
 
 class User(Base):
@@ -72,6 +73,11 @@ class User(Base):
     )
     sessions: Mapped[list["UserSession"]] = relationship(
         "UserSession",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    want_list_items: Mapped[list["WantListItem"]] = relationship(
+        "WantListItem",
         back_populates="user",
         cascade="all, delete-orphan"
     )
