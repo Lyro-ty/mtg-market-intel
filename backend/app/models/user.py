@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.collection_stats import CollectionStats
     from app.models.inventory import InventoryItem
     from app.models.notification import Notification
     from app.models.settings import AppSettings
@@ -85,6 +86,12 @@ class User(Base):
     notifications: Mapped[list["Notification"]] = relationship(
         "Notification",
         back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    collection_stats: Mapped[Optional["CollectionStats"]] = relationship(
+        "CollectionStats",
+        back_populates="user",
+        uselist=False,
         cascade="all, delete-orphan"
     )
 

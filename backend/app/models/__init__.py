@@ -33,6 +33,7 @@ from app.models.session import UserSession
 from app.models.want_list import WantListItem
 from app.models.notification import Notification, NotificationType, NotificationPriority
 from app.models.mtg_set import MTGSet
+from app.models.collection_stats import CollectionStats
 
 
 # DEPRECATED: Listing model - use PriceSnapshot instead
@@ -126,6 +127,7 @@ __all__ = [
     "NotificationType",
     "NotificationPriority",
     "MTGSet",
+    "CollectionStats",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
     "ListingFeatureVector",  # DEPRECATED: Use CardFeatureVector
