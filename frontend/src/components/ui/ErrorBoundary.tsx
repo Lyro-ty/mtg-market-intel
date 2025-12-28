@@ -74,10 +74,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <p className="text-[rgb(var(--muted-foreground))] mb-2">
                   An unexpected error occurred. Please try refreshing the page.
                 </p>
-                {process.env.NODE_ENV === 'development' && this.state.error && (
+                {this.state.error && (
                   <details className="mb-4">
                     <summary className="text-sm text-[rgb(var(--muted-foreground))] cursor-pointer hover:underline">
-                      Error details (development only)
+                      Show error details
                     </summary>
                     <pre className="mt-2 p-3 bg-[rgb(var(--muted))] rounded text-xs overflow-auto max-h-48">
                       {this.state.error.toString()}
