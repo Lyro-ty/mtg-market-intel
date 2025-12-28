@@ -5,16 +5,16 @@ import { TopNav } from '@/components/layout/TopNav';
 import { MobileNav } from '@/components/layout/MobileNav';
 import { PageTransition } from '@/components/layout/PageTransition';
 
-// Routes where navigation should not be shown
-const fullPageRoutes = ['/login', '/register'];
-const landingPageRoute = '/';
+// Routes that have their own layout (public routes with header/footer)
+// These routes use the (public) layout group instead
+const publicRoutes = ['/', '/login', '/register'];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isFullPage = fullPageRoutes.some(route => pathname.startsWith(route));
-  const isLandingPage = pathname === landingPageRoute;
+  const isPublicRoute = publicRoutes.includes(pathname);
 
-  if (isFullPage || isLandingPage) {
+  // Public routes have their own layout with header/footer
+  if (isPublicRoute) {
     return (
       <main id="main-content" role="main">
         <PageTransition>{children}</PageTransition>
