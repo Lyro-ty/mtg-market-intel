@@ -249,3 +249,15 @@ class InventoryTopMoversResponse(BaseModel):
     gainers: list[TopMoverCard]
     losers: list[TopMoverCard]
     data_freshness_hours: float
+
+
+class InventorySummaryResponse(BaseModel):
+    """Response for inventory summary endpoint."""
+    total_items: int
+    total_quantity: int
+    total_value: float
+    total_acquisition_cost: float
+    profit_loss: float
+    profit_loss_pct: float
+    index_value: float
+    last_valued_at: Optional[str] = None
