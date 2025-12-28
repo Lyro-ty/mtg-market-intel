@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './fonts.css';
 import './globals.css';
+import '@/styles/ornate.css';
 import { Providers } from './providers';
 import { AppLayout } from '@/components/layout/AppLayout';
 
