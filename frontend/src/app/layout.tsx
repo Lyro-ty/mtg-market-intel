@@ -24,9 +24,18 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} font-sans antialiased`}>
+        {/* Skip to main content link for accessibility */}
+        <a
+          href="#main-content"
+          className="skip-link sr-only-focusable"
+        >
+          Skip to main content
+        </a>
         <Providers>
           <AppLayout>
-            {children}
+            <main id="main-content">
+              {children}
+            </main>
           </AppLayout>
         </Providers>
       </body>
