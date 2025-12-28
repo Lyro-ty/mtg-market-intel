@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Sidebar,
   SidebarContent,
@@ -30,9 +31,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <Link href={user ? '/dashboard' : '/'} className="flex items-center gap-2 px-2 py-1">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgb(var(--accent))]">
-            <span className="font-display text-sm font-bold text-white">DD</span>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Dualcaster Deals"
+            width={32}
+            height={32}
+            className="rounded-lg"
+          />
           <span className="font-heading text-lg font-semibold group-data-[collapsible=icon]:hidden">
             Dualcaster
           </span>

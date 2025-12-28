@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -11,9 +12,13 @@ export function PublicHeader() {
     <header className="border-b border-border">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgb(var(--accent))]">
-            <span className="font-display text-sm font-bold text-white">DD</span>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Dualcaster Deals"
+            width={40}
+            height={40}
+            className="rounded-lg"
+          />
           <span className="font-heading text-xl font-semibold">Dualcaster Deals</span>
         </Link>
 
