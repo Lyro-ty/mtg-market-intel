@@ -24,8 +24,9 @@ Track deprecated code, unused components, and items needing cleanup after migrat
 | `ui/Input.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/input` | **DONE** (Task 4) |
 | `ui/Badge.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/badge` | **DONE** (Task 4) |
 | `ui/Skeleton.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/skeleton` | **DONE** (Task 4) |
-| `ui/Toast.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/sonner` | Pending |
+| `ui/Toast.tsx` (old) | `frontend/src/components/ui/` | Custom ToastContext | **KEEPING** - Still in use with custom implementation |
 | `ui/Sidebar.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/sidebar` | **DONE** - Renamed to AppSidebar.tsx (Task 6) |
+| `ui/AppSidebar.tsx` (old) | `frontend/src/components/ui/` | `layout/app-sidebar.tsx` | **DONE** - Removed (2025-12-28) |
 
 ---
 
@@ -37,7 +38,7 @@ Track deprecated code, unused components, and items needing cleanup after migrat
 | `ErrorDisplay.tsx` | `frontend/src/components/ui/` | Error UI - keep |
 | `Loading.tsx` | `frontend/src/components/ui/` | Loading spinner - keep |
 | `ThemePicker.tsx` | `frontend/src/components/ui/` | Mana theme selector - keep |
-| `AppSidebar.tsx` | `frontend/src/components/ui/` | **CLEANUP** - Old sidebar, replaced by layout/app-sidebar.tsx (Task 8) |
+| ~~`AppSidebar.tsx`~~ | ~~`frontend/src/components/ui/`~~ | **REMOVED** - Replaced by layout/app-sidebar.tsx |
 
 ---
 
@@ -64,11 +65,11 @@ Track deprecated code, unused components, and items needing cleanup after migrat
 
 ## Post-Migration Cleanup Tasks
 
-- [ ] Remove old UI components after all pages migrated
+- [x] Remove old UI components after all pages migrated (2025-12-28)
 - [ ] Audit unused CSS classes in globals.css
 - [ ] Remove any unused utility functions
-- [ ] Check for orphaned imports
-- [ ] Run `npm prune` to remove unused packages
+- [x] Check for orphaned imports (2025-12-28 - fixed Badge test)
+- [x] Run `npm prune` to remove unused packages (2025-12-28 - no unused packages)
 - [ ] Run dead code detection
 
 ---
@@ -88,5 +89,13 @@ Track deprecated code, unused components, and items needing cleanup after migrat
 - Migrated composite skeletons (CardSkeleton, ChartSkeleton, etc.) to skeleton.tsx
 
 ---
+
+### 2025-12-28 - Final Cleanup
+- Removed old `AppSidebar.tsx` from `ui/` directory (replaced by `layout/app-sidebar.tsx`)
+- Fixed `Badge.test.tsx` import path from uppercase `Badge` to lowercase `badge`
+- Updated test assertions to match new shadcn badge implementation
+- Ran `npm prune` - no unused packages found
+- Verified Next.js build passes (22 static pages generated)
+- Keeping `Toast.tsx` - still in use with custom `ToastContext` implementation
 
 *Updated during Phase 2 implementation*
