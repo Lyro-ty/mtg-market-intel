@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { X, Upload, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { importInventory } from '@/lib/api';
 import type { InventoryImportResponse, InventoryCondition } from '@/types';
 

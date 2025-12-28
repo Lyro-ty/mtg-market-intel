@@ -8,8 +8,8 @@
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from './Button';
-import { Card, CardContent } from './Card';
+import { Button } from './button';
+import { Card, CardContent } from './card';
 
 interface ErrorBoundaryProps {
   children: ReactNode;

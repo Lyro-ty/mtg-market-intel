@@ -1,34 +1,25 @@
 'use client';
 
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils"
 
-interface SkeletonProps {
-  className?: string;
-  style?: React.CSSProperties;
-}
-
-/**
- * Base Skeleton component with shimmer animation
- * Used as a placeholder while content is loading
- */
-export function Skeleton({ className, style }: SkeletonProps) {
+function Skeleton({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn(
-        'animate-shimmer bg-gradient-to-r from-[rgb(var(--secondary))] via-[rgba(var(--accent),0.08)] to-[rgb(var(--secondary))] bg-[length:200%_100%] rounded',
-        className
-      )}
-      style={style}
+      className={cn("animate-pulse rounded-md bg-muted", className)}
+      {...props}
     />
-  );
+  )
 }
 
 /**
  * Card skeleton for loading card-style content
  */
-export function CardSkeleton() {
+function CardSkeleton() {
   return (
-    <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-6 space-y-4">
+    <div className="rounded-xl border border-border bg-card p-6 space-y-4">
       <Skeleton className="h-4 w-3/4" />
       <Skeleton className="h-4 w-1/2" />
       <Skeleton className="h-20 w-full" />
@@ -39,13 +30,13 @@ export function CardSkeleton() {
 /**
  * Stats skeleton for loading stats/metrics grids
  */
-export function StatsSkeleton() {
+function StatsSkeleton() {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {[...Array(4)].map((_, i) => (
         <div
           key={i}
-          className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-4 space-y-2"
+          className="rounded-xl border border-border bg-card p-4 space-y-2"
         >
           <Skeleton className="h-3 w-20" />
           <Skeleton className="h-8 w-24" />
@@ -58,11 +49,11 @@ export function StatsSkeleton() {
 /**
  * Chart skeleton for loading chart/graph placeholders
  */
-export function ChartSkeleton({ height = 'h-64' }: { height?: string }) {
+function ChartSkeleton({ height = 'h-64' }: { height?: string }) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-6',
+        'rounded-xl border border-border bg-card p-6',
         height
       )}
     >
@@ -91,9 +82,9 @@ export function ChartSkeleton({ height = 'h-64' }: { height?: string }) {
 /**
  * Table row skeleton for loading table data
  */
-export function TableRowSkeleton({ columns = 5 }: { columns?: number }) {
+function TableRowSkeleton({ columns = 5 }: { columns?: number }) {
   return (
-    <tr className="border-b border-[rgb(var(--border))]">
+    <tr className="border-b border-border">
       {[...Array(columns)].map((_, i) => (
         <td key={i} className="px-4 py-3">
           <Skeleton
@@ -111,12 +102,12 @@ export function TableRowSkeleton({ columns = 5 }: { columns?: number }) {
 /**
  * Table skeleton for loading entire tables
  */
-export function TableSkeleton({ rows = 5, columns = 5 }: { rows?: number; columns?: number }) {
+function TableSkeleton({ rows = 5, columns = 5 }: { rows?: number; columns?: number }) {
   return (
-    <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] overflow-hidden">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--secondary))]">
+          <tr className="border-b border-border bg-secondary">
             {[...Array(columns)].map((_, i) => (
               <th key={i} className="px-4 py-3 text-left">
                 <Skeleton className="h-3 w-16" />
@@ -137,9 +128,9 @@ export function TableSkeleton({ rows = 5, columns = 5 }: { rows?: number; column
 /**
  * List item skeleton for loading list items
  */
-export function ListItemSkeleton() {
+function ListItemSkeleton() {
   return (
-    <div className="flex items-center gap-4 p-4 border-b border-[rgb(var(--border))]">
+    <div className="flex items-center gap-4 p-4 border-b border-border">
       <Skeleton className="h-12 w-12 rounded-lg" />
       <div className="flex-1 space-y-2">
         <Skeleton className="h-4 w-3/4" />
@@ -153,7 +144,7 @@ export function ListItemSkeleton() {
 /**
  * Page skeleton with header and content areas
  */
-export function PageSkeleton() {
+function PageSkeleton() {
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -170,4 +161,15 @@ export function PageSkeleton() {
       </div>
     </div>
   );
+}
+
+export {
+  Skeleton,
+  CardSkeleton,
+  StatsSkeleton,
+  ChartSkeleton,
+  TableRowSkeleton,
+  TableSkeleton,
+  ListItemSkeleton,
+  PageSkeleton
 }

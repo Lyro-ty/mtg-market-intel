@@ -7,8 +7,8 @@
 
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from './Button';
-import { Card, CardContent } from './Card';
+import { Button } from './button';
+import { Card, CardContent } from './card';
 
 interface ErrorDisplayProps {
   /** Error message to display */
