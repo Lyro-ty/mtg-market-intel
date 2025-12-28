@@ -38,6 +38,7 @@ import type {
   MetaCardsListResponse,
   CardMetaResponse,
   MetaPeriod,
+  SimilarCardsResponse,
 } from '@/types';
 
 // Use /api proxy when in browser, or direct URL when server-side or in development
@@ -700,6 +701,14 @@ export async function getMetaCards(options: {
 
 export async function getCardMeta(cardId: number): Promise<CardMetaResponse> {
   return fetchApi(`/cards/${cardId}/meta`);
+}
+
+// Similar Cards API
+export async function getSimilarCards(
+  cardId: number,
+  limit: number = 8
+): Promise<SimilarCardsResponse> {
+  return fetchApi(`/search/similar/${cardId}?limit=${limit}`);
 }
 
 // Export error class for use in components

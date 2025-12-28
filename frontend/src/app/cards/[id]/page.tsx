@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { LoadingPage } from '@/components/ui/Loading';
 import { PriceChart } from '@/components/charts/PriceChart';
 import { SpreadChart } from '@/components/charts/SpreadChart';
-import { getCard, getCardHistory, refreshCard, createInventoryItem } from '@/lib/api';
+import { getCard, getCardHistory, refreshCard, createInventoryItem, getSimilarCards } from '@/lib/api';
 import { formatCurrency, formatPercent, getRarityColor } from '@/lib/utils';
 import type { InventoryCondition } from '@/types';
 
@@ -70,7 +70,7 @@ export default function CardDetailPage() {
 
   const { data: history, refetch: refetchHistory } = useQuery({
     queryKey: ['card', cardId, 'history', selectedCondition, isFoilValue],
-    queryFn: () => getCardHistory(cardId, { 
+    queryFn: () => getCardHistory(cardId, {
       days: 30,
       condition: selectedCondition || undefined,
       isFoil: isFoilValue
@@ -78,6 +78,13 @@ export default function CardDetailPage() {
     enabled: !!cardId,
     refetchInterval: 60000,  // Auto-refresh every 60 seconds for live data
     refetchIntervalInBackground: true,
+  });
+
+  const { data: similarCardsData, isLoading: loadingSimilar } = useQuery({
+    queryKey: ['card', cardId, 'similar'],
+    queryFn: () => getSimilarCards(cardId, 8),
+    enabled: !!cardId,
+    staleTime: 5 * 60 * 1000,  // Cache for 5 minutes - similar cards don't change often
   });
 
   if (isLoading) return <LoadingPage />;
@@ -474,6 +481,62 @@ export default function CardDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Similar Cards Section */}
+      <section className="mt-8">
+        <h2 className="text-xl font-bold text-[rgb(var(--foreground))] mb-4">Similar Cards</h2>
+        {loadingSimilar ? (
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {[...Array(4)].map((_, idx) => (
+              <div key={idx} className="flex-shrink-0 w-40">
+                <div className="aspect-[5/7] rounded-lg bg-[rgb(var(--secondary))] animate-pulse" />
+                <div className="h-4 mt-2 rounded bg-[rgb(var(--secondary))] animate-pulse" />
+                <div className="h-3 mt-1 rounded bg-[rgb(var(--secondary))] animate-pulse w-2/3" />
+              </div>
+            ))}
+          </div>
+        ) : similarCardsData && similarCardsData.similar_cards.length > 0 ? (
+          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-[rgb(var(--border))] scrollbar-track-transparent">
+            {similarCardsData.similar_cards.map((similarCard) => (
+              <Link key={similarCard.card_id} href={`/cards/${similarCard.card_id}`}>
+                <div className="flex-shrink-0 w-40 group cursor-pointer">
+                  <div className="relative aspect-[5/7] rounded-lg overflow-hidden bg-[rgb(var(--secondary))] shadow-md group-hover:shadow-xl transition-shadow">
+                    {similarCard.image_url ? (
+                      <Image
+                        src={similarCard.image_url}
+                        alt={similarCard.name}
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform duration-200"
+                        sizes="160px"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-[rgb(var(--muted-foreground))] text-sm">
+                        No Image
+                      </div>
+                    )}
+                    <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs font-semibold shadow">
+                      {Math.round(similarCard.similarity_score * 100)}%
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <p className="text-sm font-medium text-[rgb(var(--foreground))] truncate group-hover:text-amber-500 transition-colors">
+                      {similarCard.name}
+                    </p>
+                    <p className="text-xs text-[rgb(var(--muted-foreground))] uppercase">
+                      {similarCard.set_code}
+                    </p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[rgb(var(--muted-foreground))] text-center py-8">
+            No similar cards found
+          </p>
+        )}
+      </section>
     </div>
   );
 }
