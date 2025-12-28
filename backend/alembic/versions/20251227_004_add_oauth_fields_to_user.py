@@ -26,7 +26,7 @@ def upgrade() -> None:
     op.add_column('users', sa.Column('oauth_id', sa.String(length=255), nullable=True))
 
     # Create index for efficient OAuth lookups
-    op.create_index('ix_users_oauth', 'users', ['oauth_provider', 'oauth_id'])
+    op.create_index('ix_users_oauth', 'users', ['oauth_provider', 'oauth_id'], unique=True)
 
 
 def downgrade() -> None:
