@@ -25,7 +25,7 @@ Track deprecated code, unused components, and items needing cleanup after migrat
 | `ui/Badge.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/badge` | **DONE** (Task 4) |
 | `ui/Skeleton.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/skeleton` | **DONE** (Task 4) |
 | `ui/Toast.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/sonner` | Pending |
-| `ui/Sidebar.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/sidebar` | Pending (Task 6) |
+| `ui/Sidebar.tsx` (old) | `frontend/src/components/ui/` | `@shadcn/sidebar` | **DONE** - Renamed to AppSidebar.tsx (Task 6) |
 
 ---
 
@@ -37,6 +37,7 @@ Track deprecated code, unused components, and items needing cleanup after migrat
 | `ErrorDisplay.tsx` | `frontend/src/components/ui/` | Error UI - keep |
 | `Loading.tsx` | `frontend/src/components/ui/` | Loading spinner - keep |
 | `ThemePicker.tsx` | `frontend/src/components/ui/` | Mana theme selector - keep |
+| `AppSidebar.tsx` | `frontend/src/components/ui/` | **CLEANUP** - Old sidebar, replaced by layout/app-sidebar.tsx (Task 8) |
 
 ---
 
