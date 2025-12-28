@@ -26,7 +26,7 @@ const navigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
-export function Sidebar() {
+export function AppSidebar() {
   const pathname = usePathname();
   const { user, isAuthenticated, logout, isLoading } = useAuth();
 
