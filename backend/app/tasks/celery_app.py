@@ -24,6 +24,7 @@ celery_app = Celery(
         "app.tasks.pricing",
         "app.tasks.tournaments",
         "app.tasks.search",
+        "app.tasks.want_list_check",
     ],
 )
 
@@ -83,6 +84,13 @@ celery_app.conf.update(
             "task": "app.tasks.tournaments.ingest_recent",
             "schedule": crontab(hour=4, minute=0),  # Daily at 4 AM
         },
+
+        # Want list price check: Every 15 minutes
+        # Checks want list items and creates notifications when target prices are hit
+        "want-list-price-check": {
+            "task": "check_want_list_prices",
+            "schedule": crontab(minute="*/15"),  # Every 15 minutes
+        },
     },
 
     # Task routing
@@ -94,6 +102,7 @@ celery_app.conf.update(
         "app.tasks.pricing.*": {"queue": "ingestion"},
         "app.tasks.search.*": {"queue": "ingestion"},
         "app.tasks.tournaments.*": {"queue": "ingestion"},
+        "check_want_list_prices": {"queue": "analytics"},
     },
 
     # Default queue
