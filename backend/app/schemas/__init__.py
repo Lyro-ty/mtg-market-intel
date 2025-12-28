@@ -43,6 +43,21 @@ from app.schemas.sets import (
     MTGSetList,
     SetSearchQuery,
 )
+from app.schemas.want_list import (
+    WantListPriority,
+    CardSummary,
+    WantListItemBase,
+    WantListItemCreate,
+    WantListItemUpdate,
+    WantListItemResponse,
+    WantListListResponse,
+)
+from app.schemas.notification import (
+    NotificationResponse,
+    NotificationUpdate,
+    NotificationList,
+    UnreadCountResponse,
+)
 from app.schemas.typed_dicts import (
     # Market types
     MarketIndexPoint,
@@ -133,6 +148,14 @@ __all__ = [
     "MTGSetResponse",
     "MTGSetList",
     "SetSearchQuery",
+    # Want List schemas
+    "WantListPriority",
+    "CardSummary",
+    "WantListItemBase",
+    "WantListItemCreate",
+    "WantListItemUpdate",
+    "WantListItemResponse",
+    "WantListListResponse",
     # TypedDict schemas - Market
     "MarketIndexPoint",
     "MarketIndexResponse",
