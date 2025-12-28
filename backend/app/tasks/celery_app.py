@@ -23,6 +23,7 @@ celery_app = Celery(
         "app.tasks.recommendations",
         "app.tasks.tournament_news",
         "app.tasks.pricing",
+        "app.tasks.tournaments",
     ],
 )
 
@@ -76,6 +77,13 @@ celery_app.conf.update(
         #     "task": "app.tasks.search.refresh_embeddings",
         #     "schedule": crontab(hour=3, minute=0),  # Daily at 3 AM
         # },
+
+        # Tournament data ingestion: Daily at 4 AM
+        # Fetches recent tournament results and updates meta statistics
+        "tournaments-ingest-recent": {
+            "task": "app.tasks.tournaments.ingest_recent",
+            "schedule": crontab(hour=4, minute=0),  # Daily at 4 AM
+        },
     },
 
     # Task routing
@@ -87,6 +95,7 @@ celery_app.conf.update(
         "app.tasks.tournament_news.*": {"queue": "ingestion"},
         "app.tasks.pricing.*": {"queue": "ingestion"},
         "app.tasks.search.*": {"queue": "ingestion"},
+        "app.tasks.tournaments.*": {"queue": "ingestion"},
     },
 
     # Default queue
