@@ -646,3 +646,142 @@ export interface SimilarCardsResponse {
   similar_cards: SimilarCard[];
 }
 
+// Notification types
+export type NotificationType =
+  | 'PRICE_ALERT'
+  | 'RECOMMENDATION'
+  | 'INVENTORY'
+  | 'SYSTEM';
+
+export type NotificationPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+
+export interface Notification {
+  id: number;
+  type: NotificationType;
+  priority: NotificationPriority;
+  title: string;
+  message: string;
+  card_id?: number;
+  metadata?: Record<string, unknown>;
+  read: boolean;
+  read_at?: string;
+  created_at: string;
+}
+
+export interface NotificationList {
+  items: Notification[];
+  total: number;
+  unread_count: number;
+}
+
+export interface UnreadCount {
+  count: number;
+  by_type: Record<string, number>;
+}
+
+// Collection Stats types
+export interface CollectionStats {
+  total_cards: number;
+  total_value: number;
+  unique_cards: number;
+  sets_started: number;
+  sets_completed: number;
+  top_set_code?: string;
+  top_set_completion?: number;
+  is_stale: boolean;
+  last_calculated_at?: string;
+}
+
+export interface SetCompletion {
+  set_code: string;
+  set_name: string;
+  total_cards: number;
+  owned_cards: number;
+  completion_percentage: number;
+  icon_svg_uri?: string;
+}
+
+export interface SetCompletionList {
+  items: SetCompletion[];
+  total_sets: number;
+}
+
+export interface Milestone {
+  id: number;
+  type: string;
+  name: string;
+  description?: string;
+  threshold: number;
+  achieved_at: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MilestoneList {
+  items: Milestone[];
+  total: number;
+}
+
+// Want List types
+export type WantListPriority = 'low' | 'medium' | 'high';
+
+export interface WantListCardSummary {
+  id: number;
+  name: string;
+  set_code: string;
+  current_price?: number | null;
+}
+
+export interface WantListItem {
+  id: number;
+  user_id: number;
+  card_id: number;
+  target_price: string;
+  priority: WantListPriority;
+  alert_enabled: boolean;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  card: WantListCardSummary;
+}
+
+export interface WantListItemCreate {
+  card_id: number;
+  target_price: number;
+  priority?: WantListPriority;
+  alert_enabled?: boolean;
+  notes?: string;
+}
+
+export interface WantListItemUpdate {
+  target_price?: number;
+  priority?: WantListPriority;
+  alert_enabled?: boolean;
+  notes?: string;
+}
+
+export interface WantListListResponse {
+  items: WantListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+export interface WantListDeal {
+  id: number;
+  card_id: number;
+  card_name: string;
+  set_code: string;
+  target_price: number;
+  current_price: number;
+  savings: number;
+  savings_pct: number;
+  priority: WantListPriority;
+}
+
+export interface WantListCheckPricesResponse {
+  message: string;
+  deals: WantListDeal[];
+  checked_count: number;
+}
+

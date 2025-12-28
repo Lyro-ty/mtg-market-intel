@@ -1,10 +1,11 @@
 'use client';
 
-import { Bell, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from '@/components/layout/NotificationBell';
 import Link from 'next/link';
 
 export function SiteHeader() {
@@ -34,12 +35,7 @@ export function SiteHeader() {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
-        {user && (
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-4 w-4" />
-            <span className="sr-only">Notifications</span>
-          </Button>
-        )}
+        {user && <NotificationBell />}
         {!user && (
           <div className="flex items-center gap-2">
             <Button variant="ghost" asChild>

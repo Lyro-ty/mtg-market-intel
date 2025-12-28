@@ -39,6 +39,17 @@ import type {
   CardMetaResponse,
   MetaPeriod,
   SimilarCardsResponse,
+  NotificationList,
+  UnreadCount,
+  WantListItem,
+  WantListListResponse,
+  WantListItemCreate,
+  WantListItemUpdate,
+  WantListCheckPricesResponse,
+  WantListPriority,
+  CollectionStats,
+  SetCompletionList,
+  MilestoneList,
 } from '@/types';
 
 // Use /api proxy when in browser, or direct URL when server-side or in development
@@ -709,6 +720,124 @@ export async function getSimilarCards(
   limit: number = 8
 ): Promise<SimilarCardsResponse> {
   return fetchApi(`/search/similar/${cardId}?limit=${limit}`);
+}
+
+// Notifications API (requires authentication)
+export async function getNotifications(params?: {
+  unread_only?: boolean;
+  limit?: number;
+}): Promise<NotificationList> {
+  const searchParams = new URLSearchParams();
+  if (params?.unread_only !== undefined) {
+    searchParams.set('unread_only', String(params.unread_only));
+  }
+  if (params?.limit !== undefined) {
+    searchParams.set('limit', String(params.limit));
+  }
+  const queryString = searchParams.toString();
+  return fetchApi(`/notifications${queryString ? `?${queryString}` : ''}`, {}, true);
+}
+
+export async function getUnreadCount(): Promise<UnreadCount> {
+  return fetchApi('/notifications/unread-count', {}, true);
+}
+
+export async function markNotificationRead(id: number): Promise<void> {
+  await fetchApi(`/notifications/${id}/read`, {
+    method: 'POST',
+  }, true);
+}
+
+export async function markAllNotificationsRead(): Promise<{ marked_count: number }> {
+  return fetchApi('/notifications/mark-all-read', {
+    method: 'POST',
+  }, true);
+}
+
+export async function deleteNotification(id: number): Promise<void> {
+  await fetchApi(`/notifications/${id}`, {
+    method: 'DELETE',
+  }, true);
+}
+
+// Want List API (requires authentication)
+export async function getWantList(options: {
+  page?: number;
+  pageSize?: number;
+  priority?: WantListPriority;
+} = {}): Promise<WantListListResponse> {
+  const params = new URLSearchParams();
+
+  params.set('page', String(options.page || 1));
+  params.set('page_size', String(options.pageSize || 20));
+  if (options.priority) {
+    params.set('priority', options.priority);
+  }
+
+  return fetchApi(`/want-list?${params}`, {}, true);
+}
+
+export async function getWantListItem(id: number): Promise<WantListItem> {
+  return fetchApi(`/want-list/${id}`, {}, true);
+}
+
+export async function addToWantList(data: WantListItemCreate): Promise<WantListItem> {
+  return fetchApi('/want-list', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, true);
+}
+
+export async function updateWantListItem(
+  id: number,
+  data: WantListItemUpdate
+): Promise<WantListItem> {
+  return fetchApi(`/want-list/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }, true);
+}
+
+export async function deleteWantListItem(id: number): Promise<void> {
+  await fetchApi(`/want-list/${id}`, {
+    method: 'DELETE',
+  }, true);
+}
+
+export async function checkWantListPrices(): Promise<WantListCheckPricesResponse> {
+  return fetchApi('/want-list/check-prices', {
+    method: 'POST',
+  }, true);
+}
+
+// Collection Stats API (requires authentication)
+export async function getCollectionStats(): Promise<CollectionStats> {
+  return fetchApi('/collection/stats', {}, true);
+}
+
+export async function refreshCollectionStats(): Promise<{ status: string; message: string }> {
+  return fetchApi('/collection/stats/refresh', {
+    method: 'POST',
+  }, true);
+}
+
+export async function getSetCompletions(options: {
+  limit?: number;
+  offset?: number;
+  sortBy?: 'completion' | 'name';
+} = {}): Promise<SetCompletionList> {
+  const params = new URLSearchParams();
+
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.offset !== undefined) params.set('offset', String(options.offset));
+  if (options.sortBy) params.set('sort_by', options.sortBy);
+
+  const queryString = params.toString();
+  return fetchApi(`/collection/sets${queryString ? `?${queryString}` : ''}`, {}, true);
+}
+
+export async function getMilestones(): Promise<MilestoneList> {
+  return fetchApi('/collection/milestones', {}, true);
 }
 
 // Export error class for use in components
