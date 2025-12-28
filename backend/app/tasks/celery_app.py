@@ -1,5 +1,11 @@
 """
 Celery application configuration.
+
+Simplified pricing-focused task schedule:
+- Bulk price refresh: Every 12 hours (Scryfall bulk data)
+- Inventory price refresh: Every 4 hours (Scryfall API)
+- Condition price refresh: Every 6 hours (TCGPlayer API or multipliers)
+- Search embeddings refresh: Daily at 3 AM
 """
 from celery import Celery
 from celery.schedules import crontab
@@ -16,6 +22,7 @@ celery_app = Celery(
         "app.tasks.analytics",
         "app.tasks.recommendations",
         "app.tasks.tournament_news",
+        "app.tasks.pricing",
     ],
 )
 
@@ -27,103 +34,50 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    
+
     # Task execution settings
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-    
+
     # Result settings
     result_expires=3600,  # Results expire after 1 hour
-    
+
     # Worker settings
     worker_prefetch_multiplier=1,
     worker_concurrency=4,
-    
-    # Beat schedule for periodic tasks
+
+    # Simplified beat schedule for pricing-focused tasks
     beat_schedule={
-        # Comprehensive data seeding: Current + Historical (30d/90d/6m/1y)
-        # Runs on startup (via main.py) and every 6 hours to refresh historical data
-        "seed-comprehensive-data": {
-            "task": "app.tasks.data_seeding.seed_comprehensive_price_data",
-            "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
-            "options": {"queue": "ingestion"},
+        # Bulk price refresh: Download Scryfall bulk data every 12 hours
+        # Provides comprehensive price coverage for all cards
+        "pricing-bulk-refresh": {
+            "task": "app.tasks.pricing.bulk_refresh",
+            "schedule": crontab(hour="*/12"),  # Every 12 hours
         },
-        
-        # Aggressively collect current price data every 5 minutes (data older than 24h is stale)
-        "collect-price-data": {
-            "task": "app.tasks.ingestion.collect_price_data",
-            "schedule": crontab(minute="*/5"),  # Every 5 minutes
-            "options": {"queue": "ingestion"},
+
+        # Inventory price refresh: Update prices for inventory cards every 4 hours
+        # Uses Scryfall API for cards in user collections
+        "pricing-inventory-refresh": {
+            "task": "app.tasks.pricing.inventory_refresh",
+            "schedule": crontab(hour="*/4"),  # Every 4 hours
         },
-        
-        # Collect INVENTORY card prices every 2 minutes (highest priority)
-        "collect-inventory-prices": {
-            "task": "app.tasks.ingestion.collect_inventory_prices",
-            "schedule": crontab(minute="*/2"),  # Every 2 minutes
-            "options": {"queue": "ingestion"},
+
+        # Condition price refresh: Get condition-specific prices every 6 hours
+        # Uses TCGPlayer API for high-value cards, multipliers for cheaper ones
+        "pricing-condition-refresh": {
+            "task": "app.tasks.pricing.condition_refresh",
+            "schedule": crontab(hour="*/6"),  # Every 6 hours
         },
-        
-        # Import MTGJSON historical prices daily at 3 AM (backup/refresh)
-        "import-mtgjson-historical": {
-            "task": "app.tasks.ingestion.import_mtgjson_historical_prices",
-            "schedule": crontab(minute=0, hour=3),
-            "options": {"queue": "ingestion"},
-        },
-        
-        # Run analytics hourly
-        "run-analytics": {
-            "task": "app.tasks.analytics.run_analytics",
-            "schedule": crontab(minute=0, hour=f"*/{settings.analytics_interval_hours}"),
-            "options": {"queue": "analytics"},
-        },
-        
-        # Generate recommendations every 3 hours
-        "generate-recommendations": {
-            "task": "app.tasks.recommendations.generate_recommendations",
-            "schedule": crontab(minute=0, hour="*/3"),  # Every 3 hours
-            "options": {"queue": "recommendations"},
-        },
-        
-        # Daily card data sync at 2 AM
-        "sync-card-data": {
-            "task": "app.tasks.ingestion.sync_card_catalog",
-            "schedule": crontab(minute=0, hour=2),
-            "options": {"queue": "ingestion"},
-        },
-        
-        # Bulk vectorize all cards every evening at 11 PM
-        # This ensures all cards have pre-computed embeddings for faster recommendations
-        "bulk-vectorize-cards": {
-            "task": "app.tasks.ingestion.bulk_vectorize_cards",
-            "schedule": crontab(minute=0, hour=23),  # 11 PM UTC
-            "options": {"queue": "ingestion"},
-        },
-        
-        # Download Scryfall bulk data daily at 2 AM
-        # This provides comprehensive historical price coverage
-        "download-scryfall-bulk": {
-            "task": "app.tasks.data_seeding.download_scryfall_bulk_data_task",
-            "schedule": crontab(minute=0, hour=2),  # 2 AM UTC
-            "options": {"queue": "ingestion"},
-        },
-        
-        # Collect tournament data daily at 4 AM
-        # Tournament results provide popularity metrics for cards
-        "collect-tournament-data": {
-            "task": "app.tasks.tournament_news.collect_tournament_data",
-            "schedule": crontab(minute=0, hour=4),  # 4 AM UTC
-            "options": {"queue": "ingestion"},
-        },
-        
-        # Collect news articles every 6 hours
-        # News articles provide market signals and card mentions
-        "collect-news-data": {
-            "task": "app.tasks.tournament_news.collect_news_data",
-            "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
-            "options": {"queue": "ingestion"},
-        },
+
+        # TODO: Enable in Phase 3 when app.tasks.search module is implemented
+        # Search embeddings refresh: Update card embeddings daily at 3 AM
+        # Ensures similarity search remains accurate
+        # "search-refresh-embeddings": {
+        #     "task": "app.tasks.search.refresh_embeddings",
+        #     "schedule": crontab(hour=3, minute=0),  # Daily at 3 AM
+        # },
     },
-    
+
     # Task routing
     task_routes={
         "app.tasks.data_seeding.*": {"queue": "ingestion"},
@@ -131,8 +85,10 @@ celery_app.conf.update(
         "app.tasks.analytics.*": {"queue": "analytics"},
         "app.tasks.recommendations.*": {"queue": "recommendations"},
         "app.tasks.tournament_news.*": {"queue": "ingestion"},
+        "app.tasks.pricing.*": {"queue": "ingestion"},
+        "app.tasks.search.*": {"queue": "ingestion"},
     },
-    
+
     # Default queue
     task_default_queue="default",
 )
@@ -140,4 +96,3 @@ celery_app.conf.update(
 
 # Autodiscover tasks
 celery_app.autodiscover_tasks(["app.tasks"])
-
