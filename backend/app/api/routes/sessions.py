@@ -1,10 +1,11 @@
 """Session management endpoints."""
+from datetime import datetime, timezone
 from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
-from datetime import datetime
 
 from app.db.session import get_db
 from app.api.deps import get_current_user
@@ -24,8 +25,7 @@ class SessionResponse(BaseModel):
     last_active: datetime
     is_current: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/", response_model=List[SessionResponse])
@@ -38,7 +38,7 @@ async def list_sessions(
         select(UserSession)
         .where(UserSession.user_id == current_user.id)
         .where(UserSession.is_revoked == False)  # noqa: E712
-        .where(UserSession.expires_at > datetime.utcnow())
+        .where(UserSession.expires_at > datetime.now(timezone.utc))
         .order_by(UserSession.last_active.desc())
     )
     sessions = result.scalars().all()
@@ -84,7 +84,7 @@ async def revoke_all_sessions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Revoke all sessions except current."""
+    """Revoke all sessions for current user."""
     await db.execute(
         update(UserSession)
         .where(UserSession.user_id == current_user.id)
