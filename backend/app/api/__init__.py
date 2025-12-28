@@ -14,6 +14,7 @@ from app.api.routes import (
     inventory,
     market,
     websocket,
+    tournaments,
 )
 
 api_router = APIRouter()
@@ -28,6 +29,9 @@ api_router.include_router(settings.router, prefix="/settings", tags=["Settings"]
 api_router.include_router(marketplaces.router, prefix="/marketplaces", tags=["Marketplaces"])
 api_router.include_router(inventory.router, prefix="/inventory", tags=["Inventory"])
 api_router.include_router(market.router, prefix="/market", tags=["Market"])
+api_router.include_router(tournaments.router, prefix="/tournaments", tags=["Tournaments"])
+api_router.include_router(tournaments.meta_router, prefix="/meta", tags=["Meta"])
+api_router.include_router(tournaments.cards_meta_router, prefix="/cards", tags=["Cards"])
 
 # WebSocket route (no prefix - connects at /api/ws)
 api_router.include_router(websocket.router, tags=["WebSocket"])
