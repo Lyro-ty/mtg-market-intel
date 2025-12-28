@@ -211,22 +211,42 @@ async def process_batch(
             prices = extract_prices(card)
             if prices and card_record["scryfall_id"]:
                 if tcgplayer and prices.get("usd"):
+                    # Regular (non-foil) price
                     price_records.append({
                         "scryfall_id": card_record["scryfall_id"],
                         "marketplace_id": tcgplayer.id,
                         "price": prices["usd"],
-                        "price_foil": prices.get("usd_foil"),
+                        "is_foil": False,
                         "currency": "USD",
                     })
-                
+                    # Foil price (if available)
+                    if prices.get("usd_foil"):
+                        price_records.append({
+                            "scryfall_id": card_record["scryfall_id"],
+                            "marketplace_id": tcgplayer.id,
+                            "price": prices["usd_foil"],
+                            "is_foil": True,
+                            "currency": "USD",
+                        })
+
                 if cardmarket and prices.get("eur"):
+                    # Regular (non-foil) price
                     price_records.append({
                         "scryfall_id": card_record["scryfall_id"],
                         "marketplace_id": cardmarket.id,
                         "price": prices["eur"],
-                        "price_foil": prices.get("eur_foil"),
+                        "is_foil": False,
                         "currency": "EUR",
                     })
+                    # Foil price (if available)
+                    if prices.get("eur_foil"):
+                        price_records.append({
+                            "scryfall_id": card_record["scryfall_id"],
+                            "marketplace_id": cardmarket.id,
+                            "price": prices["eur_foil"],
+                            "is_foil": True,
+                            "currency": "EUR",
+                        })
             
             stats["cards_processed"] += 1
         
@@ -271,22 +291,29 @@ async def process_batch(
         )
         card_id_map = {row.scryfall_id: row.id for row in result}
         
-        now = datetime.utcnow()
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
         snapshot_records = []
         for pr in price_records:
             card_id = card_id_map.get(pr["scryfall_id"])
             if card_id:
                 snapshot_records.append({
+                    "time": now,
                     "card_id": card_id,
                     "marketplace_id": pr["marketplace_id"],
+                    "condition": "NEAR_MINT",
+                    "is_foil": pr.get("is_foil", False),
+                    "language": "English",
                     "price": pr["price"],
-                    "price_foil": pr.get("price_foil"),
                     "currency": pr["currency"],
-                    "snapshot_time": now,
+                    "source": "bulk",
                 })
         
         if snapshot_records:
-            await session.execute(pg_insert(PriceSnapshot).values(snapshot_records))
+            # Use on_conflict_do_nothing for the composite primary key
+            stmt = pg_insert(PriceSnapshot).values(snapshot_records)
+            stmt = stmt.on_conflict_do_nothing()
+            await session.execute(stmt)
             stats["prices_added"] += len(snapshot_records)
     
     await session.commit()
