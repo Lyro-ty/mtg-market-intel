@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Trophy, Calendar, MapPin, Users, ExternalLink, Award, TrendingUp } from 'lucide-react';
+import { Trophy, Calendar, MapPin, Users, ExternalLink, Award, TrendingUp, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -219,7 +219,7 @@ export default function TournamentDetailPage() {
                         className="text-sm text-[rgb(var(--accent))] hover:underline flex items-center gap-1 flex-shrink-0"
                       >
                         View Decklist
-                        <ExternalLink className="w-3 h-3" />
+                        <ChevronRight className="w-3 h-3" />
                       </Link>
                     )}
                   </div>
