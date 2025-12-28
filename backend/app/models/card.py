@@ -4,7 +4,7 @@ Card model representing MTG cards from canonical sources.
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, Index, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -58,7 +58,14 @@ class Card(Base):
     
     # Legality (stored as JSON)
     legalities: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    
+
+    # Semantic search fields
+    keywords: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
+    flavor_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    edhrec_rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reserved_list: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    meta_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     # Media
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     image_url_small: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
