@@ -1,0 +1,16 @@
+export { IconDashboard } from './dashboard';
+export { IconSearch } from './search';
+export { IconInventory } from './inventory';
+export { IconCollection } from './collection';
+export { IconWantList } from './want-list';
+export { IconSettings } from './settings';
+export { IconBuy } from './buy';
+export { IconSell } from './sell';
+export { IconHold } from './hold';
+export { IconPriceUp } from './price-up';
+export { IconPriceDown } from './price-down';
+export { IconImport } from './import';
+export { IconExport } from './export';
+export { IconFilter } from './filter';
+export { IconRefresh } from './refresh';
+export { IconAlert } from './alert';
