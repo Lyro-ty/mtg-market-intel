@@ -21,15 +21,15 @@ module.exports = {
   				'800': '#2635af',
   				'900': '#25338a',
   				'950': '#1a2054',
-  				DEFAULT: 'hsl(var(--primary))',
-  				foreground: 'hsl(var(--primary-foreground))'
+  				DEFAULT: 'rgb(var(--primary))',
+  				foreground: 'rgb(var(--primary-foreground))'
   			},
   			accent: {
   				gold: '#d4a748',
   				silver: '#8d99ae',
   				copper: '#b87333',
-  				DEFAULT: 'hsl(var(--accent))',
-  				foreground: 'hsl(var(--accent-foreground))'
+  				DEFAULT: 'rgb(var(--accent))',
+  				foreground: 'rgb(var(--accent-foreground))'
   			},
   			mana: {
   				white: '#f8f6d8',
@@ -38,37 +38,37 @@ module.exports = {
   				red: '#d3202a',
   				green: '#00733e'
   			},
-  			background: 'hsl(var(--background))',
-  			foreground: 'hsl(var(--foreground))',
+  			background: 'rgb(var(--background))',
+  			foreground: 'rgb(var(--foreground))',
   			card: {
-  				DEFAULT: 'hsl(var(--card))',
-  				foreground: 'hsl(var(--card-foreground))'
+  				DEFAULT: 'rgb(var(--card))',
+  				foreground: 'rgb(var(--card-foreground))'
   			},
   			popover: {
-  				DEFAULT: 'hsl(var(--popover))',
-  				foreground: 'hsl(var(--popover-foreground))'
+  				DEFAULT: 'rgb(var(--popover))',
+  				foreground: 'rgb(var(--popover-foreground))'
   			},
   			secondary: {
-  				DEFAULT: 'hsl(var(--secondary))',
-  				foreground: 'hsl(var(--secondary-foreground))'
+  				DEFAULT: 'rgb(var(--secondary))',
+  				foreground: 'rgb(var(--secondary-foreground))'
   			},
   			muted: {
-  				DEFAULT: 'hsl(var(--muted))',
-  				foreground: 'hsl(var(--muted-foreground))'
+  				DEFAULT: 'rgb(var(--muted))',
+  				foreground: 'rgb(var(--muted-foreground))'
   			},
   			destructive: {
-  				DEFAULT: 'hsl(var(--destructive))',
-  				foreground: 'hsl(var(--destructive-foreground))'
+  				DEFAULT: 'rgb(var(--destructive))',
+  				foreground: 'rgb(var(--destructive-foreground))'
   			},
-  			border: 'hsl(var(--border))',
-  			input: 'hsl(var(--input))',
-  			ring: 'hsl(var(--ring))',
+  			border: 'rgb(var(--border))',
+  			input: 'rgb(var(--input))',
+  			ring: 'rgb(var(--ring))',
   			chart: {
-  				'1': 'hsl(var(--chart-1))',
-  				'2': 'hsl(var(--chart-2))',
-  				'3': 'hsl(var(--chart-3))',
-  				'4': 'hsl(var(--chart-4))',
-  				'5': 'hsl(var(--chart-5))'
+  				'1': 'rgb(var(--chart-1))',
+  				'2': 'rgb(var(--chart-2))',
+  				'3': 'rgb(var(--chart-3))',
+  				'4': 'rgb(var(--chart-4))',
+  				'5': 'rgb(var(--chart-5))'
   			}
   		},
   		fontFamily: {
