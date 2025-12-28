@@ -44,7 +44,7 @@ async def register(
     
     - **email**: Valid email address (must be unique)
     - **username**: 3-50 characters, alphanumeric with underscores/hyphens (must be unique)
-    - **password**: Minimum 8 characters with uppercase, lowercase, and digit
+    - **password**: Minimum 12 characters with uppercase, lowercase, digit, and special character
     - **display_name**: Optional display name
     """
     # Check if email already exists
@@ -168,7 +168,15 @@ async def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect",
         )
-    
+
+    # Validate new password strength
+    is_valid, error_msg = validate_password_strength(password_data.new_password)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    if is_common_password(password_data.new_password):
+        raise HTTPException(status_code=400, detail="Password is too common. Please choose a more secure password.")
+
     await update_password(db, current_user, password_data.new_password)
     
     return {"message": "Password updated successfully"}
