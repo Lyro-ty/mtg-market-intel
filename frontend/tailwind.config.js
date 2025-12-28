@@ -69,16 +69,35 @@ module.exports = {
   				'3': 'rgb(var(--chart-3))',
   				'4': 'rgb(var(--chart-4))',
   				'5': 'rgb(var(--chart-5))'
+  			},
+  			sidebar: {
+  				DEFAULT: 'hsl(var(--sidebar-background))',
+  				foreground: 'hsl(var(--sidebar-foreground))',
+  				primary: 'hsl(var(--sidebar-primary))',
+  				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
+  				accent: 'hsl(var(--sidebar-accent))',
+  				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
+  				border: 'hsl(var(--sidebar-border))',
+  				ring: 'hsl(var(--sidebar-ring))'
   			}
   		},
   		fontFamily: {
-  			display: ['Cinzel Decorative', 'serif'],
-  			heading: ['Cinzel', 'serif'],
-  			sans: ['Inter', 'sans-serif'],
+  			display: [
+  				'Cinzel Decorative',
+  				'serif'
+  			],
+  			heading: [
+  				'Cinzel',
+  				'serif'
+  			],
+  			sans: [
+  				'Inter',
+  				'sans-serif'
+  			],
   			mono: [
   				'var(--font-geist-mono)',
   				'monospace'
-  			],
+  			]
   		},
   		animation: {
   			'fade-in': 'fadeIn 0.3s ease-in-out',
