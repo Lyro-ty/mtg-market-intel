@@ -203,7 +203,6 @@ class TestCeleryBeatSchedule:
         assert "pricing-condition-refresh" in schedule
         assert schedule["pricing-condition-refresh"]["task"] == "app.tasks.pricing.condition_refresh"
 
-    @pytest.mark.skip(reason="search-refresh-embeddings is disabled until Phase 3 when app.tasks.search is implemented")
     def test_search_refresh_embeddings_scheduled(self):
         """Verify search embedding refresh is in schedule."""
         from app.tasks.celery_app import celery_app

@@ -23,6 +23,7 @@ celery_app = Celery(
         "app.tasks.recommendations",
         "app.tasks.pricing",
         "app.tasks.tournaments",
+        "app.tasks.search",
     ],
 )
 
@@ -69,13 +70,12 @@ celery_app.conf.update(
             "schedule": crontab(hour="*/6"),  # Every 6 hours
         },
 
-        # TODO: Enable in Phase 3 when app.tasks.search module is implemented
         # Search embeddings refresh: Update card embeddings daily at 3 AM
         # Ensures similarity search remains accurate
-        # "search-refresh-embeddings": {
-        #     "task": "app.tasks.search.refresh_embeddings",
-        #     "schedule": crontab(hour=3, minute=0),  # Daily at 3 AM
-        # },
+        "search-refresh-embeddings": {
+            "task": "app.tasks.search.refresh_embeddings",
+            "schedule": crontab(hour=3, minute=0),  # Daily at 3 AM
+        },
 
         # Tournament data ingestion: Daily at 4 AM
         # Fetches recent tournament results and updates meta statistics
