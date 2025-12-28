@@ -15,6 +15,7 @@ from app.api.routes import (
     market,
     websocket,
     tournaments,
+    oauth,
 )
 
 api_router = APIRouter()
@@ -22,6 +23,7 @@ api_router = APIRouter()
 # Include all route modules
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(oauth.router, prefix="/auth", tags=["OAuth"])
 api_router.include_router(cards.router, prefix="/cards", tags=["Cards"])
 api_router.include_router(recommendations.router, prefix="/recommendations", tags=["Recommendations"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
