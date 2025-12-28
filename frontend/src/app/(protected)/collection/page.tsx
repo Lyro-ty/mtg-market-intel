@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Package,
   LayoutGrid,
@@ -11,53 +11,47 @@ import {
   CheckCircle,
   Circle,
   Layers,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ornate/page-header';
-import { getInventory } from '@/lib/api';
+import {
+  getInventory,
+  getCollectionStats,
+  refreshCollectionStats,
+  getSetCompletions,
+  getMilestones,
+} from '@/lib/api';
 import { formatCurrency, cn } from '@/lib/utils';
+import type { SetCompletion, Milestone, CollectionStats } from '@/types';
 
 type TabType = 'sets' | 'binder' | 'stats';
 
-// Mock data for set completion (until backend API exists)
-const mockSetProgress = [
-  { code: 'OTJ', name: 'Outlaws of Thunder Junction', owned: 187, total: 276, value: 142.50 },
-  { code: 'MKM', name: 'Murders at Karlov Manor', owned: 156, total: 302, value: 98.75 },
-  { code: 'LCI', name: 'The Lost Caverns of Ixalan', owned: 203, total: 291, value: 187.30 },
-  { code: 'WOE', name: 'Wilds of Eldraine', owned: 178, total: 266, value: 134.20 },
-  { code: 'MOM', name: "March of the Machine", owned: 234, total: 381, value: 245.80 },
-  { code: 'ONE', name: 'Phyrexia: All Will Be One', owned: 201, total: 271, value: 167.40 },
-];
-
-const mockMilestones = [
-  { title: 'First Rare', description: 'Collected your first rare card', achieved: true, date: '2024-01-15' },
-  { title: 'Set Starter', description: 'Own 50% of any set', achieved: true, date: '2024-02-20' },
-  { title: 'Mythic Hunter', description: 'Collect 10 mythic rares', achieved: true, date: '2024-03-10' },
-  { title: 'Complete Set', description: 'Own 100% of any set', achieved: false },
-  { title: 'Value Collector', description: 'Portfolio value exceeds $1,000', achieved: false },
-];
-
-function SetProgressCard({ set }: { set: typeof mockSetProgress[0] }) {
-  const completionPct = Math.round((set.owned / set.total) * 100);
+function SetProgressCard({ set }: { set: SetCompletion }) {
+  const completionPct = Math.round(set.completion_percentage);
 
   return (
     <Card className="glow-accent hover:border-[rgb(var(--accent))]/30 transition-colors">
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
-          <div>
-            <Badge variant="outline" className="mb-1 text-xs">
-              {set.code}
-            </Badge>
-            <h3 className="font-heading text-foreground font-medium">{set.name}</h3>
-          </div>
-          <div className="text-right">
-            <p className="text-lg font-bold text-[rgb(var(--success))]">
-              {formatCurrency(set.value)}
-            </p>
-            <p className="text-xs text-muted-foreground">set value</p>
+          <div className="flex items-center gap-2">
+            {set.icon_svg_uri && (
+              <img
+                src={set.icon_svg_uri}
+                alt={set.set_code}
+                className="w-6 h-6 opacity-80"
+              />
+            )}
+            <div>
+              <Badge variant="outline" className="mb-1 text-xs">
+                {set.set_code.toUpperCase()}
+              </Badge>
+              <h3 className="font-heading text-foreground font-medium">{set.set_name}</h3>
+            </div>
           </div>
         </div>
 
@@ -65,7 +59,7 @@ function SetProgressCard({ set }: { set: typeof mockSetProgress[0] }) {
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">
-              {set.owned} / {set.total} cards
+              {set.owned_cards} / {set.total_cards} cards
             </span>
             <span className={cn(
               'font-medium',
@@ -85,6 +79,79 @@ function SetProgressCard({ set }: { set: typeof mockSetProgress[0] }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function SetProgressSkeleton() {
+  return (
+    <Card className="glow-accent">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <Skeleton className="h-5 w-12 mb-1" />
+            <Skeleton className="h-5 w-40" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-8" />
+          </div>
+          <Skeleton className="h-2 w-full" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SetsView() {
+  const { data: setCompletions, isLoading, error } = useQuery({
+    queryKey: ['setCompletions'],
+    queryFn: () => getSetCompletions({ limit: 50, sortBy: 'completion' }),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <SetProgressSkeleton key={i} />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="glow-accent">
+        <CardContent className="py-12 text-center">
+          <AlertCircle className="w-12 h-12 mx-auto text-[rgb(var(--warning))] mb-4" />
+          <p className="text-muted-foreground">
+            Failed to load set completion data. Please try again later.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!setCompletions || setCompletions.items.length === 0) {
+    return (
+      <Card className="glow-accent">
+        <CardContent className="py-12 text-center">
+          <Package className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">
+            No sets in your collection yet. Import cards to see set completion progress.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {setCompletions.items.map((set) => (
+        <SetProgressCard key={set.set_code} set={set} />
+      ))}
+    </div>
   );
 }
 
@@ -150,33 +217,74 @@ function BinderView() {
   );
 }
 
-function StatsView() {
+function MilestoneItem({ milestone }: { milestone: Milestone }) {
+  const formattedDate = new Date(milestone.achieved_at).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg bg-[rgb(var(--success))]/10 border border-[rgb(var(--success))]/20">
+      <CheckCircle className="w-5 h-5 text-[rgb(var(--success))] shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-foreground">{milestone.name}</p>
+        {milestone.description && (
+          <p className="text-sm text-muted-foreground">{milestone.description}</p>
+        )}
+      </div>
+      <Badge variant="outline" className="shrink-0">
+        {formattedDate}
+      </Badge>
+    </div>
+  );
+}
+
+function StatsView({ stats }: { stats: CollectionStats | undefined }) {
+  const { data: milestones, isLoading: milestonesLoading } = useQuery({
+    queryKey: ['milestones'],
+    queryFn: getMilestones,
+  });
+
+  // Calculate average completion if we have sets data
+  const avgCompletion = stats?.top_set_completion
+    ? Math.round(Number(stats.top_set_completion))
+    : 0;
+
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="glow-accent">
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-foreground">1,159</p>
+            <p className="text-3xl font-bold text-foreground">
+              {stats?.total_cards.toLocaleString() ?? '-'}
+            </p>
             <p className="text-sm text-muted-foreground">Total Cards</p>
           </CardContent>
         </Card>
         <Card className="glow-accent">
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-foreground">6</p>
+            <p className="text-3xl font-bold text-foreground">
+              {stats?.sets_started ?? '-'}
+            </p>
             <p className="text-sm text-muted-foreground">Sets Started</p>
           </CardContent>
         </Card>
         <Card className="glow-accent">
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-[rgb(var(--success))]">$975.95</p>
+            <p className="text-3xl font-bold text-[rgb(var(--success))]">
+              {stats ? formatCurrency(Number(stats.total_value)) : '-'}
+            </p>
             <p className="text-sm text-muted-foreground">Total Value</p>
           </CardContent>
         </Card>
         <Card className="glow-accent">
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-[rgb(var(--accent))]">61%</p>
-            <p className="text-sm text-muted-foreground">Avg Completion</p>
+            <p className="text-3xl font-bold text-[rgb(var(--accent))]">
+              {stats?.sets_completed ?? 0}
+            </p>
+            <p className="text-sm text-muted-foreground">Sets Completed</p>
           </CardContent>
         </Card>
       </div>
@@ -190,72 +298,59 @@ function StatsView() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {mockMilestones.map((milestone, i) => (
-              <div
-                key={i}
-                className={cn(
-                  'flex items-center gap-3 p-3 rounded-lg',
-                  milestone.achieved
-                    ? 'bg-[rgb(var(--success))]/10 border border-[rgb(var(--success))]/20'
-                    : 'bg-secondary/50'
-                )}
-              >
-                {milestone.achieved ? (
-                  <CheckCircle className="w-5 h-5 text-[rgb(var(--success))] shrink-0" />
-                ) : (
-                  <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className={cn(
-                    'font-medium',
-                    milestone.achieved ? 'text-foreground' : 'text-muted-foreground'
-                  )}>
-                    {milestone.title}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{milestone.description}</p>
-                </div>
-                {milestone.achieved && milestone.date && (
-                  <Badge variant="outline" className="shrink-0">
-                    {milestone.date}
-                  </Badge>
-                )}
-              </div>
-            ))}
-          </div>
+          {milestonesLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : milestones && milestones.items.length > 0 ? (
+            <div className="space-y-3">
+              {milestones.items.map((milestone) => (
+                <MilestoneItem key={milestone.id} milestone={milestone} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Circle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                No milestones achieved yet. Keep collecting!
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Rarity Distribution */}
+      {/* Additional Stats */}
       <Card className="glow-accent">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-[rgb(var(--accent))]" />
-            Rarity Distribution
+            Collection Summary
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {[
-              { rarity: 'Mythic Rare', count: 47, color: 'mythic-orange' },
-              { rarity: 'Rare', count: 234, color: 'magic-gold' },
-              { rarity: 'Uncommon', count: 412, color: 'silver' },
-              { rarity: 'Common', count: 466, color: 'border' },
-            ].map(({ rarity, count, color }) => (
-              <div key={rarity} className="flex items-center gap-3">
-                <span className="w-24 text-sm text-muted-foreground">{rarity}</span>
-                <div className="flex-1 h-6 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${(count / 466) * 100}%`,
-                      backgroundColor: `rgb(var(--${color}))`,
-                    }}
-                  />
-                </div>
-                <span className="w-12 text-sm text-foreground text-right">{count}</span>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
+              <span className="text-muted-foreground">Unique Cards</span>
+              <span className="font-medium text-foreground">
+                {stats?.unique_cards.toLocaleString() ?? '-'}
+              </span>
+            </div>
+            {stats?.top_set_code && (
+              <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
+                <span className="text-muted-foreground">Top Set</span>
+                <span className="font-medium text-foreground">
+                  {stats.top_set_code.toUpperCase()} ({avgCompletion}%)
+                </span>
               </div>
-            ))}
+            )}
+            <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
+              <span className="text-muted-foreground">Sets Completed</span>
+              <span className="font-medium text-[rgb(var(--success))]">
+                {stats?.sets_completed ?? 0}
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -265,6 +360,24 @@ function StatsView() {
 
 export default function CollectionPage() {
   const [activeTab, setActiveTab] = useState<TabType>('sets');
+  const queryClient = useQueryClient();
+
+  // Fetch collection stats
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
+    queryKey: ['collectionStats'],
+    queryFn: getCollectionStats,
+  });
+
+  // Refresh mutation
+  const refreshMutation = useMutation({
+    mutationFn: refreshCollectionStats,
+    onSuccess: () => {
+      // Invalidate all collection-related queries
+      queryClient.invalidateQueries({ queryKey: ['collectionStats'] });
+      queryClient.invalidateQueries({ queryKey: ['setCompletions'] });
+      queryClient.invalidateQueries({ queryKey: ['milestones'] });
+    },
+  });
 
   const tabs = [
     { id: 'sets' as const, label: 'Set Progress', icon: Package },
@@ -278,11 +391,52 @@ export default function CollectionPage() {
         title="My Collection"
         subtitle="Track your set completion and collection milestones"
       >
-        <Button variant="secondary" size="sm" className="glow-accent">
-          <TrendingUp className="w-4 h-4 mr-1" />
-          Value History
-        </Button>
+        <div className="flex items-center gap-2">
+          {stats?.is_stale && (
+            <Badge variant="outline" className="text-[rgb(var(--warning))]">
+              Updating...
+            </Badge>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            className="glow-accent"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+          >
+            <RefreshCw className={cn(
+              "w-4 h-4 mr-1",
+              refreshMutation.isPending && "animate-spin"
+            )} />
+            Refresh Stats
+          </Button>
+          <Button variant="secondary" size="sm" className="glow-accent">
+            <TrendingUp className="w-4 h-4 mr-1" />
+            Value History
+          </Button>
+        </div>
       </PageHeader>
+
+      {/* Stats Overview Bar */}
+      {!statsLoading && stats && (
+        <div className="flex items-center gap-4 text-sm text-muted-foreground bg-secondary/30 rounded-lg p-3">
+          <span>
+            <strong className="text-foreground">{stats.total_cards.toLocaleString()}</strong> cards
+          </span>
+          <span className="text-border">|</span>
+          <span>
+            <strong className="text-foreground">{stats.unique_cards.toLocaleString()}</strong> unique
+          </span>
+          <span className="text-border">|</span>
+          <span>
+            <strong className="text-[rgb(var(--success))]">{formatCurrency(Number(stats.total_value))}</strong> value
+          </span>
+          <span className="text-border">|</span>
+          <span>
+            <strong className="text-foreground">{stats.sets_started}</strong> sets started
+          </span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border">
@@ -307,17 +461,11 @@ export default function CollectionPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'sets' && (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mockSetProgress.map((set) => (
-            <SetProgressCard key={set.code} set={set} />
-          ))}
-        </div>
-      )}
+      {activeTab === 'sets' && <SetsView />}
 
       {activeTab === 'binder' && <BinderView />}
 
-      {activeTab === 'stats' && <StatsView />}
+      {activeTab === 'stats' && <StatsView stats={stats} />}
     </div>
   );
 }
