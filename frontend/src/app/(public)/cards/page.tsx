@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/ornate/page-header';
 import { RarityBadge } from '@/components/ornate/rarity-badge';
-import { SearchAutocomplete } from '@/components/search/SearchAutocomplete';
 import { formatCurrency } from '@/lib/utils';
 import type { Card as CardType } from '@/types';
 import type { CardRarity } from '@/components/ornate/ornate-card';
@@ -210,22 +209,6 @@ function CardsPageContent() {
             </div>
 
             {/* Search Input */}
-            <div className="flex-1">
-              <SearchAutocomplete
-                placeholder={searchMode === 'semantic'
-                  ? "Describe what you're looking for... (e.g., 'cards that draw cards and gain life')"
-                  : "Search by card name..."
-                }
-                onSelect={(card) => {
-                  router.push(`/cards/${card.id}`);
-                }}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          {/* Manual Search Input for query-based search */}
-          <div className="flex gap-2">
             <div className="relative flex-1">
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground z-10" />
               <Input
@@ -233,7 +216,7 @@ function CardsPageContent() {
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setPage(1); }}
                 placeholder={searchMode === 'semantic'
-                  ? "Search by concept or description..."
+                  ? "Describe what you're looking for... (e.g., 'cards that draw cards')"
                   : "Search by card name..."
                 }
                 className="pl-10 pr-10"
