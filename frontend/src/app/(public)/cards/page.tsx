@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Search as SearchIcon, Sparkles, Type, ChevronDown, ChevronUp, X } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -97,10 +98,13 @@ function CardsPageContent() {
     initialColors.length > 0 || initialType !== '' || initialCmcMin !== undefined || initialCmcMax !== undefined
   );
 
-  // Update URL when state changes
+  // Debounce search query for better performance (300ms delay)
+  const debouncedQuery = useDebouncedValue(query, 300);
+
+  // Update URL when state changes (use debounced query for URL)
   useEffect(() => {
     const params = new URLSearchParams();
-    if (query) params.set('q', query);
+    if (debouncedQuery) params.set('q', debouncedQuery);
     if (page > 1) params.set('page', String(page));
     if (searchMode !== 'semantic') params.set('mode', searchMode);
     if (selectedColors.length > 0) params.set('colors', selectedColors.join(','));
@@ -110,12 +114,12 @@ function CardsPageContent() {
 
     const search = params.toString();
     router.replace(`/cards${search ? `?${search}` : ''}`, { scroll: false });
-  }, [query, page, searchMode, selectedColors, cardType, cmcMin, cmcMax, router]);
+  }, [debouncedQuery, page, searchMode, selectedColors, cardType, cmcMin, cmcMax, router]);
 
-  // Fetch cards using the new search API
+  // Fetch cards using the search API
   const fetchCards = useCallback(async (): Promise<SearchResponse> => {
     const params = new URLSearchParams();
-    params.set('q', query || '*');
+    params.set('q', debouncedQuery || '*');
     params.set('mode', searchMode);
     params.set('page', String(page));
     params.set('page_size', '20');
@@ -138,13 +142,40 @@ function CardsPageContent() {
       throw new Error(`Search failed: ${response.statusText}`);
     }
     return response.json();
-  }, [query, searchMode, page, selectedColors, cardType, cmcMin, cmcMax]);
+  }, [debouncedQuery, searchMode, page, selectedColors, cardType, cmcMin, cmcMax]);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['cards', 'search', query, searchMode, page, selectedColors, cardType, cmcMin, cmcMax],
+  const { data, isLoading, error, isFetching } = useQuery({
+    queryKey: ['cards', 'search', debouncedQuery, searchMode, page, selectedColors, cardType, cmcMin, cmcMax],
     queryFn: fetchCards,
     enabled: true,
+    staleTime: 60000, // Cache results for 1 minute
+    gcTime: 300000, // Keep in cache for 5 minutes
+    placeholderData: (previousData) => previousData, // Keep showing old data while fetching
   });
+
+  // Prefetch next page when data loads for faster pagination
+  useEffect(() => {
+    if (data?.has_more) {
+      const nextPageParams = new URLSearchParams();
+      nextPageParams.set('q', debouncedQuery || '*');
+      nextPageParams.set('mode', searchMode);
+      nextPageParams.set('page', String(page + 1));
+      nextPageParams.set('page_size', '20');
+      if (selectedColors.length > 0) nextPageParams.set('colors', selectedColors.join(','));
+      if (cardType) nextPageParams.set('card_type', cardType);
+      if (cmcMin !== undefined) nextPageParams.set('cmc_min', String(cmcMin));
+      if (cmcMax !== undefined) nextPageParams.set('cmc_max', String(cmcMax));
+
+      queryClient.prefetchQuery({
+        queryKey: ['cards', 'search', debouncedQuery, searchMode, page + 1, selectedColors, cardType, cmcMin, cmcMax],
+        queryFn: async () => {
+          const response = await fetch(`/api/search?${nextPageParams.toString()}`);
+          return response.json();
+        },
+        staleTime: 60000,
+      });
+    }
+  }, [data?.has_more, debouncedQuery, searchMode, page, selectedColors, cardType, cmcMin, cmcMax, queryClient]);
 
   // Toggle color selection
   const toggleColor = (colorCode: string) => {
@@ -344,7 +375,7 @@ function CardsPageContent() {
         <ErrorDisplay
           message={error instanceof Error ? error.message : 'Failed to search cards'}
           status={error instanceof Error && 'status' in error ? (error as { status: number }).status : undefined}
-          onRetry={() => queryClient.invalidateQueries({ queryKey: ['cards', 'search', query, searchMode, page, selectedColors, cardType, cmcMin, cmcMax] })}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ['cards', 'search', debouncedQuery, searchMode, page, selectedColors, cardType, cmcMin, cmcMax] })}
         />
       ) : (data?.results?.length ?? 0) === 0 ? (
         <Card>
@@ -362,11 +393,17 @@ function CardsPageContent() {
         </Card>
       ) : (
         <>
-          {/* Results count */}
+          {/* Results count with background fetch indicator */}
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
               Found {data?.total || 0} cards
               {searchMode === 'semantic' && ' (sorted by relevance)'}
+              {isFetching && !isLoading && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-[rgb(var(--accent))]">
+                  <div className="w-2 h-2 rounded-full bg-[rgb(var(--accent))] animate-pulse" />
+                  Updating...
+                </span>
+              )}
             </p>
           </div>
 

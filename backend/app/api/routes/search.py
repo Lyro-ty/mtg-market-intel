@@ -82,6 +82,11 @@ async def search_cards(
         "rarity": rarity,
     }
 
+    # Wildcard '*' means "browse all" - always use text mode for proper pagination
+    if q == "*":
+        mode = "text"
+        q = ""  # Empty string for ILIKE will match all
+
     if mode == "semantic":
         service = get_semantic_service()
         # Get more results than needed for filtering
