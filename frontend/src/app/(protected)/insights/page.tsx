@@ -1,141 +1,65 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Lightbulb,
   Bell,
-  TrendingUp,
-  TrendingDown,
   AlertTriangle,
-  Zap,
-  BookOpen,
-  Filter,
   Eye,
   EyeOff,
   ChevronRight,
   Clock,
-  DollarSign,
   Target,
+  BookOpen,
+  TrendingUp,
+  TrendingDown,
+  Trophy,
+  Loader2,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ornate/page-header';
 import { PriceChange } from '@/components/ornate/price-change';
 import { formatCurrency, cn } from '@/lib/utils';
+import { getNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/api';
+import type { Notification, NotificationType, NotificationPriority } from '@/types';
+import { formatDistanceToNow } from 'date-fns';
 
-type InsightType = 'alert' | 'opportunity' | 'educational';
-type InsightPriority = 'critical' | 'high' | 'medium' | 'low';
+// Map notification types to insight categories
+type InsightCategory = 'alert' | 'opportunity' | 'educational';
 
-interface Insight {
-  id: number;
-  type: InsightType;
-  priority: InsightPriority;
-  title: string;
-  description: string;
-  cardName?: string;
-  setCode?: string;
-  currentPrice?: number;
-  priceChange?: number;
-  action?: string;
-  timestamp: string;
-  read: boolean;
+function getInsightCategory(type: NotificationType): InsightCategory {
+  switch (type) {
+    case 'price_spike':
+    case 'price_drop':
+      return 'alert';
+    case 'price_alert':
+    case 'milestone':
+      return 'opportunity';
+    case 'educational':
+    case 'system':
+    default:
+      return 'educational';
+  }
 }
 
-// Mock insights data
-const mockInsights: Insight[] = [
-  {
-    id: 1,
-    type: 'alert',
-    priority: 'critical',
-    title: 'Significant Price Drop Detected',
-    description: 'Force of Will has dropped 15% in the last 24 hours. Consider selling if this is in your inventory.',
-    cardName: 'Force of Will',
-    setCode: 'ALL',
-    currentPrice: 76.50,
-    priceChange: -15.2,
-    action: 'Review Position',
-    timestamp: '2 hours ago',
-    read: false,
-  },
-  {
-    id: 2,
-    type: 'opportunity',
-    priority: 'high',
-    title: 'Buy Window Opening',
-    description: 'Ragavan has reached your target price of $45. This may be a good time to acquire.',
-    cardName: 'Ragavan, Nimble Pilferer',
-    setCode: 'MH2',
-    currentPrice: 44.99,
-    priceChange: -8.5,
-    action: 'Buy on TCGPlayer',
-    timestamp: '4 hours ago',
-    read: false,
-  },
-  {
-    id: 3,
-    type: 'alert',
-    priority: 'high',
-    title: 'Portfolio Alert: Spike Detected',
-    description: 'The One Ring in your inventory spiked 22% following Modern tournament results.',
-    cardName: 'The One Ring',
-    setCode: 'LTR',
-    currentPrice: 82.50,
-    priceChange: 22.3,
-    action: 'Consider Selling',
-    timestamp: '6 hours ago',
-    read: true,
-  },
-  {
-    id: 4,
-    type: 'opportunity',
-    priority: 'medium',
-    title: 'Undervalued Card Alert',
-    description: 'Seasoned Dungeoneer is seeing increased Commander play but price hasn\'t moved yet.',
-    cardName: 'Seasoned Dungeoneer',
-    setCode: 'CLB',
-    currentPrice: 12.50,
-    priceChange: 0.5,
-    action: 'Add to Watch List',
-    timestamp: '1 day ago',
-    read: true,
-  },
-  {
-    id: 5,
-    type: 'educational',
-    priority: 'low',
-    title: 'Market Insight: Standard Rotation',
-    description: 'Standard rotation is approaching in 3 months. Consider reviewing cards rotating out of your portfolio.',
-    action: 'Learn More',
-    timestamp: '2 days ago',
-    read: true,
-  },
-  {
-    id: 6,
-    type: 'educational',
-    priority: 'low',
-    title: 'Tip: Optimize Your Collection',
-    description: 'You have 12 cards worth under $1 each. Consider trading up to consolidate value.',
-    action: 'View Suggestions',
-    timestamp: '3 days ago',
-    read: true,
-  },
-];
-
-const typeIcons = {
+const categoryIcons = {
   alert: AlertTriangle,
   opportunity: Target,
   educational: BookOpen,
 };
 
-const typeColors = {
+const categoryColors = {
   alert: 'text-[rgb(var(--destructive))]',
   opportunity: 'text-[rgb(var(--success))]',
   educational: 'text-[rgb(var(--accent))]',
 };
 
-const priorityStyles = {
-  critical: {
+const priorityStyles: Record<NotificationPriority, { badge: string; border: string }> = {
+  urgent: {
     badge: 'bg-[rgb(var(--destructive))]/20 text-[rgb(var(--destructive))] border-[rgb(var(--destructive))]/30',
     border: 'border-l-[rgb(var(--destructive))]',
   },
@@ -153,25 +77,53 @@ const priorityStyles = {
   },
 };
 
-function InsightCard({ insight }: { insight: Insight }) {
-  const Icon = typeIcons[insight.type];
+function getTypeIcon(type: NotificationType) {
+  switch (type) {
+    case 'price_spike':
+      return TrendingUp;
+    case 'price_drop':
+      return TrendingDown;
+    case 'price_alert':
+      return Target;
+    case 'milestone':
+      return Trophy;
+    case 'educational':
+      return BookOpen;
+    case 'system':
+    default:
+      return Bell;
+  }
+}
+
+function InsightCard({
+  notification,
+  onMarkRead
+}: {
+  notification: Notification;
+  onMarkRead: (id: number) => void;
+}) {
+  const category = getInsightCategory(notification.type);
+  const Icon = getTypeIcon(notification.type);
+  const metadata = notification.metadata;
+
+  const timeAgo = formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
 
   return (
     <Card className={cn(
       'glow-accent border-l-4 transition-all hover:border-[rgb(var(--accent))]/30',
-      priorityStyles[insight.priority].border,
-      !insight.read && 'bg-[rgb(var(--accent))]/5'
+      priorityStyles[notification.priority].border,
+      !notification.read && 'bg-[rgb(var(--accent))]/5'
     )}>
       <CardContent className="p-4">
         <div className="flex gap-4">
           {/* Icon */}
           <div className={cn(
             'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
-            insight.type === 'alert' && 'bg-[rgb(var(--destructive))]/10',
-            insight.type === 'opportunity' && 'bg-[rgb(var(--success))]/10',
-            insight.type === 'educational' && 'bg-[rgb(var(--accent))]/10'
+            category === 'alert' && 'bg-[rgb(var(--destructive))]/10',
+            category === 'opportunity' && 'bg-[rgb(var(--success))]/10',
+            category === 'educational' && 'bg-[rgb(var(--accent))]/10'
           )}>
-            <Icon className={cn('w-5 h-5', typeColors[insight.type])} />
+            <Icon className={cn('w-5 h-5', categoryColors[category])} />
           </div>
 
           {/* Content */}
@@ -181,35 +133,37 @@ function InsightCard({ insight }: { insight: Insight }) {
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className={cn(
                     'font-heading font-medium',
-                    !insight.read ? 'text-foreground' : 'text-muted-foreground'
+                    !notification.read ? 'text-foreground' : 'text-muted-foreground'
                   )}>
-                    {insight.title}
+                    {notification.title}
                   </h3>
-                  {!insight.read && (
+                  {!notification.read && (
                     <span className="w-2 h-2 rounded-full bg-[rgb(var(--accent))]" />
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">{insight.description}</p>
+                <p className="text-sm text-muted-foreground">{notification.message}</p>
               </div>
-              <Badge className={priorityStyles[insight.priority].badge}>
-                {insight.priority}
+              <Badge className={priorityStyles[notification.priority].badge}>
+                {notification.priority}
               </Badge>
             </div>
 
             {/* Card Info (if applicable) */}
-            {insight.cardName && (
+            {metadata?.card_name && (
               <div className="mt-3 flex items-center gap-4 p-2 rounded-lg bg-secondary/50">
                 <div className="flex-1">
-                  <p className="font-medium text-foreground">{insight.cardName}</p>
-                  <p className="text-xs text-muted-foreground">{insight.setCode}</p>
+                  <p className="font-medium text-foreground">{metadata.card_name}</p>
+                  {metadata.set_code && (
+                    <p className="text-xs text-muted-foreground">{metadata.set_code}</p>
+                  )}
                 </div>
-                {insight.currentPrice !== undefined && (
+                {metadata.current_price !== undefined && (
                   <div className="text-right">
                     <p className="font-medium text-foreground">
-                      {formatCurrency(insight.currentPrice)}
+                      {formatCurrency(metadata.current_price)}
                     </p>
-                    {insight.priceChange !== undefined && (
-                      <PriceChange value={insight.priceChange} format="percent" size="sm" />
+                    {metadata.price_change !== undefined && (
+                      <PriceChange value={metadata.price_change} format="percent" size="sm" />
                     )}
                   </div>
                 )}
@@ -220,14 +174,50 @@ function InsightCard({ insight }: { insight: Insight }) {
             <div className="mt-3 flex items-center justify-between">
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {insight.timestamp}
+                {timeAgo}
               </span>
-              {insight.action && (
-                <Button variant="ghost" size="sm" className="text-[rgb(var(--accent))] h-7">
-                  {insight.action}
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {!notification.read && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground h-7"
+                    onClick={() => onMarkRead(notification.id)}
+                  >
+                    Mark read
+                  </Button>
+                )}
+                {metadata?.action && (
+                  <Button variant="ghost" size="sm" className="text-[rgb(var(--accent))] h-7">
+                    {metadata.action}
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function InsightSkeleton() {
+  return (
+    <Card className="glow-accent border-l-4 border-l-border">
+      <CardContent className="p-4">
+        <div className="flex gap-4">
+          <Skeleton className="w-10 h-10 rounded-lg" />
+          <div className="flex-1">
+            <div className="flex justify-between">
+              <Skeleton className="h-5 w-48 mb-2" />
+              <Skeleton className="h-5 w-16" />
+            </div>
+            <Skeleton className="h-4 w-full mb-3" />
+            <Skeleton className="h-16 w-full mb-3" />
+            <div className="flex justify-between">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-7 w-20" />
             </div>
           </div>
         </div>
@@ -237,18 +227,69 @@ function InsightCard({ insight }: { insight: Insight }) {
 }
 
 export default function InsightsPage() {
-  const [filter, setFilter] = useState<'all' | InsightType>('all');
-  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  const queryClient = useQueryClient();
+  const [filter, setFilter] = React.useState<'all' | NotificationType>('all');
+  const [showUnreadOnly, setShowUnreadOnly] = React.useState(false);
 
-  const filteredInsights = mockInsights.filter(insight => {
-    if (filter !== 'all' && insight.type !== filter) return false;
-    if (showUnreadOnly && insight.read) return false;
-    return true;
+  // Fetch notifications
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['notifications', { unread_only: showUnreadOnly }],
+    queryFn: () => getNotifications({ unread_only: showUnreadOnly, limit: 50 }),
+    refetchInterval: 60000, // Refetch every minute
   });
 
-  const unreadCount = mockInsights.filter(i => !i.read).length;
-  const alertCount = mockInsights.filter(i => i.type === 'alert').length;
-  const opportunityCount = mockInsights.filter(i => i.type === 'opportunity').length;
+  // Mark single notification as read
+  const markReadMutation = useMutation({
+    mutationFn: (id: number) => markNotificationRead(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
+  // Mark all as read
+  const markAllReadMutation = useMutation({
+    mutationFn: markAllNotificationsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
+  // Filter notifications
+  const filteredNotifications = React.useMemo(() => {
+    if (!data?.items) return [];
+    if (filter === 'all') return data.items;
+    return data.items.filter(n => n.type === filter);
+  }, [data?.items, filter]);
+
+  // Count by category
+  const counts = React.useMemo(() => {
+    if (!data?.items) return { total: 0, alerts: 0, opportunities: 0, unread: 0 };
+    return {
+      total: data.items.length,
+      alerts: data.items.filter(n => getInsightCategory(n.type) === 'alert').length,
+      opportunities: data.items.filter(n => getInsightCategory(n.type) === 'opportunity').length,
+      unread: data.unread_count,
+    };
+  }, [data]);
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-in">
+        <PageHeader
+          title="Insights"
+          subtitle="Portfolio alerts, market opportunities, and actionable intelligence"
+        />
+        <Card className="glow-accent">
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="w-12 h-12 mx-auto text-[rgb(var(--destructive))] mb-4" />
+            <p className="text-muted-foreground">
+              Failed to load insights. Please try again later.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in">
@@ -265,8 +306,18 @@ export default function InsightsPage() {
           {showUnreadOnly ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
           {showUnreadOnly ? 'Show All' : 'Unread Only'}
         </Button>
-        <Button variant="secondary" size="sm" className="glow-accent">
-          <Bell className="w-4 h-4 mr-1" />
+        <Button
+          variant="secondary"
+          size="sm"
+          className="glow-accent"
+          onClick={() => markAllReadMutation.mutate()}
+          disabled={markAllReadMutation.isPending || counts.unread === 0}
+        >
+          {markAllReadMutation.isPending ? (
+            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+          ) : (
+            <Bell className="w-4 h-4 mr-1" />
+          )}
           Mark All Read
         </Button>
       </PageHeader>
@@ -279,72 +330,81 @@ export default function InsightsPage() {
         )} onClick={() => setFilter('all')}>
           <CardContent className="p-4 text-center">
             <Lightbulb className="w-6 h-6 mx-auto text-[rgb(var(--accent))] mb-2" />
-            <p className="text-2xl font-bold text-foreground">{mockInsights.length}</p>
+            {isLoading ? (
+              <Skeleton className="h-8 w-12 mx-auto" />
+            ) : (
+              <p className="text-2xl font-bold text-foreground">{counts.total}</p>
+            )}
             <p className="text-sm text-muted-foreground">Total Insights</p>
           </CardContent>
         </Card>
         <Card className={cn(
           'glow-accent cursor-pointer transition-all',
-          filter === 'alert' && 'ring-2 ring-[rgb(var(--destructive))]'
-        )} onClick={() => setFilter('alert')}>
+          (filter === 'price_spike' || filter === 'price_drop') && 'ring-2 ring-[rgb(var(--destructive))]'
+        )} onClick={() => setFilter('price_spike')}>
           <CardContent className="p-4 text-center">
             <AlertTriangle className="w-6 h-6 mx-auto text-[rgb(var(--destructive))] mb-2" />
-            <p className="text-2xl font-bold text-[rgb(var(--destructive))]">{alertCount}</p>
+            {isLoading ? (
+              <Skeleton className="h-8 w-12 mx-auto" />
+            ) : (
+              <p className="text-2xl font-bold text-[rgb(var(--destructive))]">{counts.alerts}</p>
+            )}
             <p className="text-sm text-muted-foreground">Alerts</p>
           </CardContent>
         </Card>
         <Card className={cn(
           'glow-accent cursor-pointer transition-all',
-          filter === 'opportunity' && 'ring-2 ring-[rgb(var(--success))]'
-        )} onClick={() => setFilter('opportunity')}>
+          (filter === 'price_alert' || filter === 'milestone') && 'ring-2 ring-[rgb(var(--success))]'
+        )} onClick={() => setFilter('price_alert')}>
           <CardContent className="p-4 text-center">
             <Target className="w-6 h-6 mx-auto text-[rgb(var(--success))] mb-2" />
-            <p className="text-2xl font-bold text-[rgb(var(--success))]">{opportunityCount}</p>
+            {isLoading ? (
+              <Skeleton className="h-8 w-12 mx-auto" />
+            ) : (
+              <p className="text-2xl font-bold text-[rgb(var(--success))]">{counts.opportunities}</p>
+            )}
             <p className="text-sm text-muted-foreground">Opportunities</p>
           </CardContent>
         </Card>
         <Card className="glow-accent">
           <CardContent className="p-4 text-center">
             <Bell className="w-6 h-6 mx-auto text-[rgb(var(--magic-gold))] mb-2" />
-            <p className="text-2xl font-bold text-[rgb(var(--magic-gold))]">{unreadCount}</p>
+            {isLoading ? (
+              <Skeleton className="h-8 w-12 mx-auto" />
+            ) : (
+              <p className="text-2xl font-bold text-[rgb(var(--magic-gold))]">{counts.unread}</p>
+            )}
             <p className="text-sm text-muted-foreground">Unread</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filter Pills */}
-      <div className="flex items-center gap-2">
-        <Filter className="w-4 h-4 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">Filter:</span>
-        {(['all', 'alert', 'opportunity', 'educational'] as const).map((type) => (
-          <Button
-            key={type}
-            variant={filter === type ? 'default' : 'secondary'}
-            size="sm"
-            onClick={() => setFilter(type)}
-            className={filter === type ? 'gradient-arcane text-white' : ''}
-          >
-            {type === 'all' ? 'All' : type.charAt(0).toUpperCase() + type.slice(1) + 's'}
-          </Button>
-        ))}
-      </div>
-
       {/* Insights List */}
-      {filteredInsights.length === 0 ? (
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <InsightSkeleton key={i} />
+          ))}
+        </div>
+      ) : filteredNotifications.length === 0 ? (
         <Card className="glow-accent">
           <CardContent className="py-12 text-center">
             <Lightbulb className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
               {showUnreadOnly
-                ? 'No unread insights. You\'re all caught up!'
-                : 'No insights match your current filter.'}
+                ? "No unread insights. You're all caught up!"
+                : 'No insights yet. Start tracking cards to receive personalized alerts.'}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {filteredInsights.map((insight) => (
-            <InsightCard key={insight.id} insight={insight} />
+          {filteredNotifications.map((notification) => (
+            <InsightCard
+              key={notification.id}
+              notification={notification}
+              onMarkRead={(id) => markReadMutation.mutate(id)}
+            />
           ))}
         </div>
       )}
@@ -358,11 +418,11 @@ export default function InsightsPage() {
               Learn to Read the Market
             </h3>
             <p className="text-sm text-muted-foreground">
-              Check our guides on understanding price movements, rotation impacts, and meta shifts.
+              Add cards to your inventory and want list to receive personalized price alerts and market insights.
             </p>
           </div>
-          <Button variant="secondary" size="sm" className="shrink-0 ml-auto">
-            View Guides
+          <Button variant="secondary" size="sm" className="shrink-0 ml-auto" asChild>
+            <a href="/cards">Browse Cards</a>
           </Button>
         </CardContent>
       </Card>

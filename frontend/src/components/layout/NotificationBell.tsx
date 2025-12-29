@@ -24,17 +24,19 @@ import {
 import type { Notification, NotificationType, NotificationPriority } from '@/types';
 
 const NOTIFICATION_ICONS: Record<NotificationType, React.ComponentType<{ className?: string }>> = {
-  PRICE_ALERT: TrendingUp,
-  RECOMMENDATION: AlertTriangle,
-  INVENTORY: Package,
-  SYSTEM: Info,
+  price_alert: TrendingUp,
+  price_spike: TrendingUp,
+  price_drop: AlertTriangle,
+  milestone: Package,
+  system: Info,
+  educational: Info,
 };
 
 const PRIORITY_STYLES: Record<NotificationPriority, string> = {
-  LOW: 'border-l-muted-foreground',
-  NORMAL: 'border-l-blue-500',
-  HIGH: 'border-l-amber-500',
-  CRITICAL: 'border-l-red-500',
+  low: 'border-l-muted-foreground',
+  medium: 'border-l-blue-500',
+  high: 'border-l-amber-500',
+  urgent: 'border-l-red-500',
 };
 
 function NotificationSkeleton() {
@@ -60,7 +62,7 @@ interface NotificationItemProps {
 
 function NotificationItem({ notification, onMarkRead, onDelete, isMarking, isDeleting }: NotificationItemProps) {
   const Icon = NOTIFICATION_ICONS[notification.type] || Info;
-  const priorityStyle = PRIORITY_STYLES[notification.priority] || PRIORITY_STYLES.NORMAL;
+  const priorityStyle = PRIORITY_STYLES[notification.priority] || PRIORITY_STYLES.medium;
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);

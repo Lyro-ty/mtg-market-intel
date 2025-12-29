@@ -646,26 +646,37 @@ export interface SimilarCardsResponse {
   similar_cards: SimilarCard[];
 }
 
-// Notification types
+// Notification types (must match backend NotificationType enum)
 export type NotificationType =
-  | 'PRICE_ALERT'
-  | 'RECOMMENDATION'
-  | 'INVENTORY'
-  | 'SYSTEM';
+  | 'price_alert'    // Want list target hit
+  | 'price_spike'    // Card spiked in price
+  | 'price_drop'     // Card dropped in price
+  | 'milestone'      // Collection milestone achieved
+  | 'system'         // System announcements
+  | 'educational';   // Tips and educational content
 
-export type NotificationPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+// Priority levels (must match backend NotificationPriority enum)
+export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface Notification {
   id: number;
+  user_id: number;
   type: NotificationType;
   priority: NotificationPriority;
   title: string;
   message: string;
   card_id?: number;
-  extra_data?: Record<string, unknown>;
+  metadata?: {
+    card_name?: string;
+    set_code?: string;
+    current_price?: number;
+    price_change?: number;
+    action?: string;
+  };
   read: boolean;
   read_at?: string;
   created_at: string;
+  expires_at?: string;
 }
 
 export interface NotificationList {
