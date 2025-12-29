@@ -27,6 +27,7 @@ celery_app = Celery(
         "app.tasks.want_list_check",
         "app.tasks.collection_stats",
         "app.tasks.sets_sync",
+        "app.tasks.ban_detection",
     ],
 )
 
@@ -122,6 +123,7 @@ celery_app.conf.update(
         "update_collection_stats": {"queue": "analytics"},
         "update_user_collection_stats": {"queue": "analytics"},
         "sync_mtg_sets": {"queue": "ingestion"},
+        "detect_ban_changes": {"queue": "analytics"},
     },
 
     # Default queue
