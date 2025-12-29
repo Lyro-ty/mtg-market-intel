@@ -283,26 +283,29 @@ class MTGJSONAdapter(MarketplaceAdapter):
             return []
         
         historical_prices = []
-        
-        # MTGJSON price structure:
-        # - tcgplayer: { "normal": {...}, "foil": {...} }
-        # - cardmarket: { "normal": {...}, "foil": {...} }
-        # Each price object may have historical data with dates
-        
-        # Process TCGPlayer prices
+
+        # MTGJSON AllPrices structure:
+        # - tcgplayer: { "retail": { "normal": {...}, "foil": {...} }, "buylist": {...} }
+        # - cardmarket: { "retail": { "normal": {...}, "foil": {...} }, "buylist": {...} }
+        # Each variant has historical data: { "2024-01-01": 10.50, "2024-01-08": 11.00, ... }
+
+        # Process TCGPlayer prices (use retail prices)
         tcgplayer_prices = prices.get("tcgplayer", {})
-        if tcgplayer_prices:
+        # Handle nested structure: tcgplayer.retail.normal or tcgplayer.normal (legacy)
+        tcgplayer_retail = tcgplayer_prices.get("retail", tcgplayer_prices)
+        if tcgplayer_retail:
             for variant in ["normal", "foil"]:
-                variant_data = tcgplayer_prices.get(variant, {})
+                variant_data = tcgplayer_retail.get(variant, {})
                 if not variant_data:
                     continue
-                
-                # MTGJSON may have historical data with date keys
+
+                # MTGJSON has historical data with date keys
                 # Format: { "2024-01-01": 10.50, "2024-01-08": 11.00, ... }
                 for date_str, price_value in variant_data.items():
                     if isinstance(price_value, (int, float)) and price_value > 0:
                         try:
-                            price_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                            # Parse date and make timezone-aware (MTGJSON dates are UTC)
+                            price_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                             # Only include prices within requested days
                             if (datetime.now(timezone.utc) - price_date).days <= days:
                                 historical_prices.append(
@@ -322,16 +325,19 @@ class MTGJSONAdapter(MarketplaceAdapter):
         
         # Process Cardmarket prices (EUR)
         cardmarket_prices = prices.get("cardmarket", {})
-        if cardmarket_prices:
+        # Handle nested structure: cardmarket.retail.normal or cardmarket.normal (legacy)
+        cardmarket_retail = cardmarket_prices.get("retail", cardmarket_prices)
+        if cardmarket_retail:
             for variant in ["normal", "foil"]:
-                variant_data = cardmarket_prices.get(variant, {})
+                variant_data = cardmarket_retail.get(variant, {})
                 if not variant_data:
                     continue
-                
+
                 for date_str, price_value in variant_data.items():
                     if isinstance(price_value, (int, float)) and price_value > 0:
                         try:
-                            price_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                            # Parse date and make timezone-aware (MTGJSON dates are UTC)
+                            price_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                             if (datetime.now(timezone.utc) - price_date).days <= days:
                                 historical_prices.append(
                                     CardPrice(
