@@ -228,6 +228,69 @@ async def create_milestone_notification(
     )
 
 
+async def create_ban_change_notification(
+    db: AsyncSession,
+    user_id: int,
+    card_id: int,
+    card_name: str,
+    format_name: str,
+    old_status: str,
+    new_status: str,
+) -> Optional[Notification]:
+    """
+    Create a ban/unban notification when a card's legality changes.
+
+    Args:
+        db: Async database session
+        user_id: Target user's ID
+        card_id: Card that changed
+        card_name: Name of the card
+        format_name: Format where legality changed (e.g., "modern", "commander")
+        old_status: Previous legality status
+        new_status: New legality status
+
+    Returns:
+        The created Notification object, or None if duplicate
+    """
+    # Determine if this is a ban, unban, or restriction change
+    if new_status == "banned":
+        action = "BANNED"
+        priority = NotificationPriority.URGENT
+    elif old_status == "banned" and new_status == "legal":
+        action = "UNBANNED"
+        priority = NotificationPriority.HIGH
+    elif new_status == "restricted":
+        action = "RESTRICTED"
+        priority = NotificationPriority.HIGH
+    else:
+        action = f"changed from {old_status} to {new_status}"
+        priority = NotificationPriority.MEDIUM
+
+    title = f"{card_name} {action} in {format_name.title()}"
+    message = (
+        f"{card_name} has been {action.lower()} in {format_name.title()}. "
+        f"Previous status: {old_status}, New status: {new_status}."
+    )
+
+    extra_data = {
+        "card_name": card_name,
+        "format": format_name,
+        "old_status": old_status,
+        "new_status": new_status,
+    }
+
+    return await create_notification(
+        db=db,
+        user_id=user_id,
+        type=NotificationType.BAN_CHANGE,
+        title=title,
+        message=message,
+        priority=priority,
+        card_id=card_id,
+        extra_data=extra_data,
+    )
+
+
 async def get_unread_count(
     db: AsyncSession,
     user_id: int,
