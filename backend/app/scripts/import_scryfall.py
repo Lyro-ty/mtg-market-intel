@@ -39,6 +39,12 @@ from app.services.ingestion.scryfall import ScryfallAdapter
 
 logger = structlog.get_logger()
 
+# Scryfall API requires a User-Agent header to identify the application
+SCRYFALL_HEADERS = {
+    "User-Agent": "DualcasterDeals/1.0 (MTG Market Intelligence Platform)",
+    "Accept": "application/json",
+}
+
 BULK_DATA_TYPES = {
     "default_cards": "One version of each card (recommended)",
     "all_cards": "All card printings (large)",
@@ -49,7 +55,7 @@ BULK_DATA_TYPES = {
 
 async def get_bulk_data_url(data_type: str) -> tuple[str, int]:
     """Fetch the bulk data download URL from Scryfall."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=SCRYFALL_HEADERS) as client:
         response = await client.get("https://api.scryfall.com/bulk-data")
         response.raise_for_status()
         data = response.json()
@@ -64,8 +70,8 @@ async def get_bulk_data_url(data_type: str) -> tuple[str, int]:
 async def download_bulk_data(url: str, output_path: Path) -> Path:
     """Download bulk data file with progress."""
     logger.info("Downloading bulk data", url=url)
-    
-    async with httpx.AsyncClient(follow_redirects=True, timeout=300) as client:
+
+    async with httpx.AsyncClient(headers=SCRYFALL_HEADERS, follow_redirects=True, timeout=300) as client:
         async with client.stream("GET", url) as response:
             response.raise_for_status()
             total = int(response.headers.get("content-length", 0))
