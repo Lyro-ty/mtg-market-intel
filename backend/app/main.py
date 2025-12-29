@@ -44,14 +44,13 @@ async def lifespan(app: FastAPI):
         from app.db.session import async_session_maker
         from app.core.data_freshness import (
             check_data_freshness,
-            should_run_price_collection,
-            should_run_analytics,
-            should_run_recommendations,
+            should_run_tournaments_ingestion,
         )
         from app.tasks.data_seeding import seed_comprehensive_price_data
         from app.tasks.ingestion import collect_price_data, import_mtgjson_historical_prices
         from app.tasks.analytics import run_analytics
         from app.tasks.recommendations import generate_recommendations
+        from app.tasks.tournaments import ingest_recent_tournaments
 
         # Check existing data freshness
         async with async_session_maker() as db:
@@ -112,6 +111,16 @@ async def lifespan(app: FastAPI):
             tasks_triggered.append("generate_recommendations")
         else:
             logger.info("Skipping recommendations task - data is fresh")
+
+        # Tournaments - only if no tournaments exist
+        async with async_session_maker() as db:
+            should_ingest_tournaments = await should_run_tournaments_ingestion(db)
+        if should_ingest_tournaments:
+            tournaments_task = ingest_recent_tournaments.delay()
+            logger.info("Tournament ingestion task queued", task_id=str(tournaments_task.id))
+            tasks_triggered.append("ingest_recent_tournaments")
+        else:
+            logger.info("Skipping tournament ingestion - tournaments exist")
 
         if tasks_triggered:
             logger.info("Startup tasks triggered", tasks=tasks_triggered)

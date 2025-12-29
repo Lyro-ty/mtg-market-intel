@@ -1,8 +1,10 @@
 """Session management endpoints."""
+import hashlib
 from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +13,8 @@ from app.db.session import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.models.session import UserSession
+
+security = HTTPBearer()
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
@@ -31,9 +35,13 @@ class SessionResponse(BaseModel):
 @router.get("/", response_model=List[SessionResponse])
 async def list_sessions(
     current_user: User = Depends(get_current_user),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> List[SessionResponse]:
     """List all active sessions for current user."""
+    # Hash current token to identify the current session
+    current_token_hash = hashlib.sha256(credentials.credentials.encode()).hexdigest()
+
     result = await db.execute(
         select(UserSession)
         .where(UserSession.user_id == current_user.id)
@@ -50,7 +58,7 @@ async def list_sessions(
             ip_address=s.ip_address,
             created_at=s.created_at,
             last_active=s.last_active,
-            is_current=False,  # TODO: Detect current session by comparing token hash
+            is_current=(s.token_hash == current_token_hash),
         )
         for s in sessions
     ]

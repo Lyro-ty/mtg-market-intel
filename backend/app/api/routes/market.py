@@ -573,29 +573,13 @@ async def get_market_index(
             error_type=type(e).__name__,
             range=range
         )
-        # Return mock data on timeout
-        points = []
-        base_value = 100.0
-        num_points = 7 if range == "7d" else (30 if range == "30d" else (90 if range == "90d" else 365))
-        if range == "7d":
-            num_points = 7 * 24 * 2
-        elif range == "30d":
-            num_points = 30 * 24
-        elif range == "90d":
-            num_points = 90 * 6
-        
-        for i in range(min(num_points, 1000)):
-            date = start_date + timedelta(minutes=i * bucket_minutes)
-            value = base_value + (i % 10 - 5) * 0.5
-            points.append({
-                "timestamp": date.isoformat(),
-                "indexValue": round(value, 2),
-            })
+        # Return empty data with error message on timeout (never mock data)
         return {
             "range": range,
             "currency": currency or "ALL",
-            "points": points,
+            "points": [],
             "isMockData": False,
+            "error": "Database timeout - please retry",
         }
     except Exception as e:
         from app.api.utils.error_handling import is_database_connection_error

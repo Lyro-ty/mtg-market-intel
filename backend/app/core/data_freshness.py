@@ -12,6 +12,10 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import PriceSnapshot, MetricsCardsDaily, Recommendation
+from app.models.card import Card
+from app.models.mtg_set import MTGSet
+from app.models.tournament import Tournament
+from app.models.feature_vector import CardFeatureVector
 
 logger = structlog.get_logger()
 
@@ -250,3 +254,163 @@ async def should_run_historical_backfill(db: AsyncSession, min_snapshots: int = 
         )
 
     return should_run
+
+
+# Minimum data thresholds
+MIN_CARDS_FOR_FULL_CATALOG = 10000  # Scryfall has ~90k unique cards, 10k is clearly incomplete
+MIN_EMBEDDINGS_COVERAGE = 0.50  # 50% of cards should have embeddings
+
+
+async def get_cards_count(db: AsyncSession) -> int:
+    """Get total count of cards in the catalog."""
+    result = await db.scalar(select(func.count(Card.id)))
+    return result or 0
+
+
+async def get_sets_count(db: AsyncSession) -> int:
+    """Get total count of MTG sets."""
+    result = await db.scalar(select(func.count(MTGSet.id)))
+    return result or 0
+
+
+async def get_embeddings_count(db: AsyncSession) -> int:
+    """Get total count of card embeddings."""
+    result = await db.scalar(select(func.count(CardFeatureVector.id)))
+    return result or 0
+
+
+async def get_tournaments_count(db: AsyncSession) -> int:
+    """Get total count of tournaments."""
+    result = await db.scalar(select(func.count(Tournament.id)))
+    return result or 0
+
+
+async def should_run_full_card_import(db: AsyncSession) -> bool:
+    """Check if full card catalog import should run."""
+    count = await get_cards_count(db)
+    should_run = count < MIN_CARDS_FOR_FULL_CATALOG
+
+    if should_run:
+        logger.info(
+            "Full card import needed",
+            card_count=count,
+            min_required=MIN_CARDS_FOR_FULL_CATALOG,
+        )
+    else:
+        logger.info(
+            "Skipping full card import - sufficient cards exist",
+            card_count=count,
+            min_required=MIN_CARDS_FOR_FULL_CATALOG,
+        )
+
+    return should_run
+
+
+async def should_run_sets_sync(db: AsyncSession) -> bool:
+    """Check if sets sync should run."""
+    count = await get_sets_count(db)
+    should_run = count == 0
+
+    if should_run:
+        logger.info("Sets sync needed - no sets found")
+    else:
+        logger.info("Skipping sets sync - sets exist", set_count=count)
+
+    return should_run
+
+
+async def should_run_embeddings_refresh(db: AsyncSession) -> bool:
+    """Check if embeddings refresh should run (< 50% coverage)."""
+    cards_count = await get_cards_count(db)
+    embeddings_count = await get_embeddings_count(db)
+
+    if cards_count == 0:
+        logger.info("Skipping embeddings refresh - no cards to embed")
+        return False
+
+    coverage = embeddings_count / cards_count
+    should_run = coverage < MIN_EMBEDDINGS_COVERAGE
+
+    if should_run:
+        logger.info(
+            "Embeddings refresh needed",
+            embeddings_count=embeddings_count,
+            cards_count=cards_count,
+            coverage_pct=round(coverage * 100, 1),
+            min_coverage_pct=MIN_EMBEDDINGS_COVERAGE * 100,
+        )
+    else:
+        logger.info(
+            "Skipping embeddings refresh - sufficient coverage",
+            embeddings_count=embeddings_count,
+            cards_count=cards_count,
+            coverage_pct=round(coverage * 100, 1),
+        )
+
+    return should_run
+
+
+async def should_run_tournaments_ingestion(db: AsyncSession) -> bool:
+    """Check if tournament ingestion should run."""
+    count = await get_tournaments_count(db)
+    should_run = count == 0
+
+    if should_run:
+        logger.info("Tournament ingestion needed - no tournaments found")
+    else:
+        logger.info("Skipping tournament ingestion - tournaments exist", tournament_count=count)
+
+    return should_run
+
+
+async def check_full_data_freshness(db: AsyncSession) -> dict:
+    """
+    Extended freshness check including cards, sets, embeddings, and tournaments.
+
+    Returns:
+        Dictionary with freshness/existence status for all data types
+    """
+    # Get the basic freshness check
+    basic_freshness = await check_data_freshness(db)
+
+    # Get additional counts
+    cards_count = await get_cards_count(db)
+    sets_count = await get_sets_count(db)
+    embeddings_count = await get_embeddings_count(db)
+    tournaments_count = await get_tournaments_count(db)
+
+    # Calculate embeddings coverage
+    embeddings_coverage = embeddings_count / cards_count if cards_count > 0 else 0
+
+    # Add extended data
+    basic_freshness["cards"] = {
+        "count": cards_count,
+        "sufficient": cards_count >= MIN_CARDS_FOR_FULL_CATALOG,
+        "min_required": MIN_CARDS_FOR_FULL_CATALOG,
+    }
+    basic_freshness["sets"] = {
+        "count": sets_count,
+        "exists": sets_count > 0,
+    }
+    basic_freshness["embeddings"] = {
+        "count": embeddings_count,
+        "coverage_pct": round(embeddings_coverage * 100, 1),
+        "sufficient": embeddings_coverage >= MIN_EMBEDDINGS_COVERAGE,
+        "min_coverage_pct": MIN_EMBEDDINGS_COVERAGE * 100,
+    }
+    basic_freshness["tournaments"] = {
+        "count": tournaments_count,
+        "exists": tournaments_count > 0,
+    }
+
+    logger.info(
+        "Full data freshness check completed",
+        cards_count=cards_count,
+        cards_sufficient=cards_count >= MIN_CARDS_FOR_FULL_CATALOG,
+        sets_count=sets_count,
+        embeddings_count=embeddings_count,
+        embeddings_coverage_pct=round(embeddings_coverage * 100, 1),
+        tournaments_count=tournaments_count,
+    )
+
+    return basic_freshness
