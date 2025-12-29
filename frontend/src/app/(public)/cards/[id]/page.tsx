@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, Package, Plus, X } from 'lucide-react';
+import { ArrowLeft, Package, Plus, X, Heart } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge, ActionBadge } from '@/components/ui/badge';
@@ -12,9 +12,9 @@ import { Button } from '@/components/ui/button';
 import { LoadingPage } from '@/components/ui/Loading';
 import { PriceChart } from '@/components/charts/PriceChart';
 import { SpreadChart } from '@/components/charts/SpreadChart';
-import { getCard, getCardHistory, refreshCard, createInventoryItem, getSimilarCards } from '@/lib/api';
+import { getCard, getCardHistory, refreshCard, createInventoryItem, getSimilarCards, addToWantList } from '@/lib/api';
 import { formatCurrency, formatPercent, getRarityColor } from '@/lib/utils';
-import type { InventoryCondition } from '@/types';
+import type { InventoryCondition, WantListPriority } from '@/types';
 
 const CONDITION_OPTIONS: { value: InventoryCondition; label: string }[] = [
   { value: 'MINT', label: 'Mint' },
@@ -25,12 +25,19 @@ const CONDITION_OPTIONS: { value: InventoryCondition; label: string }[] = [
   { value: 'DAMAGED', label: 'Damaged' },
 ];
 
+const PRIORITY_OPTIONS: { value: WantListPriority; label: string }[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
 export default function CardDetailPage() {
   const params = useParams();
   const cardId = Number(params.id);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAddInventory, setShowAddInventory] = useState(false);
+  const [showAddWantList, setShowAddWantList] = useState(false);
   const [selectedCondition, setSelectedCondition] = useState<string>('');  // Empty = all conditions
   const [selectedFoil, setSelectedFoil] = useState<string>('');  // Empty = all, 'false' = non-foil, 'true' = foil
   const [inventoryForm, setInventoryForm] = useState({
@@ -38,6 +45,12 @@ export default function CardDetailPage() {
     condition: 'NEAR_MINT' as InventoryCondition,
     is_foil: false,
     acquisition_price: '',
+  });
+  const [wantListForm, setWantListForm] = useState({
+    target_price: '',
+    priority: 'medium' as WantListPriority,
+    alert_enabled: true,
+    notes: '',
   });
 
   const queryClient = useQueryClient();
@@ -54,6 +67,21 @@ export default function CardDetailPage() {
       setShowAddInventory(false);
       setInventoryForm({ quantity: 1, condition: 'NEAR_MINT', is_foil: false, acquisition_price: '' });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+
+  const addToWantListMutation = useMutation({
+    mutationFn: () => addToWantList({
+      card_id: cardId,
+      target_price: parseFloat(wantListForm.target_price) || 0,
+      priority: wantListForm.priority,
+      alert_enabled: wantListForm.alert_enabled,
+      notes: wantListForm.notes || undefined,
+    }),
+    onSuccess: () => {
+      setShowAddWantList(false);
+      setWantListForm({ target_price: '', priority: 'medium', alert_enabled: true, notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['want-list'] });
     },
   });
 
@@ -177,14 +205,23 @@ export default function CardDetailPage() {
               <Button variant="secondary" size="sm" disabled={isRefreshing} onClick={triggerRefresh}>
                 {isRefreshing ? 'Refreshing…' : 'Refresh data'}
               </Button>
-              <Button 
-                variant="primary" 
-                size="sm" 
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={() => setShowAddInventory(true)}
                 className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 Add to Inventory
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowAddWantList(true)}
+                className="bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700"
+              >
+                <Heart className="w-4 h-4 mr-1" />
+                Add to Want List
               </Button>
             </div>
 
@@ -402,6 +439,110 @@ export default function CardDetailPage() {
               {addToInventoryMutation.isError && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center">
                   Failed to add: {(addToInventoryMutation.error as Error).message}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Add to Want List Modal */}
+      {showAddWantList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <Card className="w-full max-w-md bg-[rgb(var(--card))] border-[rgb(var(--border))]">
+            <div className="flex items-center justify-between p-4 border-b border-[rgb(var(--border))]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600">
+                  <Heart className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-lg font-semibold text-[rgb(var(--foreground))]">Add to Want List</h2>
+              </div>
+              <button
+                onClick={() => setShowAddWantList(false)}
+                className="p-2 rounded-lg hover:bg-[rgb(var(--secondary))] transition-colors"
+                aria-label="Close add to want list modal"
+              >
+                <X className="w-5 h-5 text-[rgb(var(--muted-foreground))]" />
+              </button>
+            </div>
+            <CardContent className="p-4 space-y-4">
+              <div className="text-center mb-4">
+                <p className="font-semibold text-[rgb(var(--foreground))]">{card.name}</p>
+                <p className="text-sm text-[rgb(var(--muted-foreground))]">{card.set_name || card.set_code}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-[rgb(var(--foreground))] mb-1">Target Price *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="$0.00"
+                    value={wantListForm.target_price}
+                    onChange={(e) => setWantListForm(f => ({ ...f, target_price: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg bg-[rgb(var(--secondary))] border border-[rgb(var(--border))] text-[rgb(var(--foreground))] placeholder:text-[rgb(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[rgb(var(--foreground))] mb-1">Priority</label>
+                  <select
+                    value={wantListForm.priority}
+                    onChange={(e) => setWantListForm(f => ({ ...f, priority: e.target.value as WantListPriority }))}
+                    className="w-full px-3 py-2 rounded-lg bg-[rgb(var(--secondary))] border border-[rgb(var(--border))] text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                  >
+                    {PRIORITY_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[rgb(var(--foreground))] mb-1">Notes (optional)</label>
+                <textarea
+                  placeholder="Why do you want this card?"
+                  value={wantListForm.notes}
+                  onChange={(e) => setWantListForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg bg-[rgb(var(--secondary))] border border-[rgb(var(--border))] text-[rgb(var(--foreground))] placeholder:text-[rgb(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-pink-500/50 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="alert_enabled"
+                  checked={wantListForm.alert_enabled}
+                  onChange={(e) => setWantListForm(f => ({ ...f, alert_enabled: e.target.checked }))}
+                  className="w-4 h-4 rounded border-[rgb(var(--border))] bg-[rgb(var(--secondary))] text-pink-500 focus:ring-pink-500/50"
+                />
+                <label htmlFor="alert_enabled" className="text-sm text-[rgb(var(--foreground))]">Alert me when price drops below target</label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="secondary" onClick={() => setShowAddWantList(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => addToWantListMutation.mutate()}
+                  disabled={addToWantListMutation.isPending || !wantListForm.target_price}
+                  className="bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700"
+                >
+                  {addToWantListMutation.isPending ? 'Adding...' : 'Add to Want List'}
+                </Button>
+              </div>
+
+              {addToWantListMutation.isSuccess && (
+                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm text-center">
+                  Added to want list!
+                </div>
+              )}
+
+              {addToWantListMutation.isError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center">
+                  Failed to add: {(addToWantListMutation.error as Error).message}
                 </div>
               )}
             </CardContent>
