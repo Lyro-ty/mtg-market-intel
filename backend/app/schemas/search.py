@@ -16,7 +16,7 @@ class SearchFilters(BaseModel):
 
 class SearchResult(BaseModel):
     """Single search result."""
-    card_id: int
+    id: int
     name: str
     set_code: str
     oracle_text: Optional[str] = None

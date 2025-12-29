@@ -101,7 +101,7 @@ async def search_cards(
 
         results = [
             SearchResult(
-                card_id=r["card_id"],
+                id=r["card_id"],
                 name=r["name"],
                 set_code=r["set_code"],
                 oracle_text=r.get("oracle_text"),
@@ -130,7 +130,7 @@ async def search_cards(
 
         results = [
             SearchResult(
-                card_id=c.id,
+                id=c.id,
                 name=c.name,
                 set_code=c.set_code,
                 oracle_text=c.oracle_text,
@@ -213,7 +213,7 @@ async def get_similar_cards(
         card_name=card.name,
         similar_cards=[
             SearchResult(
-                card_id=r["card_id"],
+                id=r["card_id"],
                 name=r["name"],
                 set_code=r["set_code"],
                 oracle_text=r.get("oracle_text"),
