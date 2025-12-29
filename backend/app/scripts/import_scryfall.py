@@ -107,12 +107,13 @@ def parse_card_data(card: dict) -> dict:
     image_uris = card.get("image_uris", {})
     if not image_uris and card.get("card_faces"):
         image_uris = card["card_faces"][0].get("image_uris", {})
-    
+
     # Parse colors
     colors = card.get("colors", [])
     color_identity = card.get("color_identity", [])
     legalities = card.get("legalities", {})
-    
+    keywords = card.get("keywords", [])
+
     return {
         "scryfall_id": card.get("id"),
         "oracle_id": card.get("oracle_id"),
@@ -134,6 +135,11 @@ def parse_card_data(card: dict) -> dict:
         "image_url_small": image_uris.get("small"),
         "image_url_large": image_uris.get("large") or image_uris.get("png"),
         "released_at": parse_released_at(card.get("released_at")),
+        # Semantic search and metadata fields
+        "edhrec_rank": card.get("edhrec_rank"),
+        "reserved_list": card.get("reserved", False),
+        "keywords": json.dumps(keywords) if keywords else None,
+        "flavor_text": card.get("flavor_text"),
     }
 
 
@@ -278,6 +284,11 @@ async def process_batch(
                 "image_url": stmt.excluded.image_url,
                 "image_url_small": stmt.excluded.image_url_small,
                 "image_url_large": stmt.excluded.image_url_large,
+                # Semantic search and metadata fields
+                "edhrec_rank": stmt.excluded.edhrec_rank,
+                "reserved_list": stmt.excluded.reserved_list,
+                "keywords": stmt.excluded.keywords,
+                "flavor_text": stmt.excluded.flavor_text,
                 "updated_at": func.now(),
             },
         )
