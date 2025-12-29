@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { GoogleLoginButton } from '@/components/auth/GoogleLoginButton';
+import { setStoredToken } from '@/lib/api';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -33,8 +34,8 @@ export default function LoginPage() {
       }
 
       if (token) {
-        // Store token
-        localStorage.setItem('token', token);
+        // Store token using the correct key
+        setStoredToken(token);
         // Clean URL to remove sensitive token
         window.history.replaceState({}, '', '/login');
         // Sync auth state
