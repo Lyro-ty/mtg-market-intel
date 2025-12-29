@@ -30,8 +30,9 @@ interface GoogleLoginButtonProps {
 export function GoogleLoginButton({ disabled }: GoogleLoginButtonProps) {
   const handleGoogleLogin = () => {
     // Redirect to backend OAuth endpoint
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-    window.location.href = `${apiUrl}/api/auth/google/login`;
+    // NEXT_PUBLIC_API_URL already includes /api (e.g., https://example.com/api)
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+    window.location.href = `${apiUrl}/auth/google/login`;
   };
 
   return (
