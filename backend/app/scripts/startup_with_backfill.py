@@ -202,7 +202,7 @@ async def backfill_historical_data(timeout_minutes: int = 5, card_limit: int = 4
             seed_mtgjson_historical(
                 card_limit=card_limit,  # Process limited cards for faster startup
                 skip_existing=True,  # Skip cards that already have data
-                days=30,  # 30 days of history
+                days=90,  # 90 days of history from MTGJSON
                 batch_size=50,  # Process 50 cards at a time
             ),
             timeout=timeout_minutes * 60  # Convert to seconds
