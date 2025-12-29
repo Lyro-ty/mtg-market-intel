@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { WebSocketProvider } from '@/contexts/WebSocketContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -22,11 +23,13 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <WebSocketProvider>
-          <ErrorBoundary title="Application Error">
-            {children}
-          </ErrorBoundary>
-        </WebSocketProvider>
+        <ThemeProvider>
+          <WebSocketProvider>
+            <ErrorBoundary title="Application Error">
+              {children}
+            </ErrorBoundary>
+          </WebSocketProvider>
+        </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
