@@ -22,11 +22,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ornate/page-header';
 import { PriceChange } from '@/components/ornate/price-change';
 import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
-import { getMarketIndex, getTopMovers } from '@/lib/api';
+import { getMarketIndex, getTopMovers, getMarketOverview } from '@/lib/api';
 import { formatCurrency, cn } from '@/lib/utils';
 
-// Mock format health data
-const mockFormatHealth = [
+// Format health data - placeholder until API endpoint is implemented
+const formatHealthData = [
   { format: 'Standard', health: 'Healthy', change: 2.3, color: 'success' },
   { format: 'Modern', health: 'Hot', change: 5.8, color: 'mythic-orange' },
   { format: 'Legacy', health: 'Stable', change: 0.4, color: 'accent' },
@@ -34,13 +34,28 @@ const mockFormatHealth = [
   { format: 'Pioneer', health: 'Cooling', change: -1.2, color: 'warning' },
 ];
 
-// Mock trending cards
-const mockTrendingCards = [
-  { name: 'Orcish Bowmasters', set: 'LTR', price: 42.50, change: 15.2, reason: 'Modern staple' },
-  { name: 'The One Ring', set: 'LTR', price: 68.00, change: 8.7, reason: 'Multi-format play' },
-  { name: 'Ragavan, Nimble Pilferer', set: 'MH2', price: 52.50, change: -5.3, reason: 'Supply increase' },
-  { name: 'Sheoldred, the Apocalypse', set: 'DMU', price: 78.00, change: 3.2, reason: 'Standard dominance' },
-];
+function FormatHealthCard({ format }: { format: typeof formatHealthData[0] }) {
+  const colorMap: Record<string, string> = {
+    success: 'text-[rgb(var(--success))]',
+    'mythic-orange': 'text-[rgb(var(--mythic-orange))]',
+    accent: 'text-[rgb(var(--accent))]',
+    warning: 'text-[rgb(var(--warning))]',
+  };
+
+  return (
+    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
+      <div className="flex items-center gap-3">
+        <Activity className={cn('w-5 h-5', colorMap[format.color])} />
+        <div>
+          <p className="font-medium text-foreground">{format.format}</p>
+          <p className={cn('text-sm', colorMap[format.color])}>{format.health}</p>
+        </div>
+      </div>
+      <PriceChange value={format.change} format="percent" size="sm" />
+    </div>
+  );
+}
+
 
 function MoverCard({
   card,
@@ -65,30 +80,16 @@ function MoverCard({
   );
 }
 
-function FormatHealthCard({ format }: { format: typeof mockFormatHealth[0] }) {
-  const colorMap: Record<string, string> = {
-    success: 'text-[rgb(var(--success))]',
-    'mythic-orange': 'text-[rgb(var(--mythic-orange))]',
-    accent: 'text-[rgb(var(--accent))]',
-    warning: 'text-[rgb(var(--warning))]',
-  };
-
-  return (
-    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-      <div className="flex items-center gap-3">
-        <Activity className={cn('w-5 h-5', colorMap[format.color])} />
-        <div>
-          <p className="font-medium text-foreground">{format.format}</p>
-          <p className={cn('text-sm', colorMap[format.color])}>{format.health}</p>
-        </div>
-      </div>
-      <PriceChange value={format.change} format="percent" size="sm" />
-    </div>
-  );
-}
 
 export default function MarketPage() {
   const [indexRange, setIndexRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
+
+  // Fetch market overview stats
+  const { data: overview, isLoading: overviewLoading } = useQuery({
+    queryKey: ['market-overview'],
+    queryFn: getMarketOverview,
+    refetchInterval: 5 * 60 * 1000,
+  });
 
   // Fetch market index
   const { data: marketIndex, isLoading: indexLoading } = useQuery({
@@ -104,6 +105,17 @@ export default function MarketPage() {
     refetchInterval: 5 * 60 * 1000,
   });
 
+  // Calculate hot/cooling cards from top movers
+  const hotCardsCount = topMovers?.gainers?.filter(c => c.changePct > 10).length ?? 0;
+  const coolingCardsCount = topMovers?.losers?.filter(c => c.changePct < -10).length ?? 0;
+
+  // Format volume for display
+  const formatVolume = (volume: number) => {
+    if (volume >= 1000000) return `$${(volume / 1000000).toFixed(1)}M`;
+    if (volume >= 1000) return `$${(volume / 1000).toFixed(0)}K`;
+    return `$${volume.toFixed(0)}`;
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
       <PageHeader
@@ -117,10 +129,18 @@ export default function MarketPage() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
               <BarChart3 className="w-5 h-5 text-[rgb(var(--accent))]" />
-              <span className="text-sm text-muted-foreground">Market Index</span>
+              <span className="text-sm text-muted-foreground">Cards Tracked</span>
             </div>
-            <p className="text-2xl font-bold text-foreground">1,247.82</p>
-            <PriceChange value={2.4} format="percent" size="sm" />
+            {overviewLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-foreground">
+                  {overview?.totalCardsTracked?.toLocaleString() ?? '-'}
+                </p>
+                <p className="text-xs text-muted-foreground">Total cards in database</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card className="glow-accent">
@@ -129,8 +149,18 @@ export default function MarketPage() {
               <DollarSign className="w-5 h-5 text-[rgb(var(--success))]" />
               <span className="text-sm text-muted-foreground">24h Volume</span>
             </div>
-            <p className="text-2xl font-bold text-foreground">$2.4M</p>
-            <p className="text-xs text-muted-foreground">+12% vs yesterday</p>
+            {overviewLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-foreground">
+                  {overview?.volume24hUsd ? formatVolume(overview.volume24hUsd) : '-'}
+                </p>
+                {overview?.avgPriceChange24hPct !== null && overview?.avgPriceChange24hPct !== undefined && (
+                  <PriceChange value={overview.avgPriceChange24hPct} format="percent" size="sm" />
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
         <Card className="glow-accent">
@@ -139,8 +169,14 @@ export default function MarketPage() {
               <Flame className="w-5 h-5 text-[rgb(var(--mythic-orange))]" />
               <span className="text-sm text-muted-foreground">Hot Cards</span>
             </div>
-            <p className="text-2xl font-bold text-foreground">47</p>
-            <p className="text-xs text-muted-foreground">Cards up &gt;10% today</p>
+            {moversLoading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-foreground">{hotCardsCount}</p>
+                <p className="text-xs text-muted-foreground">Cards up &gt;10% today</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card className="glow-accent">
@@ -149,8 +185,14 @@ export default function MarketPage() {
               <Snowflake className="w-5 h-5 text-[rgb(var(--info))]" />
               <span className="text-sm text-muted-foreground">Cooling Off</span>
             </div>
-            <p className="text-2xl font-bold text-foreground">23</p>
-            <p className="text-xs text-muted-foreground">Cards down &gt;10% today</p>
+            {moversLoading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-foreground">{coolingCardsCount}</p>
+                <p className="text-xs text-muted-foreground">Cards down &gt;10% today</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -272,7 +314,7 @@ export default function MarketPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {mockFormatHealth.map((format) => (
+              {formatHealthData.map((format) => (
                 <FormatHealthCard key={format.format} format={format} />
               ))}
             </div>
@@ -288,22 +330,32 @@ export default function MarketPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {mockTrendingCards.map((card, i) => (
-                <Link key={i} href={`/cards?search=${encodeURIComponent(card.name)}`}>
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors">
-                    <div>
-                      <p className="font-medium text-foreground">{card.name}</p>
-                      <p className="text-xs text-muted-foreground">{card.reason}</p>
+            {moversLoading && !topMovers ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : topMovers?.gainers && topMovers.gainers.length > 0 ? (
+              <div className="space-y-3">
+                {topMovers.gainers.slice(0, 4).map((card, i) => (
+                  <Link key={i} href={`/cards?q=${encodeURIComponent(card.cardName)}`}>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-foreground truncate">{card.cardName}</p>
+                        <p className="text-xs text-muted-foreground uppercase">{card.setCode}</p>
+                      </div>
+                      <div className="text-right ml-4">
+                        <p className="font-medium text-foreground">{formatCurrency(card.currentPriceUsd)}</p>
+                        <PriceChange value={card.changePct} format="percent" size="sm" />
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium text-foreground">{formatCurrency(card.price)}</p>
-                      <PriceChange value={card.change} format="percent" size="sm" />
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-8">No trending data available</p>
+            )}
           </CardContent>
         </Card>
       </div>

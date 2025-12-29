@@ -94,7 +94,7 @@ export default function TournamentsPage() {
                   setFormatFilter(e.target.value);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 bg-[rgb(var(--surface))] border border-[rgb(var(--border))] rounded-md text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))]"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 {FORMAT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -115,7 +115,7 @@ export default function TournamentsPage() {
                   setDaysFilter(Number(e.target.value));
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 bg-[rgb(var(--surface))] border border-[rgb(var(--border))] rounded-md text-[rgb(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))]"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 {DATE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>

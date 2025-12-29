@@ -27,18 +27,19 @@ export default function RegisterPage() {
     return null;
   }
 
-  // Password validation
+  // Password validation - must match backend requirements
   const hasUppercase = /[A-Z]/.test(password);
   const hasLowercase = /[a-z]/.test(password);
   const hasDigit = /\d/.test(password);
-  const hasMinLength = password.length >= 8;
+  const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+  const hasMinLength = password.length >= 12;
   const passwordsMatch = password === confirmPassword && password.length > 0;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!hasUppercase || !hasLowercase || !hasDigit || !hasMinLength) {
+    if (!hasUppercase || !hasLowercase || !hasDigit || !hasSpecialChar || !hasMinLength) {
       setError('Password does not meet requirements');
       return;
     }
@@ -181,10 +182,11 @@ export default function RegisterPage() {
               </div>
               {password && (
                 <div className="mt-2 space-y-1">
-                  <PasswordRequirement met={hasMinLength} label="At least 8 characters" />
+                  <PasswordRequirement met={hasMinLength} label="At least 12 characters" />
                   <PasswordRequirement met={hasUppercase} label="One uppercase letter" />
                   <PasswordRequirement met={hasLowercase} label="One lowercase letter" />
                   <PasswordRequirement met={hasDigit} label="One number" />
+                  <PasswordRequirement met={hasSpecialChar} label="One special character (!@#$%^&*)" />
                 </div>
               )}
             </div>
