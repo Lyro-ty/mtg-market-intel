@@ -840,6 +840,268 @@ export async function getMilestones(): Promise<MilestoneList> {
   return fetchApi('/collection/milestones', {}, true);
 }
 
+// Import Job types (inline since they're simple)
+export interface ImportJob {
+  id: number;
+  platform: string;
+  status: string;
+  filename: string;
+  file_size: number;
+  total_rows: number;
+  matched_cards: number;
+  unmatched_cards: number;
+  imported_count: number;
+  skipped_count: number;
+  error_count: number;
+  error_message?: string;
+  preview_data?: {
+    items: Array<{
+      row_number: number;
+      card_name: string;
+      set_code?: string;
+      set_name?: string;
+      collector_number?: string;
+      quantity: number;
+      condition: string;
+      is_foil: boolean;
+      language: string;
+      acquisition_price?: number;
+      matched_card_id?: number;
+      match_confidence: number;
+      match_error?: string;
+    }>;
+    total: number;
+    matched: number;
+    unmatched: number;
+  };
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export interface ImportListResponse {
+  items: ImportJob[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Platform Import API (requires authentication)
+export async function uploadImportFile(
+  file: File,
+  platform: 'moxfield' | 'archidekt' | 'deckbox' | 'tcgplayer' | 'generic_csv'
+): Promise<ImportJob> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('platform', platform);
+
+  const token = getStoredToken();
+  if (!token) {
+    throw new ApiError('Authentication required', 401);
+  }
+
+  const response = await fetch(`${API_BASE}/imports/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new ApiError(errorData.detail || 'Upload failed', response.status);
+  }
+
+  return response.json();
+}
+
+export async function generateImportPreview(jobId: number): Promise<ImportJob> {
+  return fetchApi(`/imports/${jobId}/preview`, {
+    method: 'POST',
+  }, true);
+}
+
+export async function confirmImport(
+  jobId: number,
+  skipUnmatched: boolean = true
+): Promise<ImportJob> {
+  return fetchApi(`/imports/${jobId}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ skip_unmatched: skipUnmatched }),
+  }, true);
+}
+
+export async function cancelImport(jobId: number): Promise<ImportJob> {
+  return fetchApi(`/imports/${jobId}/cancel`, {
+    method: 'POST',
+  }, true);
+}
+
+export async function getImportJob(jobId: number): Promise<ImportJob> {
+  return fetchApi(`/imports/${jobId}`, {}, true);
+}
+
+export async function getImportJobs(options: {
+  limit?: number;
+  offset?: number;
+} = {}): Promise<ImportListResponse> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.offset !== undefined) params.set('offset', String(options.offset));
+
+  const queryString = params.toString();
+  return fetchApi(`/imports${queryString ? `?${queryString}` : ''}`, {}, true);
+}
+
+// Portfolio API (requires authentication)
+export interface PortfolioSnapshot {
+  id: number;
+  snapshot_date: string;
+  total_value: number;
+  total_cost: number;
+  total_cards: number;
+  unique_cards: number;
+  value_change_1d?: number;
+  value_change_7d?: number;
+  value_change_30d?: number;
+  value_change_pct_1d?: number;
+  value_change_pct_7d?: number;
+  value_change_pct_30d?: number;
+  breakdown?: {
+    foil: number;
+    non_foil: number;
+    by_set: Record<string, number>;
+  };
+  top_gainers?: Array<{
+    card_id: number;
+    card_name: string;
+    set_code: string;
+    current_value: number;
+    change_pct: number;
+  }>;
+  top_losers?: Array<{
+    card_id: number;
+    card_name: string;
+    set_code: string;
+    current_value: number;
+    change_pct: number;
+  }>;
+}
+
+export interface PortfolioSummary {
+  total_value: number;
+  total_cost: number;
+  total_cards: number;
+  unique_cards: number;
+  profit_loss: number;
+  profit_loss_pct: number;
+  value_change_1d?: number;
+  value_change_7d?: number;
+  value_change_30d?: number;
+  value_change_pct_1d?: number;
+  value_change_pct_7d?: number;
+  value_change_pct_30d?: number;
+  top_gainers?: PortfolioSnapshot['top_gainers'];
+  top_losers?: PortfolioSnapshot['top_losers'];
+}
+
+export interface PortfolioHistoryResponse {
+  snapshots: PortfolioSnapshot[];
+  days: number;
+}
+
+export interface PortfolioChartData {
+  labels: string[];
+  values: number[];
+  costs: number[];
+}
+
+export async function getPortfolioSummary(): Promise<PortfolioSummary> {
+  return fetchApi('/portfolio/summary', {}, true);
+}
+
+export async function getPortfolioHistory(days: number = 30): Promise<PortfolioHistoryResponse> {
+  return fetchApi(`/portfolio/history?days=${days}`, {}, true);
+}
+
+export async function getPortfolioChartData(days: number = 30): Promise<PortfolioChartData> {
+  return fetchApi(`/portfolio/chart-data?days=${days}`, {}, true);
+}
+
+export async function createPortfolioSnapshot(): Promise<PortfolioSnapshot> {
+  return fetchApi('/portfolio/snapshot', {
+    method: 'POST',
+  }, true);
+}
+
+// Saved Searches API (requires authentication)
+export type SearchAlertFrequency = 'never' | 'daily' | 'weekly';
+
+export interface SavedSearch {
+  id: number;
+  name: string;
+  query?: string;
+  filters?: Record<string, unknown>;
+  alert_enabled: boolean;
+  alert_frequency: SearchAlertFrequency;
+  price_alert_threshold?: number;
+  last_run_at?: string;
+  last_result_count: number;
+  created_at: string;
+}
+
+export interface SavedSearchListResponse {
+  items: SavedSearch[];
+  total: number;
+}
+
+export interface SavedSearchCreate {
+  name: string;
+  query?: string;
+  filters?: Record<string, unknown>;
+  alert_enabled?: boolean;
+  alert_frequency?: SearchAlertFrequency;
+  price_alert_threshold?: number;
+}
+
+export interface SavedSearchUpdate {
+  name?: string;
+  query?: string;
+  filters?: Record<string, unknown>;
+  alert_enabled?: boolean;
+  alert_frequency?: SearchAlertFrequency;
+  price_alert_threshold?: number;
+}
+
+export async function getSavedSearches(): Promise<SavedSearchListResponse> {
+  return fetchApi('/saved-searches', {}, true);
+}
+
+export async function createSavedSearch(data: SavedSearchCreate): Promise<SavedSearch> {
+  return fetchApi('/saved-searches', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, true);
+}
+
+export async function getSavedSearch(id: number): Promise<SavedSearch> {
+  return fetchApi(`/saved-searches/${id}`, {}, true);
+}
+
+export async function updateSavedSearch(id: number, data: SavedSearchUpdate): Promise<SavedSearch> {
+  return fetchApi(`/saved-searches/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }, true);
+}
+
+export async function deleteSavedSearch(id: number): Promise<void> {
+  await fetchApi(`/saved-searches/${id}`, {
+    method: 'DELETE',
+  }, true);
+}
+
 // Export error class for use in components
 export { ApiError };
 

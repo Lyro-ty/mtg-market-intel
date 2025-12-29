@@ -22,6 +22,9 @@ from app.api.routes import (
     notifications,
     collection,
     want_list,
+    imports,
+    portfolio,
+    saved_searches,
 )
 
 api_router = APIRouter()
@@ -46,6 +49,9 @@ api_router.include_router(sets.router, tags=["Sets"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(collection.router, prefix="/collection", tags=["Collection"])
 api_router.include_router(want_list.router, prefix="/want-list", tags=["Want List"])
+api_router.include_router(imports.router, tags=["Imports"])
+api_router.include_router(portfolio.router, tags=["Portfolio"])
+api_router.include_router(saved_searches.router, tags=["Saved Searches"])
 
 # WebSocket route (no prefix - connects at /api/ws)
 api_router.include_router(websocket.router, tags=["WebSocket"])

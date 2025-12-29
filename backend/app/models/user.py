@@ -11,8 +11,11 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.collection_stats import CollectionStats
+    from app.models.import_job import ImportJob
     from app.models.inventory import InventoryItem
     from app.models.notification import Notification
+    from app.models.portfolio_snapshot import PortfolioSnapshot
+    from app.models.saved_search import SavedSearch
     from app.models.settings import AppSettings
     from app.models.session import UserSession
     from app.models.user_milestone import UserMilestone
@@ -102,6 +105,21 @@ class User(Base):
     )
     milestones: Mapped[list["UserMilestone"]] = relationship(
         "UserMilestone",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    import_jobs: Mapped[list["ImportJob"]] = relationship(
+        "ImportJob",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    portfolio_snapshots: Mapped[list["PortfolioSnapshot"]] = relationship(
+        "PortfolioSnapshot",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    saved_searches: Mapped[list["SavedSearch"]] = relationship(
+        "SavedSearch",
         back_populates="user",
         cascade="all, delete-orphan"
     )

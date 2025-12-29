@@ -35,6 +35,9 @@ from app.models.notification import Notification, NotificationType, Notification
 from app.models.mtg_set import MTGSet
 from app.models.collection_stats import CollectionStats
 from app.models.user_milestone import UserMilestone, MilestoneType
+from app.models.import_job import ImportJob, ImportPlatform, ImportStatus
+from app.models.portfolio_snapshot import PortfolioSnapshot
+from app.models.saved_search import SavedSearch, SearchAlertFrequency
 
 
 # DEPRECATED: Listing model - use PriceSnapshot instead
@@ -131,6 +134,12 @@ __all__ = [
     "CollectionStats",
     "UserMilestone",
     "MilestoneType",
+    "ImportJob",
+    "ImportPlatform",
+    "ImportStatus",
+    "PortfolioSnapshot",
+    "SavedSearch",
+    "SearchAlertFrequency",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
     "ListingFeatureVector",  # DEPRECATED: Use CardFeatureVector
