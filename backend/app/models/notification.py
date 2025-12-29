@@ -19,6 +19,7 @@ class NotificationType(str, Enum):
     PRICE_ALERT = "price_alert"      # Want list target hit
     PRICE_SPIKE = "price_spike"      # Card spiked in price
     PRICE_DROP = "price_drop"        # Card dropped in price
+    BAN_CHANGE = "ban_change"        # Card banned/unbanned in a format
     MILESTONE = "milestone"          # Collection milestone achieved
     SYSTEM = "system"                # System announcements
     EDUCATIONAL = "educational"      # Tips and educational content
