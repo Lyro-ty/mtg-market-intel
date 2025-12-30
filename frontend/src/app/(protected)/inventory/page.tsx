@@ -282,7 +282,7 @@ function InventoryPageContent(): JSX.Element {
 
       {/* Quick Stats */}
       {analytics && (
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <Card className="bg-gradient-to-br from-[rgb(var(--magic-blue))]/10 to-[rgb(var(--magic-blue))]/5 border-[rgb(var(--magic-blue))]/20 glow-accent">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -510,7 +510,7 @@ function InventoryPageContent(): JSX.Element {
               ) : null}
 
               {/* Analytics Cards */}
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* Value Distribution */}
                 <Card className="glow-accent">
                   <CardContent className="p-4">
@@ -714,7 +714,7 @@ function InventoryPageContent(): JSX.Element {
           {/* Recommendations Tab */}
           {activeTab === 'recommendations' && recommendations && (
             <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card className={cn(
                   'glow-accent',
                   recommendations.critical_count > 0 && 'border-[rgb(var(--destructive))]/50'
