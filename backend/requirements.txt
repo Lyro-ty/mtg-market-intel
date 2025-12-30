@@ -46,6 +46,9 @@ tenacity==8.2.3
 structlog==24.1.0
 python-json-logger==2.0.7
 
+# MCP Server
+mcp>=1.0.0
+
 # Rate Limiting
 slowapi==0.1.9
 
