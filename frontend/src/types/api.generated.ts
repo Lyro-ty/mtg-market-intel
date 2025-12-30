@@ -3154,6 +3154,22 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Outcome Evaluated At */
+            outcome_evaluated_at?: string | null;
+            /** Outcome Price End */
+            outcome_price_end?: number | null;
+            /** Outcome Price Peak */
+            outcome_price_peak?: number | null;
+            /** Outcome Price Peak At */
+            outcome_price_peak_at?: string | null;
+            /** Accuracy Score End */
+            accuracy_score_end?: number | null;
+            /** Accuracy Score Peak */
+            accuracy_score_peak?: number | null;
+            /** Actual Profit Pct End */
+            actual_profit_pct_end?: number | null;
+            /** Actual Profit Pct Peak */
+            actual_profit_pct_peak?: number | null;
         };
         /**
          * RecommendationSummary
@@ -4372,6 +4388,8 @@ export interface operations {
                 min_price?: number | null;
                 max_price?: number | null;
                 is_active?: boolean;
+                has_outcome?: boolean | null;
+                min_accuracy?: number | null;
                 page?: number;
                 page_size?: number;
             };
