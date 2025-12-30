@@ -56,7 +56,7 @@ function WantListItemCard({ item, onToggleAlert, onDelete, isDeleting }: WantLis
   const [isTogglingAlert, setIsTogglingAlert] = useState(false);
 
   const targetPrice = parseFloat(item.target_price);
-  const currentPrice = item.card.current_price;
+  const currentPrice = item.card.current_price != null ? parseFloat(item.card.current_price) : null;
 
   const priceDiff = currentPrice != null ? currentPrice - targetPrice : null;
   const priceDiffPct = priceDiff != null && currentPrice != null && currentPrice > 0
@@ -483,22 +483,22 @@ export default function WantListPage() {
       return order[a.priority] - order[b.priority];
     }
     if (sortBy === 'price') {
-      const aPrice = a.card.current_price ?? 0;
-      const bPrice = b.card.current_price ?? 0;
+      const aPrice = a.card.current_price != null ? parseFloat(a.card.current_price) : 0;
+      const bPrice = b.card.current_price != null ? parseFloat(b.card.current_price) : 0;
       return bPrice - aPrice;
     }
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
   const nearTargetCount = items.filter(item => {
-    const currentPrice = item.card.current_price;
+    const currentPrice = item.card.current_price != null ? parseFloat(item.card.current_price) : null;
     const targetPrice = parseFloat(item.target_price);
     if (currentPrice == null) return false;
     return (currentPrice - targetPrice) <= targetPrice * 0.1;
   }).length;
 
   const totalValue = items.reduce((sum, item) =>
-    sum + (item.card.current_price ?? 0), 0
+    sum + (item.card.current_price != null ? parseFloat(item.card.current_price) : 0), 0
   );
 
   const totalTargetValue = items.reduce((sum, item) =>

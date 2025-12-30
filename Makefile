@@ -39,6 +39,7 @@ help:
 	@echo ""
 	@echo "Development Commands:"
 	@echo "  make lint         - Run linters"
+	@echo "  make generate-types - Generate TypeScript types from OpenAPI"
 	@echo "  make clean        - Remove all containers and volumes"
 	@echo "  make shell        - Open a shell in the backend container"
 
@@ -112,6 +113,11 @@ lint:
 
 format:
 	docker compose exec backend ruff format .
+
+generate-types:
+	@echo "Generating TypeScript types from OpenAPI schema..."
+	cd frontend && npm run generate-types
+	@echo "Types generated at frontend/src/types/api.generated.ts"
 
 clean:
 	docker compose down -v --rmi local

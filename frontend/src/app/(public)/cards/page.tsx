@@ -55,7 +55,7 @@ interface SearchResponse {
 }
 
 // Helper to convert rarity string to CardRarity type
-function normalizeRarity(rarity: string | undefined): CardRarity | undefined {
+function normalizeRarity(rarity: string | null | undefined): CardRarity | undefined {
   if (!rarity) return undefined;
   const lower = rarity.toLowerCase();
   if (lower === 'common' || lower === 'uncommon' || lower === 'rare' || lower === 'mythic') {

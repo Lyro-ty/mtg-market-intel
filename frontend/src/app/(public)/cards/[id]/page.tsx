@@ -639,7 +639,7 @@ export default function CardDetailPage() {
         ) : similarCardsData && similarCardsData.similar_cards.length > 0 ? (
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-[rgb(var(--border))] scrollbar-track-transparent">
             {similarCardsData.similar_cards.map((similarCard) => (
-              <Link key={similarCard.card_id} href={`/cards/${similarCard.card_id}`}>
+              <Link key={similarCard.id} href={`/cards/${similarCard.id}`}>
                 <div className="flex-shrink-0 w-40 group cursor-pointer">
                   <div className="relative aspect-[5/7] rounded-lg overflow-hidden bg-[rgb(var(--secondary))] shadow-md group-hover:shadow-xl transition-shadow">
                     {similarCard.image_url ? (
@@ -657,7 +657,7 @@ export default function CardDetailPage() {
                       </div>
                     )}
                     <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs font-semibold shadow">
-                      {Math.round(similarCard.similarity_score * 100)}%
+                      {Math.round((similarCard.similarity_score ?? 0) * 100)}%
                     </span>
                   </div>
                   <div className="mt-2">

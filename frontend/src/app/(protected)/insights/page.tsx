@@ -102,16 +102,21 @@ function InsightCard({
   notification: Notification;
   onMarkRead: (id: number) => void;
 }) {
-  const category = getInsightCategory(notification.type);
-  const Icon = getTypeIcon(notification.type);
-  const metadata = notification.metadata;
+  // Cast type and priority to expected literals (API returns string)
+  const notificationType = notification.type as NotificationType;
+  const notificationPriority = notification.priority as NotificationPriority;
+
+  const category = getInsightCategory(notificationType);
+  const Icon = getTypeIcon(notificationType);
+  // API uses extra_data instead of metadata
+  const metadata = notification.extra_data as Record<string, unknown> | null;
 
   const timeAgo = formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
 
   return (
     <Card className={cn(
       'glow-accent border-l-4 transition-all hover:border-[rgb(var(--accent))]/30',
-      priorityStyles[notification.priority].border,
+      priorityStyles[notificationPriority]?.border,
       !notification.read && 'bg-[rgb(var(--accent))]/5'
     )}>
       <CardContent className="p-4">
@@ -143,27 +148,27 @@ function InsightCard({
                 </div>
                 <p className="text-sm text-muted-foreground">{notification.message}</p>
               </div>
-              <Badge className={priorityStyles[notification.priority].badge}>
-                {notification.priority}
+              <Badge className={priorityStyles[notificationPriority]?.badge}>
+                {notificationPriority}
               </Badge>
             </div>
 
             {/* Card Info (if applicable) */}
-            {metadata?.card_name && (
+            {metadata?.card_name != null && (
               <div className="mt-3 flex items-center gap-4 p-2 rounded-lg bg-secondary/50">
                 <div className="flex-1">
-                  <p className="font-medium text-foreground">{metadata.card_name}</p>
-                  {metadata.set_code && (
-                    <p className="text-xs text-muted-foreground">{metadata.set_code}</p>
+                  <p className="font-medium text-foreground">{String(metadata.card_name)}</p>
+                  {metadata.set_code != null && (
+                    <p className="text-xs text-muted-foreground">{String(metadata.set_code)}</p>
                   )}
                 </div>
                 {metadata.current_price !== undefined && (
                   <div className="text-right">
                     <p className="font-medium text-foreground">
-                      {formatCurrency(metadata.current_price)}
+                      {formatCurrency(Number(metadata.current_price))}
                     </p>
                     {metadata.price_change !== undefined && (
-                      <PriceChange value={metadata.price_change} format="percent" size="sm" />
+                      <PriceChange value={Number(metadata.price_change)} format="percent" size="sm" />
                     )}
                   </div>
                 )}
@@ -187,9 +192,9 @@ function InsightCard({
                     Mark read
                   </Button>
                 )}
-                {metadata?.action && (
+                {metadata?.action != null && (
                   <Button variant="ghost" size="sm" className="text-[rgb(var(--accent))] h-7">
-                    {metadata.action}
+                    {String(metadata.action)}
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
                 )}
@@ -266,8 +271,8 @@ export default function InsightsPage() {
     if (!data?.items) return { total: 0, alerts: 0, opportunities: 0, unread: 0 };
     return {
       total: data.items.length,
-      alerts: data.items.filter(n => getInsightCategory(n.type) === 'alert').length,
-      opportunities: data.items.filter(n => getInsightCategory(n.type) === 'opportunity').length,
+      alerts: data.items.filter(n => getInsightCategory(n.type as NotificationType) === 'alert').length,
+      opportunities: data.items.filter(n => getInsightCategory(n.type as NotificationType) === 'opportunity').length,
       unread: data.unread_count,
     };
   }, [data]);

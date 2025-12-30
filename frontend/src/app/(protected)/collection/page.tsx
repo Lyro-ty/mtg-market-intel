@@ -32,7 +32,7 @@ import type { SetCompletion, Milestone, CollectionStats } from '@/types';
 type TabType = 'sets' | 'binder' | 'stats';
 
 function SetProgressCard({ set }: { set: SetCompletion }) {
-  const completionPct = Math.round(set.completion_percentage);
+  const completionPct = Math.round(parseFloat(set.completion_percentage));
 
   return (
     <Card className="glow-accent hover:border-[rgb(var(--accent))]/30 transition-colors">

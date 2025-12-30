@@ -39,6 +39,7 @@ make test-frontend       # npm test
 # Quality
 make lint                # ruff + eslint
 make format              # ruff format
+make generate-types      # Generate TypeScript types from OpenAPI
 
 # Manual task triggers
 make trigger-scrape
@@ -68,7 +69,8 @@ Celery Workers (ingestion, analytics, recommendations)
 - `frontend/src/app/` - Next.js App Router pages
 - `frontend/src/components/` - React components
 - `frontend/src/lib/api.ts` - API client functions
-- `frontend/src/types/index.ts` - TypeScript interfaces (must match backend schemas!)
+- `frontend/src/types/index.ts` - TypeScript interfaces (re-exports from generated types)
+- `frontend/src/types/api.generated.ts` - Auto-generated from OpenAPI (run `make generate-types`)
 - `docs/plans/` - Design documents and implementation plans
 
 **Data flow:**
@@ -144,11 +146,21 @@ docker compose up -d --build backend  # Rebuild backend
 docker compose up -d --build frontend # Rebuild frontend
 ```
 
-### API Field Naming
-**CRITICAL**: Backend schema field names must match frontend TypeScript interfaces.
-- Backend schemas: `backend/app/schemas/`
-- Frontend types: `frontend/src/types/index.ts`
-- Example: If schema uses `card_id`, frontend must use `card_id` (not `id`)
+### TypeScript Type Generation
+Frontend types are auto-generated from the backend's OpenAPI schema:
+
+```bash
+# Regenerate types after backend schema changes
+make generate-types
+```
+
+This generates `frontend/src/types/api.generated.ts` from `http://localhost:8000/openapi.json`.
+The `frontend/src/types/index.ts` file re-exports these with friendly aliases.
+
+**After changing backend schemas:**
+1. Run `make generate-types`
+2. Run `npx tsc --noEmit` in frontend to catch type mismatches
+3. Fix any frontend code using the old types
 
 ### Card IDs
 Card IDs are preserved from Scryfall imports and do NOT start at 1.

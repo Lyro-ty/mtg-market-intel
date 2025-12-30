@@ -61,8 +61,11 @@ interface NotificationItemProps {
 }
 
 function NotificationItem({ notification, onMarkRead, onDelete, isMarking, isDeleting }: NotificationItemProps) {
-  const Icon = NOTIFICATION_ICONS[notification.type] || Info;
-  const priorityStyle = PRIORITY_STYLES[notification.priority] || PRIORITY_STYLES.medium;
+  // Cast type/priority from API strings to expected literal types
+  const notificationType = notification.type as NotificationType;
+  const notificationPriority = notification.priority as NotificationPriority;
+  const Icon = NOTIFICATION_ICONS[notificationType] || Info;
+  const priorityStyle = PRIORITY_STYLES[notificationPriority] || PRIORITY_STYLES.medium;
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);

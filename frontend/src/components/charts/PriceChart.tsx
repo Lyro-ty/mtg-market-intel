@@ -116,17 +116,17 @@ export function PriceChart({
   });
 
   // Get data freshness info
-  const freshnessMinutes = history?.data_freshness_minutes;
+  const freshnessMinutes = history?.data_freshness_minutes ?? undefined;
   const latestSnapshot = history?.latest_snapshot_time;
-  const isStale = freshnessMinutes !== undefined && freshnessMinutes > 60;  // Stale if > 1 hour
-  const isVeryStale = freshnessMinutes !== undefined && freshnessMinutes > 1440;  // Very stale if > 24 hours
+  const isStale = freshnessMinutes != null && freshnessMinutes > 60;  // Stale if > 1 hour
+  const isVeryStale = freshnessMinutes != null && freshnessMinutes > 1440;  // Very stale if > 24 hours
 
   // If title is empty, don't render the Card wrapper (it's already wrapped by parent)
   if (!title) {
     return (
       <div>
         {/* Freshness indicator when title is empty */}
-        {showFreshness && freshnessMinutes !== undefined && (
+        {showFreshness && freshnessMinutes != null && (
           <div className="flex items-center justify-end gap-2 text-sm mb-4">
             <span className={`inline-flex items-center gap-1 ${
               isVeryStale ? 'text-red-500' : isStale ? 'text-amber-500' : 'text-green-500'
@@ -134,8 +134,8 @@ export function PriceChart({
               <span className={`w-2 h-2 rounded-full ${
                 isVeryStale ? 'bg-red-500' : isStale ? 'bg-amber-500' : 'bg-green-500'
               } animate-pulse`} />
-              {freshnessMinutes < 1 
-                ? 'Live' 
+              {freshnessMinutes < 1
+                ? 'Live'
                 : freshnessMinutes < 60
                 ? `${freshnessMinutes}m ago`
                 : freshnessMinutes < 1440
@@ -219,7 +219,7 @@ export function PriceChart({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>{title}</CardTitle>
-          {showFreshness && freshnessMinutes !== undefined && (
+          {showFreshness && freshnessMinutes != null && (
             <div className="flex items-center gap-2 text-sm">
               <span className={`inline-flex items-center gap-1 ${
                 isVeryStale ? 'text-red-500' : isStale ? 'text-amber-500' : 'text-green-500'
@@ -227,8 +227,8 @@ export function PriceChart({
                 <span className={`w-2 h-2 rounded-full ${
                   isVeryStale ? 'bg-red-500' : isStale ? 'bg-amber-500' : 'bg-green-500'
                 } animate-pulse`} />
-                {freshnessMinutes < 1 
-                  ? 'Live' 
+                {freshnessMinutes < 1
+                  ? 'Live'
                   : freshnessMinutes < 60
                   ? `${freshnessMinutes}m ago`
                   : freshnessMinutes < 1440
