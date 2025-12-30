@@ -12,7 +12,6 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.card import Card
     from app.models.marketplace import Marketplace
-    from app.models.feature_vector import ListingFeatureVector
 
 
 class Listing(Base):
@@ -66,9 +65,8 @@ class Listing(Base):
     # Relationships
     card: Mapped["Card"] = relationship("Card", back_populates="listings")
     marketplace: Mapped["Marketplace"] = relationship("Marketplace", back_populates="listings")
-    feature_vector: Mapped["ListingFeatureVector | None"] = relationship(
-        "ListingFeatureVector", uselist=False, cascade="all, delete-orphan"
-    )
+    # Note: ListingFeatureVector relationship removed - model was never created
+    # and Listing is deprecated in favor of PriceSnapshot
     
     # Indexes
     __table_args__ = (

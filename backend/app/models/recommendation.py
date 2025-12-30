@@ -64,6 +64,16 @@ class Recommendation(Base):
     # Validity
     valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+
+    # Outcome tracking (for accuracy measurement)
+    outcome_evaluated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    outcome_price_end: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    outcome_price_peak: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    outcome_price_peak_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    accuracy_score_end: Mapped[Optional[float]] = mapped_column(Numeric(3, 2), nullable=True)
+    accuracy_score_peak: Mapped[Optional[float]] = mapped_column(Numeric(3, 2), nullable=True)
+    actual_profit_pct_end: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    actual_profit_pct_peak: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     
     # Relationships
     card: Mapped["Card"] = relationship("Card", back_populates="recommendations")

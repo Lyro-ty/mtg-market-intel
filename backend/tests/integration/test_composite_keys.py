@@ -63,10 +63,11 @@ async def pg_session(pg_engine) -> AsyncSession:
     )
 
     async with session_maker() as session:
-        # Start a savepoint so we can rollback without affecting other tests
-        async with session.begin():
-            yield session
-            # Rollback happens automatically when exiting the context
+        # Use a nested transaction (savepoint) for test isolation
+        # This allows tests to rollback their own work without affecting the connection
+        yield session
+        # Rollback any uncommitted changes after each test
+        await session.rollback()
 
 
 @pytest.fixture(scope="function")
@@ -603,9 +604,9 @@ class TestCompositeKeyConstraints:
             currency="USD",
         )
         pg_session.add(snapshot1)
-        await pg_session.flush()
+        await pg_session.commit()
 
-        # Try to insert duplicate
+        # Try to insert duplicate - need fresh session state
         snapshot2 = PriceSnapshot(
             time=now,
             card_id=test_card.id,
@@ -620,9 +621,9 @@ class TestCompositeKeyConstraints:
 
         from sqlalchemy.exc import IntegrityError
         with pytest.raises(IntegrityError):
-            await pg_session.flush()
+            await pg_session.commit()
 
-        # Rollback to continue with other tests
+        # Rollback the failed transaction to continue with other tests
         await pg_session.rollback()
 
     async def test_different_time_same_other_keys_allowed(
