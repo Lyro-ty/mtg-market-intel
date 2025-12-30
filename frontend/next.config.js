@@ -1,4 +1,11 @@
-const { withSentryConfig } = require('@sentry/nextjs');
+// Conditionally load Sentry - only if the package is installed
+let withSentryConfig;
+try {
+  withSentryConfig = require('@sentry/nextjs').withSentryConfig;
+} catch {
+  // Sentry not installed, will use plain nextConfig
+  withSentryConfig = null;
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -38,7 +45,8 @@ const sentryWebpackPluginOptions = {
   dryRun: !process.env.SENTRY_AUTH_TOKEN,
 };
 
-module.exports = process.env.NEXT_PUBLIC_SENTRY_DSN
+// Only wrap with Sentry if DSN is configured AND package is installed
+module.exports = (process.env.NEXT_PUBLIC_SENTRY_DSN && withSentryConfig)
   ? withSentryConfig(nextConfig, sentryWebpackPluginOptions)
   : nextConfig;
 
