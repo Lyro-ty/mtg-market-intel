@@ -363,6 +363,7 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                 "scryfall_snapshots": 0,
                 "cardtrader_snapshots": 0,
                 "tcgplayer_snapshots": 0,
+                "manapool_snapshots": 0,
                 "mtgjson_snapshots": 0,
                 "total_snapshots": 0,
                 "backfilled_snapshots": 0,
@@ -720,7 +721,126 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                     await tcgplayer.close()
                 else:
                     logger.info("TCGPlayer API credentials not configured - skipping TCGPlayer collection")
-                
+
+                # Collect prices from Manapool (European market bulk prices)
+                if settings.manapool_api_token:
+                    from app.services.ingestion.adapters.manapool import ManapoolAdapter
+                    manapool = ManapoolAdapter()
+                    manapool_mp = await _get_or_create_manapool_marketplace(db)
+
+                    logger.info("Collecting Manapool bulk price data")
+
+                    try:
+                        # Fetch bulk prices (all cards in one request)
+                        bulk_prices = await manapool.fetch_bulk_prices()
+                        logger.info("Manapool bulk prices fetched", count=len(bulk_prices))
+
+                        # Build a lookup from scryfall_id to card for fast matching
+                        card_by_scryfall_id = {c.scryfall_id: c for c in cards if c.scryfall_id}
+
+                        now = datetime.now(timezone.utc)
+                        two_hours_ago = now - timedelta(hours=2)
+                        manapool_snapshots = 0
+
+                        for price_item in bulk_prices:
+                            try:
+                                scryfall_id = price_item.get("scryfall_id")
+                                if not scryfall_id:
+                                    continue
+
+                                # Match to our card catalog
+                                card = card_by_scryfall_id.get(scryfall_id)
+                                if not card:
+                                    continue
+
+                                # Get price in EUR (convert from cents)
+                                price_cents = price_item.get("price_cents") or price_item.get("price_cents_nm") or 0
+                                if price_cents <= 0:
+                                    continue
+
+                                price_eur = price_cents / 100.0
+
+                                # Get optional price variants
+                                price_low = None
+                                price_high = None
+                                if price_item.get("price_cents_lp_plus"):
+                                    price_low = price_item["price_cents_lp_plus"] / 100.0
+                                if price_item.get("price_cents_nm"):
+                                    price_high = price_item["price_cents_nm"] / 100.0
+
+                                # Foil price
+                                price_foil = None
+                                if price_item.get("price_cents_foil"):
+                                    price_foil = price_item["price_cents_foil"] / 100.0
+
+                                # Check for recent snapshot
+                                recent_snapshot_query = select(PriceSnapshot).where(
+                                    and_(
+                                        PriceSnapshot.card_id == card.id,
+                                        PriceSnapshot.marketplace_id == manapool_mp.id,
+                                        PriceSnapshot.time >= two_hours_ago,
+                                    )
+                                ).order_by(PriceSnapshot.time.desc()).limit(1)
+                                recent_result = await db.execute(recent_snapshot_query)
+                                recent_snapshot = recent_result.scalar_one_or_none()
+
+                                if not recent_snapshot:
+                                    # Create new snapshot
+                                    await _upsert_price_snapshot(
+                                        db=db,
+                                        card_id=card.id,
+                                        marketplace_id=manapool_mp.id,
+                                        time=now,
+                                        price=price_eur,
+                                        currency="EUR",
+                                        price_low=price_low,
+                                        price_high=price_high,
+                                        price_market=price_foil,
+                                        num_listings=price_item.get("available_quantity"),
+                                    )
+                                    manapool_snapshots += 1
+                                    results["total_snapshots"] += 1
+                                else:
+                                    # Create new snapshot if price changed by more than 2%
+                                    price_diff = abs(float(recent_snapshot.price) - price_eur)
+                                    price_change_pct = (price_diff / float(recent_snapshot.price) * 100) if recent_snapshot.price and float(recent_snapshot.price) > 0 else 0
+
+                                    if price_change_pct > 2.0:
+                                        await _upsert_price_snapshot(
+                                            db=db,
+                                            card_id=card.id,
+                                            marketplace_id=manapool_mp.id,
+                                            time=now,
+                                            price=price_eur,
+                                            currency="EUR",
+                                            price_low=price_low,
+                                            price_high=price_high,
+                                            price_market=price_foil,
+                                            num_listings=price_item.get("available_quantity"),
+                                        )
+                                        manapool_snapshots += 1
+                                        results["total_snapshots"] += 1
+
+                                # Flush periodically
+                                if manapool_snapshots % 500 == 0 and manapool_snapshots > 0:
+                                    await db.flush()
+                                    logger.debug("Manapool progress", snapshots=manapool_snapshots)
+
+                            except Exception as e:
+                                # Individual price errors are non-fatal
+                                continue
+
+                        results["manapool_snapshots"] = manapool_snapshots
+                        logger.info("Manapool price collection complete", snapshots=manapool_snapshots)
+
+                    except Exception as e:
+                        logger.warning("Manapool bulk price collection failed", error=str(e))
+                        results["errors"].append(f"Manapool: {str(e)}")
+                    finally:
+                        await manapool.close()
+                else:
+                    logger.info("Manapool API token not configured - skipping Manapool collection")
+
                 await db.commit()
                 results["completed_at"] = datetime.now(timezone.utc).isoformat()
                 
@@ -730,6 +850,7 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                     scryfall_snapshots=results["scryfall_snapshots"],
                     cardtrader_snapshots=results.get("cardtrader_snapshots", 0),
                     tcgplayer_snapshots=results.get("tcgplayer_snapshots", 0),
+                    manapool_snapshots=results.get("manapool_snapshots", 0),
                     backfilled_snapshots=results["backfilled_snapshots"],
                     total_snapshots=results["total_snapshots"],
                     errors_count=len(results["errors"]),
@@ -795,7 +916,7 @@ async def _get_or_create_tcgplayer_marketplace(db: AsyncSession) -> Marketplace:
     query = select(Marketplace).where(Marketplace.slug == "tcgplayer")
     result = await db.execute(query)
     mp = result.scalar_one_or_none()
-    
+
     if not mp:
         mp = Marketplace(
             name="TCGPlayer",
@@ -809,7 +930,30 @@ async def _get_or_create_tcgplayer_marketplace(db: AsyncSession) -> Marketplace:
         )
         db.add(mp)
         await db.flush()
-    
+
+    return mp
+
+
+async def _get_or_create_manapool_marketplace(db: AsyncSession) -> Marketplace:
+    """Get or create Manapool marketplace entry."""
+    query = select(Marketplace).where(Marketplace.slug == "manapool")
+    result = await db.execute(query)
+    mp = result.scalar_one_or_none()
+
+    if not mp:
+        mp = Marketplace(
+            name="Manapool",
+            slug="manapool",
+            base_url="https://manapool.com",
+            api_url="https://manapool.com/api/v1",
+            is_enabled=True,
+            supports_api=True,
+            default_currency="EUR",
+            rate_limit_seconds=1.0,  # 60 requests per minute
+        )
+        db.add(mp)
+        await db.flush()
+
     return mp
 
 
