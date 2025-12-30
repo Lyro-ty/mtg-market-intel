@@ -23,6 +23,7 @@ import {
   CardSkeleton,
 } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ornate/page-header';
+import { WelcomeModal } from '@/components/onboarding/WelcomeModal';
 import { getInventoryAnalytics, getInventoryTopMovers, getRecommendations } from '@/lib/api';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 
@@ -473,5 +474,10 @@ function DashboardPageContent() {
 }
 
 export default function DashboardPage() {
-  return <DashboardPageContent />;
+  return (
+    <>
+      <DashboardPageContent />
+      <WelcomeModal />
+    </>
+  );
 }

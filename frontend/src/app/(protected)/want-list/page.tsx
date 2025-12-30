@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/ornate/page-header';
 import { PriceChange } from '@/components/ornate/price-change';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, getTcgPlayerUrl } from '@/lib/utils';
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete';
 import {
   getWantList,
@@ -161,12 +161,12 @@ function WantListItemCard({ item, onToggleAlert, onDelete, isDeleting }: WantLis
                 asChild
               >
                 <a
-                  href={`https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(item.card.name)}`}
+                  href={getTcgPlayerUrl(item.card.name, item.card.set_code)}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   <ExternalLink className="w-4 h-4 mr-1" />
-                  TCGPlayer
+                  Buy on TCGPlayer
                 </a>
               </Button>
               <Button

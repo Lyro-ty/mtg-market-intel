@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, Package, Plus, X, Heart } from 'lucide-react';
+import { ArrowLeft, Package, Plus, X, Heart, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge, ActionBadge } from '@/components/ui/badge';
@@ -13,7 +13,7 @@ import { LoadingPage } from '@/components/ui/Loading';
 import { PriceChart } from '@/components/charts/PriceChart';
 import { SpreadChart } from '@/components/charts/SpreadChart';
 import { getCard, getCardHistory, refreshCard, createInventoryItem, getSimilarCards, addToWantList } from '@/lib/api';
-import { formatCurrency, formatPercent, getRarityColor } from '@/lib/utils';
+import { formatCurrency, formatPercent, getRarityColor, getTcgPlayerUrl } from '@/lib/utils';
 import type { InventoryCondition, WantListPriority } from '@/types';
 
 const CONDITION_OPTIONS: { value: InventoryCondition; label: string }[] = [
@@ -222,6 +222,20 @@ export default function CardDetailPage() {
               >
                 <Heart className="w-4 h-4 mr-1" />
                 Add to Want List
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                asChild
+              >
+                <a
+                  href={getTcgPlayerUrl(card.name, card.set_code)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  Buy on TCGPlayer
+                </a>
               </Button>
             </div>
 

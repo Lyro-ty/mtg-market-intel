@@ -145,3 +145,18 @@ export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - 3) + '...';
 }
+
+/**
+ * Generate a TCGPlayer affiliate link for a card
+ * Uses Impact.com partner vanity link for affiliate tracking
+ *
+ * Format: https://partner.tcgplayer.com/VANITY_SLUG?u=ENCODED_TCGPLAYER_URL
+ */
+export function getTcgPlayerUrl(cardName: string, setCode?: string): string {
+  const searchQuery = setCode ? `${cardName} ${setCode}` : cardName;
+  const tcgPlayerUrl = `https://www.tcgplayer.com/search/magic/product?q=${encodeURIComponent(searchQuery)}`;
+
+  // Dualcaster Deals vanity affiliate link
+  const encodedUrl = encodeURIComponent(tcgPlayerUrl);
+  return `https://partner.tcgplayer.com/dualcaster?u=${encodedUrl}`;
+}

@@ -201,7 +201,7 @@ Note: `.mcp.json` is gitignored (contains credentials and user-specific paths).
 | Scryfall | ✅ Working | Public API, no key needed |
 | TCGPlayer | ✅ Working | Requires API key (affiliate program) |
 | CardTrader | ✅ Working | Requires API token |
-| Manapool | 🔧 Planned | API available, adapter not built yet |
+| Manapool | ✅ Working | Requires API token (MANAPOOL_API_TOKEN) |
 | CardMarket | ❌ Blocked | Requires affiliation for API access |
 
 ## Debugging Tips
