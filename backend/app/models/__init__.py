@@ -28,7 +28,7 @@ from app.models.tournament import (
     DecklistCard,
     CardMetaStats,
 )
-from app.models.news import NewsArticle, CardNewsMention
+# News models removed - never implemented, no user request
 from app.models.session import UserSession
 from app.models.want_list import WantListItem
 from app.models.notification import Notification, NotificationType, NotificationPriority
@@ -54,16 +54,6 @@ def _get_listing():
     return Listing
 
 
-def _get_listing_feature_vector():
-    """Get the deprecated ListingFeatureVector model with a deprecation warning."""
-    warnings.warn(
-        "ListingFeatureVector is deprecated. Listings are no longer vectorized; "
-        "use CardFeatureVector for card-level vectors.",
-        DeprecationWarning,
-        stacklevel=3
-    )
-    from app.models.feature_vector import ListingFeatureVector
-    return ListingFeatureVector
 
 
 # Lazy imports for deprecated models
@@ -83,24 +73,8 @@ class _DeprecatedListing:
         return self._model(*args, **kwargs)
 
 
-class _DeprecatedListingFeatureVector:
-    """Proxy for deprecated ListingFeatureVector model."""
-    _model = None
-
-    def __getattr__(self, name):
-        if self._model is None:
-            self._model = _get_listing_feature_vector()
-        return getattr(self._model, name)
-
-    def __call__(self, *args, **kwargs):
-        if self._model is None:
-            self._model = _get_listing_feature_vector()
-        return self._model(*args, **kwargs)
-
-
 # Expose deprecated models via proxies (emit warnings on use)
 Listing = _DeprecatedListing()
-ListingFeatureVector = _DeprecatedListingFeatureVector()
 
 
 __all__ = [
@@ -123,8 +97,6 @@ __all__ = [
     "Decklist",
     "DecklistCard",
     "CardMetaStats",
-    "NewsArticle",
-    "CardNewsMention",
     "UserSession",
     "WantListItem",
     "Notification",
@@ -142,6 +114,5 @@ __all__ = [
     "SearchAlertFrequency",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
-    "ListingFeatureVector",  # DEPRECATED: Use CardFeatureVector
 ]
 

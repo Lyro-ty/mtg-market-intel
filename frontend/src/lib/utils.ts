@@ -145,18 +145,3 @@ export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - 3) + '...';
 }
-
-/**
- * Debounce a function
- */
-export function debounce<T extends string>(
-  func: (arg: T) => void,
-  wait: number
-): (arg: T) => void {
-  let timeout: NodeJS.Timeout | null = null;
-
-  return (arg: T) => {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => func(arg), wait);
-  };
-}

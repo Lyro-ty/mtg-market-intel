@@ -8,6 +8,7 @@ import structlog
 from celery import shared_task
 from sqlalchemy import select, and_
 
+from app.core.utils import parse_setting_value
 from app.models import Card, AppSettings, Recommendation
 from app.models.price_snapshot import PriceSnapshot
 from app.services.agents.recommendation import RecommendationAgent
@@ -20,11 +21,11 @@ logger = structlog.get_logger()
 async def _get_settings_value(db, user_id: int | None, key: str, default: Any) -> Any:
     """
     Get a setting value from the database for a specific user.
-    
+
     If user_id is None, tries to get from system user, otherwise uses default.
     """
     from app.models.settings import DEFAULT_SETTINGS
-    
+
     # Try to get from specified user
     if user_id:
         query = select(AppSettings).where(
@@ -33,16 +34,16 @@ async def _get_settings_value(db, user_id: int | None, key: str, default: Any) -
         )
         result = await db.execute(query)
         setting = result.scalar_one_or_none()
-        
+
         if setting:
-            return _parse_setting_value(setting.value, setting.value_type)
-    
+            return parse_setting_value(setting.value, setting.value_type)
+
     # Try system user as fallback
     from app.models.user import User
     system_user_query = select(User).where(User.username == "system")
     system_result = await db.execute(system_user_query)
     system_user = system_result.scalar_one_or_none()
-    
+
     if system_user:
         query = select(AppSettings).where(
             AppSettings.user_id == system_user.id,
@@ -50,32 +51,18 @@ async def _get_settings_value(db, user_id: int | None, key: str, default: Any) -
         )
         result = await db.execute(query)
         setting = result.scalar_one_or_none()
-        
+
         if setting:
-            return _parse_setting_value(setting.value, setting.value_type)
-    
+            return parse_setting_value(setting.value, setting.value_type)
+
     # Use default from DEFAULT_SETTINGS if available
     if key in DEFAULT_SETTINGS:
-        return _parse_setting_value(
+        return parse_setting_value(
             DEFAULT_SETTINGS[key]["value"],
             DEFAULT_SETTINGS[key]["value_type"]
         )
-    
+
     return default
-
-
-def _parse_setting_value(value: str, value_type: str) -> Any:
-    """Parse a setting value based on its type."""
-    if value_type == "float":
-        return float(value)
-    elif value_type == "integer":
-        return int(value)
-    elif value_type == "boolean":
-        return value.lower() == "true"
-    elif value_type == "json":
-        import json
-        return json.loads(value)
-    return value
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)

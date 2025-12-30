@@ -169,59 +169,6 @@ async def parse_plaintext_line_enhanced(line: str, db: AsyncSession) -> dict:
     return result
 
 
-def parse_plaintext_line(line: str) -> dict:
-    """
-    Parse a plaintext line into inventory components (non-async version for backward compatibility).
-    
-    This is a simplified version that doesn't validate set codes against the database.
-    For enhanced validation, use parse_plaintext_line_enhanced().
-    """
-    result = {
-        "quantity": 1,
-        "card_name": "",
-        "set_code": None,
-        "condition": InventoryCondition.NEAR_MINT,
-        "is_foil": False,
-    }
-    
-    # Check for foil
-    if re.search(r'\[foil\]|\(foil\)|foil', line, re.IGNORECASE):
-        result["is_foil"] = True
-        line = re.sub(r'\[foil\]|\(foil\)|foil', '', line, flags=re.IGNORECASE)
-    
-    # Parse quantity at start: "4x", "4 x", or just "4 "
-    qty_match = re.match(r'^(\d+)\s*[xX]?\s*', line)
-    if qty_match:
-        result["quantity"] = int(qty_match.group(1))
-        line = line[qty_match.end():]
-    
-    # Check for condition at end
-    for alias, cond in CONDITION_ALIASES.items():
-        if line.lower().rstrip().endswith(alias):
-            result["condition"] = cond
-            line = line[:-(len(alias))].rstrip(' -')
-            break
-    
-    # Check for set code in parentheses: (MMA) or [MMA]
-    set_match = re.search(r'[\(\[]([A-Z0-9]{2,6})[\)\]]', line, re.IGNORECASE)
-    if set_match:
-        result["set_code"] = set_match.group(1).upper()
-        line = line[:set_match.start()] + line[set_match.end():]
-    
-    # Check for set name after dash: "Card Name - Set Name"
-    if " - " in line and not result["set_code"]:
-        parts = line.split(" - ")
-        result["card_name"] = parts[0].strip()
-        # The rest might be set name or other info - just use the card name
-    else:
-        result["card_name"] = line.strip()
-    
-    # Clean up card name
-    result["card_name"] = re.sub(r'\s+', ' ', result["card_name"]).strip()
-    
-    return result
-
-
 async def find_card(db: AsyncSession, name: str, set_code: Optional[str] = None) -> Optional[Card]:
     """Find a card by name and optional set code."""
     query = select(Card).where(

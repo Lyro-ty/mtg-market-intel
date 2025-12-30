@@ -26,8 +26,9 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     try:
         await db.execute(text("SELECT 1"))
         db_ok = True
-    except Exception:
-        pass
+    except Exception as e:
+        import structlog
+        structlog.get_logger().warning("Health check: database connection failed", error=str(e))
     
     return {
         "status": "healthy" if db_ok else "degraded",

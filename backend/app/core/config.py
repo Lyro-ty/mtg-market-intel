@@ -60,8 +60,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-3-haiku-20240307"
-    local_llm_url: str = "http://localhost:11434"
-    local_llm_model: str = "llama2"
+    # local_llm removed - never implemented
     
     # Scryfall API
     # Rate limit: 50-100ms between requests (10 requests/second average)
@@ -72,10 +71,7 @@ class Settings(BaseSettings):
     # Marketplace API Keys
     tcgplayer_api_key: str = ""
     tcgplayer_api_secret: str = ""
-    cardmarket_app_token: str = ""
-    cardmarket_app_secret: str = ""
-    cardmarket_access_token: str = ""
-    cardmarket_access_secret: str = ""
+    # CardMarket removed - requires seller affiliation (no API access)
     cardtrader_api_token: str = ""  # CardTrader API JWT token - set via CARDTRADER_API_TOKEN env var
     cardtrader_secret_key: str = ""
     manapool_api_token: str = ""  # Manapool API token - set via MANAPOOL_API_TOKEN env var

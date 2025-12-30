@@ -104,7 +104,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         if session:
             try:
                 await session.close()
-            except Exception:
-                pass
+            except Exception as close_error:
+                logger.debug("Failed to close session during error cleanup", error=str(close_error))
         raise
 

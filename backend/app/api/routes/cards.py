@@ -948,8 +948,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         # Rollback the session if there was an error during flush
         try:
             await db.rollback()
-        except Exception:
-            pass  # Ignore rollback errors
+        except Exception as rollback_error:
+            logger.debug("Rollback failed during Scryfall price fetch error", error=str(rollback_error))
         logger.warning("Failed to fetch Scryfall prices", card_id=card_id, error=str(e))
     finally:
         await scryfall.close()
@@ -1084,8 +1084,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         # Rollback the session if there was an error during flush
         try:
             await db.rollback()
-        except Exception:
-            pass  # Ignore rollback errors
+        except Exception as rollback_error:
+            logger.debug("Rollback failed during MTGJSON fetch error", error=str(rollback_error))
         logger.warning(
             "Failed to fetch MTGJSON historical data",
             card_id=card_id,
@@ -1333,8 +1333,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         # Check if transaction needs rollback
         try:
             await db.rollback()
-        except Exception:
-            pass  # Already rolled back
+        except Exception as rollback_error:
+            logger.debug("Rollback already completed during metrics error", error=str(rollback_error))
         metrics = None
     
     # 4. Generate signals
@@ -1350,8 +1350,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         # Check if transaction needs rollback
         try:
             await db.rollback()
-        except Exception:
-            pass  # Already rolled back
+        except Exception as rollback_error:
+            logger.debug("Rollback already completed during signals error", error=str(rollback_error))
     
     # 5. Generate recommendations
     recommendations = []
@@ -1366,8 +1366,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         # Rollback the transaction if there was a database error
         try:
             await db.rollback()
-        except Exception:
-            pass  # Already rolled back
+        except Exception as rollback_error:
+            logger.debug("Rollback already completed during recommendations error", error=str(rollback_error))
         # Don't re-raise - allow the refresh to complete even if recommendations fail
         # The other data (listings, snapshots, metrics) is still valuable
     
@@ -1377,8 +1377,8 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         logger.error("Failed to commit transaction", card_id=card_id, error=str(e))
         try:
             await db.rollback()
-        except Exception:
-            pass
+        except Exception as rollback_error:
+            logger.debug("Rollback failed during commit error", error=str(rollback_error))
         raise
     
     # 6. Fetch and return updated card detail

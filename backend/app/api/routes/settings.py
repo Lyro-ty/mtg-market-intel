@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
+from app.core.utils import parse_setting_value
 from app.db.session import get_db
 from app.models import AppSettings
 from app.models.settings import DEFAULT_SETTINGS
@@ -25,29 +26,16 @@ async def _get_setting_value(db: AsyncSession, user_id: int, key: str) -> Any:
     )
     result = await db.execute(query)
     setting = result.scalar_one_or_none()
-    
+
     if setting:
-        return _parse_setting_value(setting.value, setting.value_type)
-    
+        return parse_setting_value(setting.value, setting.value_type)
+
     # Return default if exists
     if key in DEFAULT_SETTINGS:
         default = DEFAULT_SETTINGS[key]
-        return _parse_setting_value(default["value"], default["value_type"])
-    
+        return parse_setting_value(default["value"], default["value_type"])
+
     return None
-
-
-def _parse_setting_value(value: str, value_type: str) -> Any:
-    """Parse a setting value based on its type."""
-    if value_type == "json":
-        return json.loads(value)
-    elif value_type == "float":
-        return float(value)
-    elif value_type == "integer":
-        return int(value)
-    elif value_type == "boolean":
-        return value.lower() == "true"
-    return value
 
 
 async def _set_setting_value(
@@ -106,11 +94,11 @@ async def get_settings(
     # Build settings dict, starting with defaults
     settings = {}
     for key, default in DEFAULT_SETTINGS.items():
-        settings[key] = _parse_setting_value(default["value"], default["value_type"])
-    
+        settings[key] = parse_setting_value(default["value"], default["value_type"])
+
     # Override with database values
     for setting in db_settings:
-        settings[setting.key] = _parse_setting_value(setting.value, setting.value_type)
+        settings[setting.key] = parse_setting_value(setting.value, setting.value_type)
     
     return SettingsResponse(
         settings=settings,

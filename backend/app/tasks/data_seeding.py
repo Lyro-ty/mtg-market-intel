@@ -282,8 +282,8 @@ async def process_bulk_card(
         try:
             # Scryfall timestamps are ISO format
             snapshot_time = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
-        except Exception:
-            pass
+        except Exception as parse_error:
+            logger.debug("Failed to parse Scryfall timestamp, using current time", timestamp=updated_at_str, error=str(parse_error))
     
     # Process each price type (physical cards only - exclude MTGO/TIX)
     for price_key, (slug, name, currency) in [

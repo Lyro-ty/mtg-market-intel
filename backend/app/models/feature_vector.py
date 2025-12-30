@@ -37,7 +37,6 @@ class FeatureVectorBase(DeclarativeBase):
 
 if TYPE_CHECKING:
     from app.models.card import Card
-    from app.models.listing import Listing
 
 
 class CardFeatureVector(FeatureVectorBase):
@@ -93,56 +92,4 @@ class CardFeatureVector(FeatureVectorBase):
 
     def __repr__(self) -> str:
         return f"<CardFeatureVector card_id={self.card_id} dim={self.feature_dim}>"
-
-
-class ListingFeatureVector(FeatureVectorBase):
-    """
-    Stores pre-computed feature vectors for listings.
-
-    These vectors combine card features with listing-specific attributes
-    like condition, price tier, and marketplace.
-
-    Used for:
-    - Listing similarity search
-    - Price prediction
-    - Arbitrage detection
-    """
-
-    __tablename__ = "listing_feature_vectors"
-
-    # Primary key
-    listing_id: Mapped[int] = mapped_column(
-        ForeignKey("listings.id", ondelete="CASCADE"),
-        primary_key=True,
-        nullable=False,
-        index=True,
-    )
-
-    # Feature vector (stored as numpy array serialized to bytes)
-    feature_vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-
-    # Feature dimensions (for validation)
-    feature_dim: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    # Metadata
-    model_version: Mapped[str] = mapped_column(
-        String, default="all-MiniLM-L6-v2", nullable=False
-    )
-
-    # Relationships
-    listing: Mapped["Listing"] = relationship("Listing", overlaps="feature_vector")
-
-    # listing_id is primary key, no additional index needed
-
-    def get_vector(self) -> np.ndarray:
-        """Deserialize the feature vector from bytes."""
-        return np.frombuffer(self.feature_vector, dtype=np.float32)
-
-    def set_vector(self, vector: np.ndarray) -> None:
-        """Serialize the feature vector to bytes."""
-        self.feature_vector = vector.astype(np.float32).tobytes()
-        self.feature_dim = len(vector)
-
-    def __repr__(self) -> str:
-        return f"<ListingFeatureVector listing_id={self.listing_id} dim={self.feature_dim}>"
 
