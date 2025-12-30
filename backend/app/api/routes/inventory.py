@@ -1416,9 +1416,8 @@ async def get_inventory_top_movers(
                     change_pct = ((current_price - past_price) / past_price) * 100
                     changes.append({
                         "card_id": card_id,
-                        "old_price": past_price,
-                        "new_price": current_price,
-                        "change_pct": change_pct,
+                        "currentPriceUsd": current_price,
+                        "changePct": change_pct,
                     })
 
         # Get card info for the cards with changes
@@ -1430,24 +1429,27 @@ async def get_inventory_top_movers(
             )
             card_info = {row.id: row for row in card_result}
 
-            # Enrich with card info
+            # Enrich with card info using camelCase keys to match frontend expectations
             for change in changes:
                 card = card_info.get(change["card_id"])
                 if card:
-                    change["card_name"] = card.name
-                    change["set_code"] = card.set_code
-                    change["image_url"] = card.image_url_small
+                    change["cardName"] = card.name
+                    change["setCode"] = card.set_code
+                    change["imageUrl"] = card.image_url_small
+                    # Add format and volume for compatibility with market top-movers format
+                    change["format"] = "inventory"
+                    change["volume"] = 1
 
         # Sort and split into gainers and losers
         gainers = sorted(
-            [c for c in changes if c["change_pct"] > 0],
-            key=lambda x: x["change_pct"],
+            [c for c in changes if c["changePct"] > 0],
+            key=lambda x: x["changePct"],
             reverse=True
         )[:TOP_MOVERS_LIMIT]
 
         losers = sorted(
-            [c for c in changes if c["change_pct"] < 0],
-            key=lambda x: x["change_pct"]
+            [c for c in changes if c["changePct"] < 0],
+            key=lambda x: x["changePct"]
         )[:TOP_MOVERS_LIMIT]
 
         # Calculate data freshness
