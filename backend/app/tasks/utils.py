@@ -64,19 +64,18 @@ def create_task_session_maker():
 def run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     """
     Run async function in sync context (for Celery tasks).
-    
-    Creates a new event loop, runs the coroutine, and cleans up.
-    
+
+    Uses asyncio.run() which properly:
+    - Creates a new event loop
+    - Runs the coroutine to completion
+    - Closes the loop and cleans up async generators
+    - Handles threadpool executor shutdown
+
     Args:
         coro: Async coroutine to execute.
-        
+
     Returns:
         Result of the coroutine execution.
     """
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    return asyncio.run(coro)
 

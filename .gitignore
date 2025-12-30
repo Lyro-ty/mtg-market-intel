@@ -30,3 +30,4 @@ backend/.mcp-venv/
 
 # Claude Code settings (contains credentials)
 .claude/settings.json
+.mcp.json

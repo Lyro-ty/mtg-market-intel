@@ -186,6 +186,24 @@ async def get_card(db: AsyncSession, card_id: int):
     return result.scalar_one_or_none()
 ```
 
+### MCP Server Setup
+The MCP server allows Claude Code to query the database directly. Setup:
+
+1. Copy `.mcp.json.example` to `.mcp.json`
+2. Update paths and credentials in `.mcp.json`
+3. The database URL format: `postgresql+asyncpg://user:password@localhost:5432/database`
+
+Note: `.mcp.json` is gitignored (contains credentials and user-specific paths).
+
+### Marketplace Integrations Status
+| Marketplace | Status | Notes |
+|-------------|--------|-------|
+| Scryfall | ✅ Working | Public API, no key needed |
+| TCGPlayer | ✅ Working | Requires API key (affiliate program) |
+| CardTrader | ✅ Working | Requires API token |
+| Manapool | 🔧 Planned | API available, adapter not built yet |
+| CardMarket | ❌ Blocked | Requires affiliation for API access |
+
 ## Debugging Tips
 
 1. **Check backend logs**: `docker compose logs backend --tail=100`

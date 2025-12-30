@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "mtg-intel": {
+      "command": "/path/to/mtg-market-intel/backend/.mcp-venv/bin/python",
+      "args": ["-m", "mcp_server"],
+      "cwd": "/path/to/mtg-market-intel/backend",
+      "env": {
+        "MTG_MCP_ENV": "dev",
+        "MTG_MCP_DATABASE_URL": "postgresql+asyncpg://your_user:your_password@localhost:5432/your_database"
+      }
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["shadcn@latest", "mcp"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest", "--browser", "chromium"]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}
