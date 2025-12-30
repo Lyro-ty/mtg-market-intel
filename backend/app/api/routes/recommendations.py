@@ -28,6 +28,8 @@ async def get_recommendations(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     is_active: bool = True,
+    has_outcome: Optional[bool] = None,
+    min_accuracy: Optional[float] = Query(None, ge=0, le=1),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -63,7 +65,16 @@ async def get_recommendations(
     
     if max_price is not None:
         query = query.where(Recommendation.current_price <= max_price)
-    
+
+    if has_outcome is not None:
+        if has_outcome:
+            query = query.where(Recommendation.outcome_evaluated_at.isnot(None))
+        else:
+            query = query.where(Recommendation.outcome_evaluated_at.is_(None))
+
+    if min_accuracy is not None:
+        query = query.where(Recommendation.accuracy_score_end >= min_accuracy)
+
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query) or 0
@@ -115,10 +126,19 @@ async def get_recommendations(
             valid_until=rec.valid_until,
             is_active=rec.is_active,
             created_at=rec.created_at,
+            # Outcome tracking fields
+            outcome_evaluated_at=rec.outcome_evaluated_at,
+            outcome_price_end=float(rec.outcome_price_end) if rec.outcome_price_end else None,
+            outcome_price_peak=float(rec.outcome_price_peak) if rec.outcome_price_peak else None,
+            outcome_price_peak_at=rec.outcome_price_peak_at,
+            accuracy_score_end=float(rec.accuracy_score_end) if rec.accuracy_score_end else None,
+            accuracy_score_peak=float(rec.accuracy_score_peak) if rec.accuracy_score_peak else None,
+            actual_profit_pct_end=float(rec.actual_profit_pct_end) if rec.actual_profit_pct_end else None,
+            actual_profit_pct_peak=float(rec.actual_profit_pct_peak) if rec.actual_profit_pct_peak else None,
         )
         for rec, card, marketplace in rows
     ]
-    
+
     return RecommendationListResponse(
         recommendations=recommendations,
         total=total,
@@ -172,6 +192,15 @@ async def get_recommendation(
         valid_until=rec.valid_until,
         is_active=rec.is_active,
         created_at=rec.created_at,
+        # Outcome tracking fields
+        outcome_evaluated_at=rec.outcome_evaluated_at,
+        outcome_price_end=float(rec.outcome_price_end) if rec.outcome_price_end else None,
+        outcome_price_peak=float(rec.outcome_price_peak) if rec.outcome_price_peak else None,
+        outcome_price_peak_at=rec.outcome_price_peak_at,
+        accuracy_score_end=float(rec.accuracy_score_end) if rec.accuracy_score_end else None,
+        accuracy_score_peak=float(rec.accuracy_score_peak) if rec.accuracy_score_peak else None,
+        actual_profit_pct_end=float(rec.actual_profit_pct_end) if rec.actual_profit_pct_end else None,
+        actual_profit_pct_peak=float(rec.actual_profit_pct_peak) if rec.actual_profit_pct_peak else None,
     )
 
 
@@ -222,10 +251,19 @@ async def get_card_recommendations(
             valid_until=rec.valid_until,
             is_active=rec.is_active,
             created_at=rec.created_at,
+            # Outcome tracking fields
+            outcome_evaluated_at=rec.outcome_evaluated_at,
+            outcome_price_end=float(rec.outcome_price_end) if rec.outcome_price_end else None,
+            outcome_price_peak=float(rec.outcome_price_peak) if rec.outcome_price_peak else None,
+            outcome_price_peak_at=rec.outcome_price_peak_at,
+            accuracy_score_end=float(rec.accuracy_score_end) if rec.accuracy_score_end else None,
+            accuracy_score_peak=float(rec.accuracy_score_peak) if rec.accuracy_score_peak else None,
+            actual_profit_pct_end=float(rec.actual_profit_pct_end) if rec.actual_profit_pct_end else None,
+            actual_profit_pct_peak=float(rec.actual_profit_pct_peak) if rec.actual_profit_pct_peak else None,
         )
         for rec, card, marketplace in rows
     ]
-    
+
     return RecommendationListResponse(
         recommendations=recommendations,
         total=len(recommendations),
