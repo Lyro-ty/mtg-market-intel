@@ -21,3 +21,8 @@ __pycache__/
 node_modules/
 .next/
 *.tsbuildinfo
+
+# MCP Server (logs and local config with credentials)
+backend/mcp_server/logs/
+backend/mcp_server/.env*
+backend/mcp_server/*.local
