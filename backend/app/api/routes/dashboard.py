@@ -7,25 +7,24 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.cache import get_dashboard_cache
+from app.api.deps import Cache
 from app.db.session import get_db
 from app.models import Card, MetricsCardsDaily, Recommendation, Marketplace, PriceSnapshot
 from app.schemas.dashboard import DashboardSummary, TopCard, MarketSpread
 
 router = APIRouter()
-cache = get_dashboard_cache()
 
 
 @router.get("/summary", response_model=DashboardSummary)
 async def get_dashboard_summary(
     db: AsyncSession = Depends(get_db),
+    cache: Cache = None,
 ):
     """
     Get dashboard summary with key metrics and top movers.
     """
     # Check cache first
-    cache_key = "dashboard:summary"
-    cached = cache.get(cache_key)
+    cached = await cache.get("dashboard", "summary")
     if cached is not None:
         return cached
     
@@ -91,8 +90,8 @@ async def get_dashboard_summary(
         avg_spread_pct=float(stats_row.avg_spread) if stats_row and stats_row.avg_spread else None,
     )
 
-    # Cache result for 5 minutes
-    cache.set(cache_key, result, ttl=300)
+    # Cache result for 5 minutes (uses default TTL from CacheRepository)
+    await cache.set("dashboard", "summary", value=result)
 
     return result
 
@@ -263,13 +262,13 @@ async def _get_highest_spreads(
 @router.get("/stats")
 async def get_quick_stats(
     db: AsyncSession = Depends(get_db),
+    cache: Cache = None,
 ):
     """
     Get quick statistics for the dashboard header.
     """
     # Check cache first
-    cache_key = "dashboard:stats"
-    cached = cache.get(cache_key)
+    cached = await cache.get("dashboard", "stats")
     if cached is not None:
         return cached
     
@@ -304,9 +303,9 @@ async def get_quick_stats(
         "active_recommendations": active_recs,
         "avg_price_change_7d": round(avg_change, 2),
     }
-    
-    # Cache result for 5 minutes
-    cache.set(cache_key, result, ttl=300)
-    
+
+    # Cache result for 5 minutes (uses default TTL from CacheRepository)
+    await cache.set("dashboard", "stats", value=result)
+
     return result
 

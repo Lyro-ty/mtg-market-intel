@@ -12,7 +12,7 @@ from sqlalchemy import select, func, desc, and_, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 
-from app.core.cache import get_dashboard_cache
+from app.api.deps import Cache
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import (
@@ -32,7 +32,6 @@ from app.api.utils import (
 )
 
 router = APIRouter()
-cache = get_dashboard_cache()
 logger = structlog.get_logger()
 
 # Query timeout in seconds
@@ -183,15 +182,15 @@ async def get_market_diagnostics(
 @router.get("/overview")
 async def get_market_overview(
     db: AsyncSession = Depends(get_db),
+    cache: Cache = None,
 ):
     """
     Get market overview statistics.
-    
+
     Returns key market metrics for the dashboard stats strip.
     """
     # Check cache first
-    cache_key = "market:overview"
-    cached = cache.get(cache_key)
+    cached = await cache.get("market", "overview")
     if cached is not None:
         return cached
     
@@ -340,12 +339,12 @@ async def get_market_overview(
         "activeFormatsTracked": active_formats_tracked,
     }
     
-    # Cache result for 5 minutes
+    # Cache result for 5 minutes (uses default TTL from CacheRepository)
     try:
-        cache.set(cache_key, result, ttl=300)
+        await cache.set("market", "overview", value=result)
     except Exception as e:
         logger.warning("Failed to cache market overview", error=str(e))
-    
+
     return result
 
 

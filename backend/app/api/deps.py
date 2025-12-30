@@ -1,14 +1,18 @@
 """
 API dependencies for authentication and authorization.
 """
+from datetime import timedelta
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
+from app.repositories.cache_repo import CacheRepository
 from app.services.auth import decode_access_token, get_user_by_id
 
 # Security scheme for JWT bearer tokens
@@ -110,6 +114,37 @@ AdminUser = Annotated[User, Depends(get_current_admin_user)]
 
 # Alias for backwards compatibility
 get_optional_current_user = get_current_user_optional
+
+
+# Redis and cache dependencies
+_redis_client: Redis | None = None
+
+
+async def get_redis() -> Redis:
+    """
+    Get the async Redis client.
+
+    Creates a single client instance that is reused across requests.
+    """
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+    return _redis_client
+
+
+async def get_cache(
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> CacheRepository:
+    """
+    Get the cache repository with Redis backend.
+
+    Default TTL is 5 minutes for dashboard/API caching.
+    """
+    return CacheRepository(redis, default_ttl=timedelta(minutes=5))
+
+
+# Type alias for cleaner dependency injection
+Cache = Annotated[CacheRepository, Depends(get_cache)]
 
 
 
