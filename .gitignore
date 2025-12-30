@@ -26,3 +26,7 @@ node_modules/
 backend/mcp_server/logs/
 backend/mcp_server/.env*
 backend/mcp_server/*.local
+backend/.mcp-venv/
+
+# Claude Code settings (contains credentials)
+.claude/settings.json
