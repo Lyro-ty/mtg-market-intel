@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { ActionBadge, Badge } from '@/components/ui/badge';
 import { formatCurrency, formatPercent, formatRelativeTime } from '@/lib/utils';
+import { OutcomeDisplay } from '@/components/recommendations/OutcomeDisplay';
 import type { Recommendation } from '@/types';
 
 interface RecommendationCardProps {
@@ -95,6 +96,9 @@ export function RecommendationCard({ recommendation }: RecommendationCardProps) 
               </div>
               <span>{formatRelativeTime(recommendation.created_at)}</span>
             </div>
+
+            {/* Outcome Display - shows evaluation results */}
+            <OutcomeDisplay recommendation={recommendation} />
           </div>
         </div>
       </CardContent>

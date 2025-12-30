@@ -13,6 +13,7 @@ import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { PageHeader } from '@/components/ornate/page-header';
 import { OrnateCard } from '@/components/ornate/ornate-card';
 import { PriceChange } from '@/components/ornate/price-change';
+import { OutcomeDisplay } from '@/components/recommendations/OutcomeDisplay';
 import { getRecommendations } from '@/lib/api';
 import { formatCurrency, formatRelativeTime, cn } from '@/lib/utils';
 import type { ActionType, Recommendation } from '@/types';
@@ -188,6 +189,9 @@ function ThemedRecommendationCard({ recommendation }: RecommendationCardProps) {
               {formatRelativeTime(recommendation.created_at)}
             </span>
           </div>
+
+          {/* Outcome Display - shows evaluation results */}
+          <OutcomeDisplay recommendation={recommendation} />
         </div>
       </div>
     </OrnateCard>
