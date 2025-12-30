@@ -6,7 +6,6 @@ API Documentation: https://docs.tcgplayer.com/
 Authentication: OAuth 2.0 with client credentials flow
 """
 import asyncio
-import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -108,19 +107,17 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         client = await self._get_client()
         
         try:
-            # TCGPlayer uses basic auth with base64-encoded client_id:client_secret
-            credentials = f"{self.config.api_key}:{self.config.api_secret}"
-            encoded_credentials = base64.b64encode(credentials.encode()).decode()
-            
+            # TCGPlayer OAuth2 expects credentials in the request body
             headers = {
-                "Authorization": f"Basic {encoded_credentials}",
                 "Content-Type": "application/x-www-form-urlencoded",
             }
-            
+
             data = {
                 "grant_type": "client_credentials",
+                "client_id": self.config.api_key,
+                "client_secret": self.config.api_secret,
             }
-            
+
             response = await client.post(
                 self.AUTH_URL,
                 headers=headers,

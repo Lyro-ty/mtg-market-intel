@@ -45,6 +45,7 @@ async def _upsert_price_snapshot(
     price_market: float | None = None,
     num_listings: int | None = None,
     total_quantity: int | None = None,
+    source: str = "api",
 ) -> PriceSnapshot:
     """
     Upsert a price snapshot using PostgreSQL ON CONFLICT.
@@ -71,6 +72,7 @@ async def _upsert_price_snapshot(
         'price_market': price_market,
         'num_listings': num_listings,
         'total_quantity': total_quantity,
+        'source': source,
     }
 
     stmt = pg_insert(PriceSnapshot).values(**values_dict)
@@ -85,6 +87,7 @@ async def _upsert_price_snapshot(
         'price_market': stmt.excluded.price_market,
         'num_listings': stmt.excluded.num_listings,
         'total_quantity': stmt.excluded.total_quantity,
+        'source': stmt.excluded.source,
     }
 
     # Use index_elements for composite primary key conflict
@@ -257,31 +260,33 @@ async def _backfill_historical_snapshots_for_charting(
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def collect_price_data(self) -> dict[str, Any]:
+def collect_price_data(self, batch_size: int = 500) -> dict[str, Any]:
     """
-    Aggressively collect price data from Scryfall and MTGJSON.
-    
-    This replaces the old scraping approach. Focuses on:
-    - Scryfall: Real-time aggregated prices (TCGPlayer, Cardmarket)
-    - MTGJSON: Historical price data
-    
+    Collect price data from Scryfall in batches.
+
+    Processes a limited number of cards per run to ensure tasks complete.
+    Prioritizes inventory cards, then cards without recent data.
+
+    Args:
+        batch_size: Maximum cards to process per run (default 500).
+                   With 5-min intervals, 500 cards/run processes ~144k cards/day.
+
     Returns:
         Summary of price collection results.
-"""
-    return run_async(_collect_price_data_async())
-
-
-async def _collect_price_data_async() -> dict[str, Any]:
     """
-    Aggressively collect price data from Scryfall and MTGJSON.
-    
+    return run_async(_collect_price_data_async(batch_size))
+
+
+async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
+    """
+    Collect price data from Scryfall in batches.
+
     Strategy:
-    - Scryfall: Real-time prices for all cards (prioritize inventory)
-    - MTGJSON: Historical prices (run less frequently, daily)
-    - Focus on price snapshots, not individual listings
-    - Collect as much data as possible, as quickly as possible
+    - Always process ALL inventory cards first (user's cards are priority)
+    - Then process up to batch_size additional cards without recent data
+    - Ensures task completes in reasonable time (~2-3 minutes per run)
     """
-    logger.info("Starting aggressive price data collection")
+    logger.info("Starting batched price data collection", batch_size=batch_size)
     
     session_maker, engine = create_task_session_maker()
     try:
@@ -298,50 +303,59 @@ async def _collect_price_data_async() -> dict[str, Any]:
             
             logger.info("Collecting prices for inventory cards first", count=len(inventory_cards))
             
-            # PRIORITY 2: Get cards without recent data (within 24 hours) - prioritize these
-            # Cards without data should be processed first to ensure all cards get data within 24 hours
+            # Calculate remaining budget after inventory cards
+            remaining_budget = max(0, batch_size - len(inventory_cards))
+
+            # PRIORITY 2: Get cards without recent data (within 24 hours)
+            # Only fetch up to remaining_budget cards
             now = datetime.now(timezone.utc)
             stale_threshold = now - timedelta(hours=24)
-            
-            # Get cards that have no snapshots or only stale snapshots
-            cards_without_data_query = (
-                select(Card)
-                .outerjoin(
-                    PriceSnapshot,
-                    and_(
-                        PriceSnapshot.card_id == Card.id,
-                        PriceSnapshot.time >= stale_threshold
+
+            cards_without_data = []
+            if remaining_budget > 0:
+                cards_without_data_query = (
+                    select(Card)
+                    .outerjoin(
+                        PriceSnapshot,
+                        and_(
+                            PriceSnapshot.card_id == Card.id,
+                            PriceSnapshot.time >= stale_threshold
+                        )
                     )
+                    .where(
+                        Card.id.notin_(inventory_card_ids) if inventory_card_ids else True,
+                        PriceSnapshot.time.is_(None)  # No recent snapshots
+                    )
+                    .distinct()
+                    .limit(remaining_budget)  # Only get what we can process
                 )
-                .where(
-                    Card.id.notin_(inventory_card_ids) if inventory_card_ids else True,
-                    PriceSnapshot.time.is_(None)  # No recent snapshots (outer join result)
+                result = await db.execute(cards_without_data_query)
+                cards_without_data = list(result.scalars().all())
+
+            # PRIORITY 3: Fill remaining budget with cards that have older data
+            remaining_after_stale = max(0, remaining_budget - len(cards_without_data))
+            other_cards = []
+            if remaining_after_stale > 0:
+                cards_with_data_ids = {c.id for c in cards_without_data}
+                exclude_ids = inventory_card_ids | cards_with_data_ids
+                other_cards_query = (
+                    select(Card)
+                    .where(Card.id.notin_(exclude_ids) if exclude_ids else True)
+                    .order_by(func.random())  # Random sampling for fair coverage
+                    .limit(remaining_after_stale)
                 )
-                .distinct()
-            )
-            result = await db.execute(cards_without_data_query)
-            cards_without_data = list(result.scalars().all())
-            
-            # PRIORITY 3: Get all other cards (have recent data, but still refresh periodically)
-            cards_with_data_ids = {c.id for c in cards_without_data}
-            other_cards_query = (
-                select(Card)
-                .where(
-                    Card.id.notin_(inventory_card_ids) if inventory_card_ids else True,
-                    Card.id.notin_(cards_with_data_ids) if cards_with_data_ids else True
-                )
-            )
-            result = await db.execute(other_cards_query)
-            other_cards = list(result.scalars().all())
-            
-            # Combine: inventory cards first, then cards without data, then others
+                result = await db.execute(other_cards_query)
+                other_cards = list(result.scalars().all())
+
+            # Combine: inventory cards first, then stale, then random sample
             cards = inventory_cards + cards_without_data + other_cards
             logger.info(
-                "Total cards for price collection",
+                "Batched price collection",
+                batch_size=batch_size,
                 inventory=len(inventory_cards),
-                without_data=len(cards_without_data),
-                with_data=len(other_cards),
-                total=len(cards),
+                stale=len(cards_without_data),
+                random_sample=len(other_cards),
+                total_this_run=len(cards),
             )
             
             results = {
