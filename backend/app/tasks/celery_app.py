@@ -108,6 +108,13 @@ celery_app.conf.update(
             "task": "sync_mtg_sets",
             "schedule": crontab(hour=2, minute=0),  # Daily at 2 AM
         },
+
+        # Recommendation outcome evaluation: Every hour at :30
+        # Evaluates expired recommendations against actual price data
+        "evaluate-recommendation-outcomes": {
+            "task": "app.tasks.recommendations.evaluate_outcomes",
+            "schedule": crontab(minute=30),  # Every hour at :30
+        },
     },
 
     # Task routing
