@@ -1,5 +1,7 @@
 # Inventory, Pricing & Search Refactor Implementation Plan
 
+**Status:** ✅ Implemented (2025-12-28)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Refactor the pricing ingestion system to provide reliable, fresh pricing with condition support, fix inventory valuations, add semantic search, and integrate tournament data from TopDeck.gg.

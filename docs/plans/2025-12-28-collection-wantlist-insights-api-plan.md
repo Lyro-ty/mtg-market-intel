@@ -1,5 +1,7 @@
 # Collection, Want List & Insights API Implementation Plan
 
+**Status:** ✅ Implemented (2025-12-28)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Build backend APIs to power Collection, Want List, and Insights frontend pages with real-time notifications and cached stats.
