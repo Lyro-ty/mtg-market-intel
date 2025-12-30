@@ -12,7 +12,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.models.recommendation import ActionType
 from app.services.outcomes.evaluator import (
     OutcomeEvaluator,
     OutcomeResult,
