@@ -3,6 +3,7 @@ Main FastAPI application entry point.
 """
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +19,17 @@ from app.services.ingestion import enable_adapter_caching
 # Setup logging
 setup_logging()
 logger = structlog.get_logger()
+
+# Initialize Sentry error tracking
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        traces_sample_rate=0.1,  # 10% of transactions for performance monitoring
+        profiles_sample_rate=0.1,  # 10% of sampled transactions for profiling
+        send_default_pii=False,  # Don't send personally identifiable information
+    )
+    logger.info("Sentry initialized", environment=settings.environment)
 
 
 @asynccontextmanager
@@ -185,10 +197,10 @@ app.add_middleware(
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle unhandled exceptions."""
     from sqlalchemy.exc import TimeoutError as SQLTimeoutError
-    
+
     error_type = type(exc).__name__
     error_str = str(exc)
-    
+
     # Check for connection pool exhaustion
     # SQLAlchemy raises TimeoutError for pool exhaustion, not PoolError
     is_pool_error = (
@@ -197,7 +209,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         "connection timed out" in error_str.lower() or
         "pool limit" in error_str.lower()
     )
-    
+
     logger.error(
         "Unhandled exception",
         path=request.url.path,
@@ -206,7 +218,11 @@ async def global_exception_handler(request: Request, exc: Exception):
         error_type=error_type,
         is_pool_error=is_pool_error,
     )
-    
+
+    # Report to Sentry (if configured)
+    if settings.sentry_dsn:
+        sentry_sdk.capture_exception(exc)
+
     # Return a more helpful error for pool exhaustion
     if is_pool_error:
         return JSONResponse(
@@ -216,7 +232,7 @@ async def global_exception_handler(request: Request, exc: Exception):
                 "error_type": "connection_pool_exhausted"
             },
         )
-    
+
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},

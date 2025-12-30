@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     app_name: str = "Dualcaster Deals"
     api_debug: bool = True
     secret_key: str = "dev-secret-key-change-in-production"  # SECURITY: Must be overridden in production via env var
+    environment: str = "development"  # development, staging, production
+
+    # Error Tracking
+    sentry_dsn: str = ""  # Sentry DSN - set via SENTRY_DSN env var
     
     # JWT Settings
     jwt_algorithm: str = "HS256"
