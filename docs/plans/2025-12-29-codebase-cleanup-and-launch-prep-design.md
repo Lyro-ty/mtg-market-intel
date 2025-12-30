@@ -61,7 +61,7 @@ TCGPlayer affiliate links on Want List and Card pages. User clicks to buy → ki
 
 **Manapool API Details:**
 - Server: `https://manapool.com/api/v1`
-- Auth: `X-ManaPool-Access-Token: REDACTED_MANAPOOL_TOKEN`
+- Auth: `X-ManaPool-Access-Token` header (token in .env as `MANAPOOL_ACCESS_TOKEN`)
 - Key endpoints:
   - `GET /prices/singles` - All in-stock singles prices (bulk)
   - `POST /card_info` - Lookup up to 100 cards by name
@@ -377,7 +377,7 @@ backend/app/tasks/data_seeding.py:285-286
 
 ## Appendix: Security Notes
 
-**Manapool API Token:** The token `REDACTED_MANAPOOL_TOKEN` should be stored in:
+**Manapool API Token:** Should be stored in:
 - `.env` as `MANAPOOL_ACCESS_TOKEN`
 - Never committed to git
 - Added to `.env.example` as placeholder: `MANAPOOL_ACCESS_TOKEN=your_token_here`
