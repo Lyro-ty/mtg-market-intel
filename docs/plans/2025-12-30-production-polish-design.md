@@ -1884,6 +1884,310 @@ export default function NotificationSettingsPage() {
 
 ---
 
+## Section 7: Rate Limiting & Error Boundaries
+
+### 7.1 API Rate Limiting with slowapi
+
+```python
+# backend/app/core/rate_limit.py
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+# Default limits
+DEFAULT_LIMIT = "100/minute"
+SEARCH_LIMIT = "30/minute"
+AUTH_LIMIT = "10/minute"
+```
+
+```python
+# backend/app/main.py - Add to FastAPI app
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.rate_limit import limiter
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+```
+
+```python
+# backend/app/api/routes/cards.py - Apply to routes
+from app.core.rate_limit import limiter, SEARCH_LIMIT
+
+@router.get("/search")
+@limiter.limit(SEARCH_LIMIT)
+async def search_cards(request: Request, ...):
+    ...
+```
+
+### 7.2 React Error Boundaries
+
+```typescript
+// frontend/src/components/ErrorBoundary.tsx
+'use client';
+
+import { Component, ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import { AlertTriangle } from 'lucide-react';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log to Sentry
+    console.error('Error boundary caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
+          <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
+          <p className="text-muted-foreground mb-4 text-center max-w-md">
+            We encountered an unexpected error. Please try refreshing the page.
+          </p>
+          <Button onClick={() => window.location.reload()}>
+            Refresh Page
+          </Button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+---
+
+## Section 8: Legal & Analytics
+
+### 8.1 Terms of Service Page
+
+```typescript
+// frontend/src/app/(public)/terms/page.tsx
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Terms of Service | Dualcaster Deals',
+  robots: { index: true, follow: true },
+};
+
+export default function TermsPage() {
+  return (
+    <div className="container max-w-3xl py-12">
+      <h1 className="text-3xl font-bold mb-8">Terms of Service</h1>
+
+      <div className="prose prose-invert max-w-none">
+        <p className="text-muted-foreground">Last updated: December 2024</p>
+
+        <h2>1. Acceptance of Terms</h2>
+        <p>
+          By accessing Dualcaster Deals, you agree to be bound by these Terms of Service.
+          If you do not agree, please do not use our service.
+        </p>
+
+        <h2>2. Description of Service</h2>
+        <p>
+          Dualcaster Deals provides Magic: The Gathering card price tracking,
+          portfolio management, and trading recommendations. Price data is aggregated
+          from third-party sources and may not reflect real-time market conditions.
+        </p>
+
+        <h2>3. No Financial Advice</h2>
+        <p>
+          Trading recommendations are for informational purposes only and do not
+          constitute financial advice. You are solely responsible for your trading decisions.
+        </p>
+
+        <h2>4. User Accounts</h2>
+        <p>
+          You are responsible for maintaining the confidentiality of your account.
+          You agree to notify us immediately of any unauthorized access.
+        </p>
+
+        <h2>5. Intellectual Property</h2>
+        <p>
+          Magic: The Gathering is a trademark of Wizards of the Coast LLC.
+          Card images and data are used under fair use for price tracking purposes.
+        </p>
+
+        <h2>6. Limitation of Liability</h2>
+        <p>
+          We are not liable for any losses arising from your use of our service,
+          including but not limited to trading losses based on our recommendations.
+        </p>
+
+        <h2>7. Changes to Terms</h2>
+        <p>
+          We may update these terms at any time. Continued use after changes
+          constitutes acceptance of the new terms.
+        </p>
+
+        <h2>8. Contact</h2>
+        <p>
+          Questions about these terms? Contact us at legal@dualcasterdeals.com.
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+### 8.2 Privacy Policy Page
+
+```typescript
+// frontend/src/app/(public)/privacy/page.tsx
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Privacy Policy | Dualcaster Deals',
+  robots: { index: true, follow: true },
+};
+
+export default function PrivacyPage() {
+  return (
+    <div className="container max-w-3xl py-12">
+      <h1 className="text-3xl font-bold mb-8">Privacy Policy</h1>
+
+      <div className="prose prose-invert max-w-none">
+        <p className="text-muted-foreground">Last updated: December 2024</p>
+
+        <h2>1. Information We Collect</h2>
+        <p>We collect:</p>
+        <ul>
+          <li>Account information (email, username)</li>
+          <li>Collection/inventory data you provide</li>
+          <li>Usage analytics (pages visited, features used)</li>
+          <li>Device information for push notifications</li>
+        </ul>
+
+        <h2>2. How We Use Your Information</h2>
+        <ul>
+          <li>Provide portfolio tracking and recommendations</li>
+          <li>Send notifications you've opted into</li>
+          <li>Improve our service through analytics</li>
+          <li>Communicate service updates</li>
+        </ul>
+
+        <h2>3. Data Sharing</h2>
+        <p>
+          We do not sell your personal data. We may share anonymized,
+          aggregated data for market analysis purposes.
+        </p>
+
+        <h2>4. Third-Party Services</h2>
+        <p>We use:</p>
+        <ul>
+          <li>Google OAuth for authentication</li>
+          <li>Sentry for error tracking</li>
+          <li>Analytics for usage tracking</li>
+        </ul>
+
+        <h2>5. Data Retention</h2>
+        <p>
+          We retain your data while your account is active. You may request
+          deletion at any time through account settings.
+        </p>
+
+        <h2>6. Your Rights</h2>
+        <p>You have the right to:</p>
+        <ul>
+          <li>Access your personal data</li>
+          <li>Correct inaccurate data</li>
+          <li>Request deletion of your data</li>
+          <li>Export your data</li>
+        </ul>
+
+        <h2>7. Security</h2>
+        <p>
+          We use industry-standard security measures including encryption,
+          secure authentication, and regular security audits.
+        </p>
+
+        <h2>8. Contact</h2>
+        <p>
+          Privacy questions? Contact us at privacy@dualcasterdeals.com.
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+### 8.3 Analytics Integration
+
+Using Plausible (privacy-friendly, no cookie banner needed):
+
+```typescript
+// frontend/src/components/Analytics.tsx
+'use client';
+
+import Script from 'next/script';
+
+export function Analytics() {
+  if (process.env.NODE_ENV !== 'production') return null;
+
+  return (
+    <Script
+      defer
+      data-domain="dualcasterdeals.com"
+      src="https://plausible.io/js/script.js"
+    />
+  );
+}
+```
+
+```typescript
+// frontend/src/app/layout.tsx - Add to layout
+import { Analytics } from '@/components/Analytics';
+
+// In the body:
+// <Analytics />
+```
+
+**Custom event tracking:**
+
+```typescript
+// frontend/src/lib/analytics.ts
+declare global {
+  interface Window {
+    plausible?: (event: string, options?: { props?: Record<string, string> }) => void;
+  }
+}
+
+export function trackEvent(event: string, props?: Record<string, string>) {
+  if (typeof window !== 'undefined' && window.plausible) {
+    window.plausible(event, { props });
+  }
+}
+
+// Usage:
+// trackEvent('Card Viewed', { cardId: '123', cardName: 'Force of Will' });
+// trackEvent('Recommendation Acted', { action: 'BUY', confidence: 'high' });
+```
+
+---
+
 ## Implementation Tasks
 
 ### Phase 1: Security (4 tasks)
@@ -1912,22 +2216,28 @@ export default function NotificationSettingsPage() {
 17. Implement search operators parser
 18. Add CardPreview component and keyboard shortcuts hook
 
-### Phase 5: Cleanup (2 tasks)
+### Phase 5: Cleanup & Stability (5 tasks)
 19. Remove console.log statements, add logger utility
 20. Configure UptimeRobot monitoring
+21. Add API rate limiting with slowapi
+22. Add React error boundaries
 
 ### Phase 6: Notifications (9 tasks)
-21. Create push_subscriptions migration
-22. Add notification preferences to User model
-23. Generate VAPID keys and add to config
-24. Build push notification service with pywebpush
-25. Create notification API routes
-26. Implement frontend push subscription logic
-27. Update service worker with push handler
-28. Create email digest Celery task
-29. Build notification preferences settings page
+23. Create push_subscriptions migration
+24. Add notification preferences to User model
+25. Generate VAPID keys and add to config
+26. Build push notification service with pywebpush
+27. Create notification API routes
+28. Implement frontend push subscription logic
+29. Update service worker with push handler
+30. Create email digest Celery task
+31. Build notification preferences settings page
 
-**Total: 29 tasks**
+### Phase 7: Legal & Analytics (2 tasks)
+32. Create Terms of Service and Privacy Policy pages
+33. Add analytics script (Plausible or GA4)
+
+**Total: 33 tasks**
 
 ---
 
@@ -1943,6 +2253,10 @@ export default function NotificationSettingsPage() {
 - [ ] UptimeRobot sends alerts on downtime
 - [ ] Users can receive push notifications on mobile/desktop
 - [ ] Email digests arrive on schedule
+- [ ] API rate limiting blocks excessive requests (100/min default)
+- [ ] React errors show friendly error boundary, not white screen
+- [ ] Terms and Privacy pages accessible from footer
+- [ ] Analytics tracking page views and key events
 
 ---
 
@@ -1950,6 +2264,7 @@ export default function NotificationSettingsPage() {
 
 **Backend:**
 - `pywebpush` - Web push notifications
+- `slowapi` - Rate limiting for FastAPI
 - Already have: `redis`, `celery`, `fastapi`
 
 **Frontend:**
@@ -1960,3 +2275,4 @@ export default function NotificationSettingsPage() {
 - VAPID keys for push notifications
 - SMTP credentials for email digests (SendGrid or AWS SES recommended)
 - UptimeRobot account (free tier sufficient)
+- Analytics account (Plausible Cloud or self-hosted, or GA4)

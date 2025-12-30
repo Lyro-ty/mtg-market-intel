@@ -3429,6 +3429,484 @@ git commit -m "feat: add email digest Celery tasks"
 
 ---
 
+## Phase 7: Rate Limiting & Error Boundaries
+
+### Task 7.1: Install slowapi and Add Rate Limiting
+
+**Files:**
+- Modify: `backend/requirements.txt`
+- Create: `backend/app/core/rate_limit.py`
+- Modify: `backend/app/main.py`
+
+**Step 1: Add slowapi to requirements**
+
+```bash
+echo "slowapi>=0.1.9" >> backend/requirements.txt
+```
+
+**Step 2: Create rate limit module**
+
+```python
+# backend/app/core/rate_limit.py
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+# Rate limit configurations
+DEFAULT_LIMIT = "100/minute"
+SEARCH_LIMIT = "30/minute"
+AUTH_LIMIT = "10/minute"
+WRITE_LIMIT = "20/minute"
+```
+
+**Step 3: Add to FastAPI app**
+
+```python
+# backend/app/main.py - Add imports and configuration
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.rate_limit import limiter
+
+# After app = FastAPI(...):
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+```
+
+**Step 4: Apply to auth routes**
+
+```python
+# backend/app/api/routes/auth.py - Add rate limiting
+from fastapi import Request
+from app.core.rate_limit import limiter, AUTH_LIMIT
+
+@router.post("/login")
+@limiter.limit(AUTH_LIMIT)
+async def login(request: Request, ...):
+    ...
+
+@router.post("/register")
+@limiter.limit(AUTH_LIMIT)
+async def register(request: Request, ...):
+    ...
+```
+
+**Step 5: Verify build**
+
+Run: `docker compose exec backend pip install slowapi && docker compose exec backend python -c "from app.core.rate_limit import limiter"`
+Expected: No errors
+
+**Step 6: Commit**
+
+```bash
+git add backend/requirements.txt backend/app/core/rate_limit.py backend/app/main.py backend/app/api/routes/auth.py
+git commit -m "feat: add API rate limiting with slowapi"
+```
+
+---
+
+### Task 7.2: React Error Boundary Component
+
+**Files:**
+- Create: `frontend/src/components/ErrorBoundary.tsx`
+- Modify: `frontend/src/app/layout.tsx`
+
+**Step 1: Create error boundary component**
+
+```typescript
+// frontend/src/components/ErrorBoundary.tsx
+'use client';
+
+import { Component, ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import { AlertTriangle } from 'lucide-react';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log to console in dev, Sentry in prod
+    console.error('Error boundary caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
+          <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
+          <p className="text-muted-foreground mb-4 text-center max-w-md">
+            We encountered an unexpected error. Please try refreshing the page.
+          </p>
+          <Button onClick={() => window.location.reload()}>
+            Refresh Page
+          </Button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+**Step 2: Wrap app with error boundary**
+
+```typescript
+// frontend/src/app/layout.tsx - Import and wrap
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+// Wrap the main content:
+// <ErrorBoundary>
+//   {children}
+// </ErrorBoundary>
+```
+
+**Step 3: Verify build**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: No errors
+
+**Step 4: Commit**
+
+```bash
+git add frontend/src/components/ErrorBoundary.tsx frontend/src/app/layout.tsx
+git commit -m "feat: add React error boundary for graceful error handling"
+```
+
+---
+
+## Phase 8: Legal & Analytics
+
+### Task 8.1: Terms of Service Page
+
+**Files:**
+- Create: `frontend/src/app/(public)/terms/page.tsx`
+
+**Step 1: Create the terms page**
+
+```typescript
+// frontend/src/app/(public)/terms/page.tsx
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Terms of Service | Dualcaster Deals',
+  robots: { index: true, follow: true },
+};
+
+export default function TermsPage() {
+  return (
+    <div className="container max-w-3xl py-12">
+      <h1 className="text-3xl font-bold mb-8">Terms of Service</h1>
+
+      <div className="prose prose-invert max-w-none space-y-6">
+        <p className="text-muted-foreground">Last updated: December 2024</p>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">1. Acceptance of Terms</h2>
+          <p className="text-muted-foreground">
+            By accessing Dualcaster Deals, you agree to be bound by these Terms of Service.
+            If you do not agree, please do not use our service.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">2. Description of Service</h2>
+          <p className="text-muted-foreground">
+            Dualcaster Deals provides Magic: The Gathering card price tracking,
+            portfolio management, and trading recommendations. Price data is aggregated
+            from third-party sources and may not reflect real-time market conditions.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">3. No Financial Advice</h2>
+          <p className="text-muted-foreground">
+            Trading recommendations are for informational purposes only and do not
+            constitute financial advice. You are solely responsible for your trading decisions.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">4. User Accounts</h2>
+          <p className="text-muted-foreground">
+            You are responsible for maintaining the confidentiality of your account.
+            You agree to notify us immediately of any unauthorized access.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">5. Intellectual Property</h2>
+          <p className="text-muted-foreground">
+            Magic: The Gathering is a trademark of Wizards of the Coast LLC.
+            Card images and data are used under fair use for price tracking purposes.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">6. Limitation of Liability</h2>
+          <p className="text-muted-foreground">
+            We are not liable for any losses arising from your use of our service,
+            including but not limited to trading losses based on our recommendations.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">7. Changes to Terms</h2>
+          <p className="text-muted-foreground">
+            We may update these terms at any time. Continued use after changes
+            constitutes acceptance of the new terms.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">8. Contact</h2>
+          <p className="text-muted-foreground">
+            Questions about these terms? Contact us at legal@dualcasterdeals.com.
+          </p>
+        </section>
+      </div>
+    </div>
+  );
+}
+```
+
+**Step 2: Verify build**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: No errors
+
+**Step 3: Commit**
+
+```bash
+git add frontend/src/app/(public)/terms/page.tsx
+git commit -m "feat: add Terms of Service page"
+```
+
+---
+
+### Task 8.2: Privacy Policy Page
+
+**Files:**
+- Create: `frontend/src/app/(public)/privacy/page.tsx`
+
+**Step 1: Create the privacy page**
+
+```typescript
+// frontend/src/app/(public)/privacy/page.tsx
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Privacy Policy | Dualcaster Deals',
+  robots: { index: true, follow: true },
+};
+
+export default function PrivacyPage() {
+  return (
+    <div className="container max-w-3xl py-12">
+      <h1 className="text-3xl font-bold mb-8">Privacy Policy</h1>
+
+      <div className="prose prose-invert max-w-none space-y-6">
+        <p className="text-muted-foreground">Last updated: December 2024</p>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">1. Information We Collect</h2>
+          <ul className="list-disc list-inside text-muted-foreground space-y-1">
+            <li>Account information (email, username)</li>
+            <li>Collection/inventory data you provide</li>
+            <li>Usage analytics (pages visited, features used)</li>
+            <li>Device information for push notifications</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">2. How We Use Your Information</h2>
+          <ul className="list-disc list-inside text-muted-foreground space-y-1">
+            <li>Provide portfolio tracking and recommendations</li>
+            <li>Send notifications you have opted into</li>
+            <li>Improve our service through analytics</li>
+            <li>Communicate service updates</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">3. Data Sharing</h2>
+          <p className="text-muted-foreground">
+            We do not sell your personal data. We may share anonymized,
+            aggregated data for market analysis purposes.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">4. Third-Party Services</h2>
+          <ul className="list-disc list-inside text-muted-foreground space-y-1">
+            <li>Google OAuth for authentication</li>
+            <li>Sentry for error tracking</li>
+            <li>Plausible for privacy-friendly analytics</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">5. Data Retention</h2>
+          <p className="text-muted-foreground">
+            We retain your data while your account is active. You may request
+            deletion at any time through account settings.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">6. Your Rights</h2>
+          <ul className="list-disc list-inside text-muted-foreground space-y-1">
+            <li>Access your personal data</li>
+            <li>Correct inaccurate data</li>
+            <li>Request deletion of your data</li>
+            <li>Export your data</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">7. Security</h2>
+          <p className="text-muted-foreground">
+            We use industry-standard security measures including encryption,
+            secure authentication, and regular security audits.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mt-6 mb-3">8. Contact</h2>
+          <p className="text-muted-foreground">
+            Privacy questions? Contact us at privacy@dualcasterdeals.com.
+          </p>
+        </section>
+      </div>
+    </div>
+  );
+}
+```
+
+**Step 2: Add footer links (if not already present)**
+
+Ensure footer includes links to /terms and /privacy.
+
+**Step 3: Verify build**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: No errors
+
+**Step 4: Commit**
+
+```bash
+git add frontend/src/app/(public)/privacy/page.tsx
+git commit -m "feat: add Privacy Policy page"
+```
+
+---
+
+### Task 8.3: Analytics Integration
+
+**Files:**
+- Create: `frontend/src/components/Analytics.tsx`
+- Create: `frontend/src/lib/analytics.ts`
+- Modify: `frontend/src/app/layout.tsx`
+
+**Step 1: Create Analytics component**
+
+```typescript
+// frontend/src/components/Analytics.tsx
+'use client';
+
+import Script from 'next/script';
+
+export function Analytics() {
+  // Only load in production
+  if (process.env.NODE_ENV !== 'production') return null;
+
+  const domain = process.env.NEXT_PUBLIC_ANALYTICS_DOMAIN;
+  if (!domain) return null;
+
+  return (
+    <Script
+      defer
+      data-domain={domain}
+      src="https://plausible.io/js/script.js"
+    />
+  );
+}
+```
+
+**Step 2: Create analytics helpers**
+
+```typescript
+// frontend/src/lib/analytics.ts
+declare global {
+  interface Window {
+    plausible?: (event: string, options?: { props?: Record<string, string> }) => void;
+  }
+}
+
+export function trackEvent(event: string, props?: Record<string, string>) {
+  if (typeof window !== 'undefined' && window.plausible) {
+    window.plausible(event, { props });
+  }
+}
+
+// Common events
+export const AnalyticsEvents = {
+  CARD_VIEWED: 'Card Viewed',
+  CARD_ADDED_TO_INVENTORY: 'Card Added to Inventory',
+  RECOMMENDATION_CLICKED: 'Recommendation Clicked',
+  SEARCH_PERFORMED: 'Search Performed',
+  COLLECTION_IMPORTED: 'Collection Imported',
+} as const;
+```
+
+**Step 3: Add to layout**
+
+```typescript
+// frontend/src/app/layout.tsx - Import and add
+import { Analytics } from '@/components/Analytics';
+
+// In the body, after other providers:
+// <Analytics />
+```
+
+**Step 4: Add env var to .env.example**
+
+```bash
+echo "NEXT_PUBLIC_ANALYTICS_DOMAIN=dualcasterdeals.com" >> frontend/.env.example
+```
+
+**Step 5: Verify build**
+
+Run: `cd frontend && npx tsc --noEmit`
+Expected: No errors
+
+**Step 6: Commit**
+
+```bash
+git add frontend/src/components/Analytics.tsx frontend/src/lib/analytics.ts frontend/src/app/layout.tsx frontend/.env.example
+git commit -m "feat: add Plausible analytics integration"
+```
+
+---
+
 ## Final Verification
 
 ### Verification Checklist
@@ -3462,9 +3940,17 @@ After completing all tasks, verify:
 - [ ] Service worker receives push events
 - [ ] Settings page saves preferences
 
-**Cleanup:**
+**Cleanup & Stability:**
 - [ ] No console.log in production build
 - [ ] Health endpoint returns component status
+- [ ] Rate limiting blocks excessive requests
+- [ ] Error boundary catches React errors gracefully
+
+**Legal & Analytics:**
+- [ ] Terms page accessible at /terms
+- [ ] Privacy page accessible at /privacy
+- [ ] Footer includes links to both legal pages
+- [ ] Analytics tracking works in production
 
 ---
 
