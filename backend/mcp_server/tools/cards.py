@@ -15,15 +15,14 @@ async def get_card_by_id(card_id: int) -> dict[str, Any]:
         card_id: The database ID of the card
 
     Returns:
-        Card object with name, set, prices, etc.
+        Card object with name, set, etc.
     """
     query = """
         SELECT
             c.id, c.name, c.set_code, c.set_name, c.collector_number,
             c.scryfall_id, c.oracle_id, c.rarity, c.mana_cost, c.cmc,
             c.type_line, c.oracle_text, c.colors, c.color_identity,
-            c.power, c.toughness, c.image_uri_small, c.image_uri_normal,
-            c.scryfall_price_usd, c.scryfall_price_usd_foil,
+            c.power, c.toughness, c.image_url_small, c.image_url,
             c.legalities, c.edhrec_rank, c.reserved_list
         FROM cards c
         WHERE c.id = :card_id
@@ -48,7 +47,7 @@ async def get_card_by_name(name: str, limit: int = 10) -> list[dict[str, Any]]:
     query = """
         SELECT
             id, name, set_code, set_name, rarity, mana_cost, type_line,
-            scryfall_price_usd, image_uri_small
+            image_url_small
         FROM cards
         WHERE name ILIKE :pattern
         ORDER BY
@@ -76,8 +75,7 @@ async def get_card_by_scryfall_id(scryfall_id: str) -> dict[str, Any]:
         SELECT
             id, name, set_code, set_name, collector_number,
             scryfall_id, oracle_id, rarity, mana_cost, cmc,
-            type_line, oracle_text, colors, color_identity,
-            scryfall_price_usd, scryfall_price_usd_foil, legalities
+            type_line, oracle_text, colors, color_identity, legalities
         FROM cards
         WHERE scryfall_id = :scryfall_id
     """
@@ -146,7 +144,8 @@ async def search_cards(
         params["set_code"] = set_code.lower()
 
     if format_legal:
-        conditions.append(f"legalities->>'{format_legal.lower()}' = 'legal'")
+        conditions.append(f"legalities ILIKE :format_pattern")
+        params["format_pattern"] = f'%"{format_legal.lower()}": "legal"%'
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
@@ -159,7 +158,7 @@ async def search_cards(
     query = f"""
         SELECT
             id, name, set_code, set_name, rarity, mana_cost, cmc,
-            type_line, colors, scryfall_price_usd, image_uri_small
+            type_line, colors, image_url_small
         FROM cards
         WHERE {where_clause}
         ORDER BY name
@@ -189,7 +188,7 @@ async def get_random_cards(count: int = 5) -> list[dict[str, Any]]:
     query = """
         SELECT
             id, name, set_code, set_name, rarity, mana_cost, type_line,
-            scryfall_price_usd, image_uri_small
+            image_url_small
         FROM cards
         ORDER BY RANDOM()
         LIMIT :count

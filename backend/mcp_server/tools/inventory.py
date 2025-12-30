@@ -37,7 +37,7 @@ async def list_inventory(
             i.is_foil,
             i.acquisition_price,
             i.acquisition_date,
-            c.scryfall_price_usd as current_price
+            i.current_value
         FROM inventory_items i
         JOIN cards c ON i.card_id = c.id
         WHERE i.user_id = :user_id
@@ -78,9 +78,7 @@ async def get_inventory_item(item_id: int) -> dict[str, Any]:
             c.set_code,
             c.set_name,
             c.rarity,
-            c.scryfall_price_usd as current_price,
-            c.scryfall_price_usd_foil as current_price_foil,
-            c.image_uri_small
+            c.image_url_small
         FROM inventory_items i
         JOIN cards c ON i.card_id = c.id
         WHERE i.id = :item_id
@@ -92,14 +90,14 @@ async def get_inventory_item(item_id: int) -> dict[str, Any]:
 
     item = rows[0]
 
-    # Calculate current value
-    current_price = item.get("current_price_foil") if item.get("is_foil") else item.get("current_price")
+    # Calculate profit/loss using stored current_value
+    current_value = float(item.get("current_value") or 0)
     quantity = item.get("quantity", 1)
-    acquisition_price = item.get("acquisition_price", 0)
+    acquisition_price = float(item.get("acquisition_price") or 0)
 
-    item["current_value"] = (current_price or 0) * quantity
-    item["total_cost"] = (acquisition_price or 0) * quantity
-    item["profit_loss"] = item["current_value"] - item["total_cost"]
+    item["total_cost"] = acquisition_price * quantity
+    item["total_value"] = current_value * quantity
+    item["profit_loss"] = item["total_value"] - item["total_cost"]
 
     return item
 
@@ -118,15 +116,9 @@ async def get_portfolio_value(user_id: int) -> dict[str, Any]:
         SELECT
             COUNT(*) as total_items,
             SUM(i.quantity) as total_cards,
-            SUM(
-                i.quantity * COALESCE(
-                    CASE WHEN i.is_foil THEN c.scryfall_price_usd_foil ELSE c.scryfall_price_usd END,
-                    0
-                )
-            ) as current_value,
+            SUM(i.quantity * COALESCE(i.current_value, 0)) as current_value,
             SUM(i.quantity * COALESCE(i.acquisition_price, 0)) as total_cost
         FROM inventory_items i
-        JOIN cards c ON i.card_id = c.id
         WHERE i.user_id = :user_id
     """
 

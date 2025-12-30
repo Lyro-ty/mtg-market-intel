@@ -20,7 +20,7 @@ async def get_current_price(card_id: int) -> dict[str, Any]:
     """
     # Get card info first
     card_query = """
-        SELECT name, set_code, scryfall_price_usd, scryfall_price_usd_foil
+        SELECT id, name, set_code, set_name, rarity
         FROM cards WHERE id = :card_id
     """
     card_rows = await execute_query(card_query, {"card_id": card_id})
@@ -29,11 +29,15 @@ async def get_current_price(card_id: int) -> dict[str, Any]:
 
     card = card_rows[0]
 
-    # Get latest price snapshots
+    # Get latest price snapshots from all marketplaces
     price_query = """
         SELECT
             m.name as marketplace,
             ps.price,
+            ps.price_low,
+            ps.price_mid,
+            ps.price_high,
+            ps.price_market,
             ps.currency,
             ps.condition,
             ps.is_foil,
@@ -47,12 +51,28 @@ async def get_current_price(card_id: int) -> dict[str, Any]:
     """
     prices = await execute_query(price_query, {"card_id": card_id})
 
+    # Calculate summary prices (most recent per marketplace)
+    summary_query = """
+        SELECT DISTINCT ON (m.name, ps.is_foil)
+            m.name as marketplace,
+            ps.price,
+            ps.is_foil,
+            ps.time
+        FROM price_snapshots ps
+        JOIN marketplaces m ON ps.marketplace_id = m.id
+        WHERE ps.card_id = :card_id
+        AND ps.condition = 'NEAR_MINT'
+        ORDER BY m.name, ps.is_foil, ps.time DESC
+    """
+    summary = await execute_query(summary_query, {"card_id": card_id})
+
     return {
         "card_id": card_id,
         "name": card["name"],
         "set_code": card["set_code"],
-        "scryfall_price_usd": card["scryfall_price_usd"],
-        "scryfall_price_usd_foil": card["scryfall_price_usd_foil"],
+        "set_name": card["set_name"],
+        "rarity": card["rarity"],
+        "price_summary": summary,
         "recent_prices": prices,
     }
 
@@ -129,26 +149,44 @@ async def get_top_movers(window: str = "24h", limit: int = 10) -> dict[str, Any]
         result = await api_client.get("/market/top-movers", params={"window": window, "limit": limit})
         return result
     except Exception as e:
-        # Fall back to direct query
+        # Fall back to direct query using price_snapshots
         interval = "1 day" if window == "24h" else "7 days"
 
-        query = """
-            WITH price_changes AS (
-                SELECT
-                    c.id,
-                    c.name,
-                    c.set_code,
-                    c.scryfall_price_usd as current_price,
-                    LAG(c.scryfall_price_usd) OVER (PARTITION BY c.id ORDER BY c.updated_at) as prev_price
-                FROM cards c
-                WHERE c.scryfall_price_usd IS NOT NULL
-                AND c.scryfall_price_usd > 0.5
+        query = f"""
+            WITH current_prices AS (
+                SELECT DISTINCT ON (ps.card_id)
+                    ps.card_id,
+                    ps.price as current_price,
+                    ps.time as current_time
+                FROM price_snapshots ps
+                WHERE ps.condition = 'NEAR_MINT'
+                AND ps.is_foil = false
+                AND ps.price > 0.5
+                ORDER BY ps.card_id, ps.time DESC
+            ),
+            old_prices AS (
+                SELECT DISTINCT ON (ps.card_id)
+                    ps.card_id,
+                    ps.price as old_price
+                FROM price_snapshots ps
+                WHERE ps.condition = 'NEAR_MINT'
+                AND ps.is_foil = false
+                AND ps.time <= NOW() - INTERVAL '{interval}'
+                AND ps.time >= NOW() - INTERVAL '{interval}' - INTERVAL '1 day'
+                ORDER BY ps.card_id, ps.time DESC
             )
             SELECT
-                id, name, set_code, current_price,
-                (current_price - prev_price) / NULLIF(prev_price, 0) * 100 as pct_change
-            FROM price_changes
-            WHERE prev_price IS NOT NULL
+                c.id,
+                c.name,
+                c.set_code,
+                cp.current_price,
+                op.old_price,
+                (cp.current_price - op.old_price) / NULLIF(op.old_price, 0) * 100 as pct_change
+            FROM current_prices cp
+            JOIN old_prices op ON cp.card_id = op.card_id
+            JOIN cards c ON c.id = cp.card_id
+            WHERE op.old_price IS NOT NULL
+            AND op.old_price > 0
             ORDER BY pct_change DESC
             LIMIT :limit
         """
@@ -174,13 +212,13 @@ async def get_market_overview() -> dict[str, Any]:
     try:
         return await api_client.get("/market/overview")
     except Exception:
-        # Fall back to direct queries
+        # Fall back to direct queries using price_snapshots
         stats_query = """
             SELECT
                 (SELECT COUNT(*) FROM cards) as total_cards,
-                (SELECT COUNT(*) FROM cards WHERE scryfall_price_usd IS NOT NULL) as priced_cards,
+                (SELECT COUNT(DISTINCT card_id) FROM price_snapshots WHERE time >= NOW() - INTERVAL '24 hours') as priced_cards,
                 (SELECT COUNT(*) FROM price_snapshots WHERE time >= NOW() - INTERVAL '24 hours') as snapshots_24h,
-                (SELECT AVG(scryfall_price_usd) FROM cards WHERE scryfall_price_usd IS NOT NULL) as avg_price,
+                (SELECT AVG(price) FROM price_snapshots WHERE time >= NOW() - INTERVAL '24 hours' AND condition = 'NEAR_MINT') as avg_price,
                 (SELECT COUNT(*) FROM marketplaces WHERE is_enabled = true) as active_marketplaces
         """
         rows = await execute_query(stats_query)

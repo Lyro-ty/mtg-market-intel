@@ -74,7 +74,7 @@ async def get_stats_overview_resource() -> str:
     query = """
         SELECT
             (SELECT COUNT(*) FROM cards) as total_cards,
-            (SELECT COUNT(*) FROM cards WHERE scryfall_price_usd IS NOT NULL) as priced_cards,
+            (SELECT COUNT(DISTINCT card_id) FROM price_snapshots) as priced_cards,
             (SELECT COUNT(*) FROM price_snapshots) as total_snapshots,
             (SELECT COUNT(*) FROM users) as total_users,
             (SELECT COUNT(*) FROM inventory_items) as total_inventory_items,
