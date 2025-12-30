@@ -43,11 +43,12 @@ def load_config() -> MCPConfig:
     database_url = os.getenv("MTG_MCP_DATABASE_URL")
     if not database_url:
         # Fall back to constructing from parts
+        # Defaults match .env.example - password must be set via env var
         host = os.getenv("POSTGRES_HOST", "localhost")
         port = os.getenv("POSTGRES_PORT", "5432")
-        user = os.getenv("POSTGRES_USER", "dualcaster_user")
+        user = os.getenv("POSTGRES_USER", "mtg_user")
         password = os.getenv("POSTGRES_PASSWORD", "")
-        db = os.getenv("POSTGRES_DB", "dualcaster_deals")
+        db = os.getenv("POSTGRES_DB", "mtg_market_intel")
         database_url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
 
     # API URL defaults based on environment

@@ -16,11 +16,16 @@ if env_path.exists():
 
 async def query_users():
     """Query and display all users from the database."""
-    # Get connection details from environment or use defaults
+    # Get connection details from environment (loaded from .env above)
+    # Defaults match .env.example - password must be set in .env
     user = os.getenv('POSTGRES_USER', 'mtg_user')
-    password = os.getenv('POSTGRES_PASSWORD', 'mtg_password')
+    password = os.getenv('POSTGRES_PASSWORD', '')
     database = os.getenv('POSTGRES_DB', 'mtg_market_intel')
     host = 'localhost'  # Use 'db' if running from within Docker network
+
+    if not password:
+        print("Error: POSTGRES_PASSWORD not set. Create a .env file from .env.example")
+        return
     
     print(f"Connecting to database: {database} on {host}...")
     

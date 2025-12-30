@@ -39,10 +39,11 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     
     # Database
+    # Defaults match .env.example - password must be set via env var
     postgres_host: str = "db"
     postgres_port: int = 5432
     postgres_user: str = "mtg_user"
-    postgres_password: str = "mtg_password"
+    postgres_password: str = ""  # Required - set via POSTGRES_PASSWORD env var
     postgres_db: str = "mtg_market_intel"
     database_url: str | None = None
     
