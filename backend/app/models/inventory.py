@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -71,6 +71,9 @@ class InventoryItem(Base):
     
     # User notes
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Trade availability
+    available_for_trade: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     
     # Import tracking
     import_batch_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)

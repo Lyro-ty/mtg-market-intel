@@ -89,7 +89,8 @@ class InventoryItemBase(BaseModel):
     acquisition_date: Optional[datetime] = None
     acquisition_source: Optional[str] = None
     notes: Optional[str] = None
-    
+    available_for_trade: bool = False
+
     class Config:
         from_attributes = True
 
@@ -110,6 +111,7 @@ class InventoryItemUpdate(BaseModel):
     acquisition_date: Optional[datetime] = None
     acquisition_source: Optional[str] = None
     notes: Optional[str] = None
+    available_for_trade: Optional[bool] = None
 
 
 class InventoryItemResponse(InventoryItemBase):

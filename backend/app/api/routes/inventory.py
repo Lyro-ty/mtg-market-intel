@@ -386,6 +386,7 @@ async def get_inventory(
     set_code: Optional[str] = None,
     condition: Optional[InventoryCondition] = None,
     is_foil: Optional[bool] = None,
+    available_for_trade: Optional[bool] = None,
     min_value: Optional[float] = None,
     max_value: Optional[float] = None,
     sort_by: str = Query("created_at", regex="^(created_at|current_value|value_change_pct|card_name|quantity)$"),
@@ -414,7 +415,10 @@ async def get_inventory(
     
     if is_foil is not None:
         query = query.where(InventoryItem.is_foil == is_foil)
-    
+
+    if available_for_trade is not None:
+        query = query.where(InventoryItem.available_for_trade == available_for_trade)
+
     if min_value is not None:
         query = query.where(InventoryItem.current_value >= min_value)
     
@@ -485,6 +489,7 @@ async def get_inventory(
             profit_loss_pct=inv_item.profit_loss_pct,
             import_batch_id=inv_item.import_batch_id,
             notes=inv_item.notes,
+            available_for_trade=inv_item.available_for_trade,
             created_at=inv_item.created_at,
             updated_at=inv_item.updated_at,
         )
@@ -569,6 +574,7 @@ async def get_inventory_analytics(
             value_change_pct=float(inv.value_change_pct) if inv.value_change_pct else None,
             profit_loss=inv.profit_loss,
             profit_loss_pct=inv.profit_loss_pct,
+            available_for_trade=inv.available_for_trade,
             created_at=inv.created_at,
             updated_at=inv.updated_at,
         )
@@ -605,6 +611,7 @@ async def get_inventory_analytics(
             value_change_pct=float(inv.value_change_pct) if inv.value_change_pct else None,
             profit_loss=inv.profit_loss,
             profit_loss_pct=inv.profit_loss_pct,
+            available_for_trade=inv.available_for_trade,
             created_at=inv.created_at,
             updated_at=inv.updated_at,
         )
@@ -705,6 +712,7 @@ async def create_inventory_item(
         acquisition_date=item.acquisition_date,
         acquisition_source=item.acquisition_source,
         notes=item.notes,
+        available_for_trade=item.available_for_trade,
     )
     db.add(inv_item)
     await db.commit()
@@ -730,6 +738,7 @@ async def create_inventory_item(
         profit_loss=inv_item.profit_loss,
         profit_loss_pct=inv_item.profit_loss_pct,
         notes=inv_item.notes,
+        available_for_trade=inv_item.available_for_trade,
         created_at=inv_item.created_at,
         updated_at=inv_item.updated_at,
     )
@@ -1555,7 +1564,7 @@ async def get_inventory_item(
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
     inv_item, card = row
-    
+
     return InventoryItemResponse(
         id=inv_item.id,
         card_id=inv_item.card_id,
@@ -1577,6 +1586,7 @@ async def get_inventory_item(
         profit_loss_pct=inv_item.profit_loss_pct,
         import_batch_id=inv_item.import_batch_id,
         notes=inv_item.notes,
+        available_for_trade=inv_item.available_for_trade,
         created_at=inv_item.created_at,
         updated_at=inv_item.updated_at,
     )
@@ -1644,6 +1654,7 @@ async def update_inventory_item(
         profit_loss_pct=inv_item.profit_loss_pct,
         import_batch_id=inv_item.import_batch_id,
         notes=inv_item.notes,
+        available_for_trade=inv_item.available_for_trade,
         created_at=inv_item.created_at,
         updated_at=inv_item.updated_at,
     )
