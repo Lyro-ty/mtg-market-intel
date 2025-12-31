@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
     OAUTH_ENABLED: bool = False
 
+    # Discord OAuth settings
+    DISCORD_CLIENT_ID: str = ""
+    DISCORD_CLIENT_SECRET: str = ""
+    DISCORD_REDIRECT_URI: str = "http://localhost:8000/api/oauth/discord/callback"
+    DISCORD_BOT_TOKEN: str = ""  # Bot's Discord token
+    DISCORD_BOT_API_KEY: str = ""  # Bot's key for backend API auth
+
     # Domain settings for production
     domain: str = "localhost"
     frontend_url: str = "http://localhost:3000"

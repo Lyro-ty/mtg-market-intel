@@ -224,6 +224,29 @@ services:
     networks:
       - dualcaster-network
 
+  # Discord Bot
+  discord-bot:
+    build:
+      context: ./discord-bot
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-dualcaster}-discord-bot
+    restart: ${RESTART_POLICY:-always}
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
+      - API_BASE_URL=http://backend:8000
+      - DISCORD_BOT_API_KEY=${DISCORD_BOT_API_KEY:-}
+      - ENABLE_ALERTS=${ENABLE_DISCORD_ALERTS:-true}
+      - ALERT_POLL_INTERVAL=${DISCORD_ALERT_POLL_INTERVAL:-30}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - dualcaster-network
+    # Only start if Discord token is configured
+    profiles:
+      - discord
+
 volumes:
   postgres_data:
   redis_data:

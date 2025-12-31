@@ -147,5 +147,44 @@ async def get_cache(
 Cache = Annotated[CacheRepository, Depends(get_cache)]
 
 
+# =============================================================================
+# Bot Service Authentication
+# =============================================================================
+
+from fastapi import Header
+import secrets
+
+
+async def verify_bot_token(
+    x_bot_token: str = Header(..., alias="X-Bot-Token"),
+) -> bool:
+    """
+    Verify the bot service token for internal bot-to-backend API calls.
+
+    The bot authenticates using a shared secret (DISCORD_BOT_API_KEY).
+    This is used for bot-specific endpoints like user lookup by Discord ID.
+
+    Raises HTTPException 401 if token is missing or invalid.
+    """
+    if not settings.DISCORD_BOT_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Bot authentication not configured",
+        )
+
+    # Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(x_bot_token, settings.DISCORD_BOT_API_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid bot token",
+        )
+
+    return True
+
+
+# Type alias for bot authentication dependency
+BotAuth = Annotated[bool, Depends(verify_bot_token)]
+
+
 
 

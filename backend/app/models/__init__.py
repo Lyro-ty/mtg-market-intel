@@ -47,6 +47,7 @@ from app.models.connection import (
     BlockedUser,
     UserReport,
 )
+from app.models.discord_alert import DiscordAlertQueue
 
 
 # DEPRECATED: Listing model - use PriceSnapshot instead
@@ -131,6 +132,8 @@ __all__ = [
     "UserEndorsement",
     "BlockedUser",
     "UserReport",
+    # Discord integration
+    "DiscordAlertQueue",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
 ]

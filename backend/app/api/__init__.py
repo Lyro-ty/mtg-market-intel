@@ -34,6 +34,7 @@ from app.api.routes import (
     messages,
     endorsements,
     moderation,
+    bot,
 )
 
 api_router = APIRouter()
@@ -80,4 +81,7 @@ api_router.include_router(sessions.router)
 
 # User profiles
 api_router.include_router(profiles.router)
+
+# Discord bot integration
+api_router.include_router(bot.router)
 

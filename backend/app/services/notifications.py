@@ -341,6 +341,66 @@ async def get_unread_count(
     return total, breakdown
 
 
+class NotificationService:
+    """
+    Service wrapper for notification functions.
+
+    Provides a class-based interface for sending notifications.
+    """
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def send(
+        self,
+        user_id: int,
+        notification_type: str,
+        title: str,
+        message: str,
+        priority: NotificationPriority = NotificationPriority.MEDIUM,
+        card_id: Optional[int] = None,
+        extra_data: Optional[dict] = None,
+    ) -> Optional[Notification]:
+        """
+        Send a notification to a user.
+
+        Args:
+            user_id: Target user's ID
+            notification_type: Type string (converted to NotificationType enum)
+            title: Notification title
+            message: Notification message
+            priority: Priority level (default: MEDIUM)
+            card_id: Optional related card ID
+            extra_data: Optional additional data
+
+        Returns:
+            The created Notification object, or None if duplicate
+        """
+        # Map string type to enum, default to SYSTEM if not recognized
+        type_map = {
+            "price_alert": NotificationType.PRICE_ALERT,
+            "price_spike": NotificationType.PRICE_SPIKE,
+            "price_drop": NotificationType.PRICE_DROP,
+            "ban_change": NotificationType.BAN_CHANGE,
+            "milestone": NotificationType.MILESTONE,
+            "system": NotificationType.SYSTEM,
+            "educational": NotificationType.EDUCATIONAL,
+            "connection_request": NotificationType.SYSTEM,  # Map connection_request to SYSTEM
+        }
+        notification_type_enum = type_map.get(notification_type.lower(), NotificationType.SYSTEM)
+
+        return await create_notification(
+            db=self.db,
+            user_id=user_id,
+            type=notification_type_enum,
+            title=title,
+            message=message,
+            priority=priority,
+            card_id=card_id,
+            extra_data=extra_data,
+        )
+
+
 async def cleanup_expired_notifications(
     db: AsyncSession,
 ) -> int:

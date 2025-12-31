@@ -5,23 +5,22 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import (
-    ARRAY,
     ForeignKey,
     Index,
-    Integer,
+    JSON,
     String,
     Text,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.user import User
 
 
-class ConnectionRequest(Base, TimestampMixin):
+class ConnectionRequest(Base):
     """
     Connection requests between users.
 
@@ -40,9 +39,9 @@ class ConnectionRequest(Base, TimestampMixin):
         index=True,
     )
 
-    # Optional context for the request
+    # Optional context for the request (list of card IDs as JSON)
     card_ids: Mapped[Optional[list[int]]] = mapped_column(
-        ARRAY(Integer),
+        JSON,
         nullable=True,
     )
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -122,12 +121,8 @@ class Message(Base):
 
     __table_args__ = (
         Index("ix_messages_recipient_read", "recipient_id", "read_at"),
-        Index(
-            "ix_messages_conversation",
-            func.least("sender_id", "recipient_id"),
-            func.greatest("sender_id", "recipient_id"),
-            "created_at",
-        ),
+        # Note: conversation index using least/greatest is PostgreSQL-specific
+        # and created via migration, not model definition
     )
 
     def __repr__(self) -> str:
