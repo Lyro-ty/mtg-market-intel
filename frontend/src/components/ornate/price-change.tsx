@@ -3,7 +3,7 @@ import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PriceChangeProps {
-  value: number;
+  value: number | null | undefined;
   format?: 'percent' | 'currency';
   size?: 'sm' | 'md' | 'lg';
   showIcon?: boolean;
@@ -17,6 +17,11 @@ export function PriceChange({
   showIcon = true,
   className,
 }: PriceChangeProps) {
+  // Handle null/undefined values gracefully
+  if (value === null || value === undefined || isNaN(value)) {
+    return null;
+  }
+
   const isPositive = value > 0;
   const isNegative = value < 0;
   const isNeutral = value === 0;
