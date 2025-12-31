@@ -40,8 +40,8 @@ async def _ingest_recent_tournaments_async() -> dict[str, Any]:
     # Create session maker and engine
     session_maker, engine = create_task_session_maker()
 
-    # Major competitive formats
-    formats = ["modern", "pioneer", "standard", "legacy", "vintage", "pauper"]
+    # Major competitive formats (case-sensitive for TopDeck.gg API)
+    formats = ["Modern", "Pioneer", "Standard", "Legacy", "Vintage", "Pauper"]
 
     results = {
         "formats": {},

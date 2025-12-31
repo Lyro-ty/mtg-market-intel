@@ -43,8 +43,13 @@ class TournamentIngestionService:
         """
         Fetch and store recent tournaments for a format.
 
+        The TopDeck.gg v2 API returns tournaments with standings included,
+        so we can process everything from the initial response without
+        making additional API calls per tournament.
+
         Args:
-            format: MTG format (modern, pioneer, standard, etc.)
+            format: MTG format (Modern, Pioneer, Standard, etc.)
+                   Note: Format names are case-sensitive!
             days: Number of days to look back (default: 30)
 
         Returns:
@@ -53,9 +58,6 @@ class TournamentIngestionService:
             - tournaments_created: Number of new tournaments stored
             - tournaments_updated: Number of existing tournaments updated
             - standings_created: Number of standings created
-            - decklists_created: Number of decklists created
-            - decklist_cards_created: Number of decklist cards created
-            - cards_not_found: Number of card names that couldn't be matched
             - errors: List of error messages
         """
         stats = {
@@ -65,35 +67,25 @@ class TournamentIngestionService:
             "tournaments_created": 0,
             "tournaments_updated": 0,
             "standings_created": 0,
-            "decklists_created": 0,
-            "decklist_cards_created": 0,
-            "cards_not_found": 0,
             "errors": [],
         }
 
         try:
             # Fetch recent tournaments from TopDeck.gg
+            # The v2 API returns tournaments with standings already included
             logger.info("Fetching recent tournaments", format=format, days=days)
             tournaments = await self.client.get_recent_tournaments(format, days)
             stats["tournaments_fetched"] = len(tournaments)
 
-            # Process each tournament
+            # Process each tournament from the already-fetched data
             for tournament_data in tournaments:
                 try:
-                    # Ingest full tournament details
-                    await self.ingest_tournament_details(tournament_data["id"])
-
-                    # Check if this was a new tournament
-                    existing = await self.db.scalar(
-                        select(Tournament).where(
-                            Tournament.topdeck_id == tournament_data["id"]
-                        )
-                    )
-
-                    if existing and existing.created_at == existing.updated_at:
+                    result = await self._process_tournament_data(tournament_data)
+                    if result["created"]:
                         stats["tournaments_created"] += 1
-                    elif existing:
+                    else:
                         stats["tournaments_updated"] += 1
+                    stats["standings_created"] += result["standings_created"]
 
                 except Exception as e:
                     error_msg = f"Failed to ingest tournament {tournament_data.get('id', 'unknown')}: {str(e)}"
@@ -117,6 +109,133 @@ class TournamentIngestionService:
             raise
 
         return stats
+
+    async def _process_tournament_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Process a normalized tournament data dict and store it.
+
+        Args:
+            data: Normalized tournament data from TopDeckClient.get_recent_tournaments()
+
+        Returns:
+            Dict with {created: bool, standings_created: int}
+        """
+        topdeck_id = data["id"]
+
+        # Check if tournament already exists
+        existing = await self.db.scalar(
+            select(Tournament).where(Tournament.topdeck_id == topdeck_id)
+        )
+
+        if existing:
+            # Update existing tournament
+            existing.name = data["name"]
+            existing.format = data["format"]
+            existing.date = data["date"]
+            existing.player_count = data["player_count"]
+            existing.swiss_rounds = data.get("swiss_rounds")
+            existing.top_cut_size = data.get("top_cut_size")
+            existing.city = data.get("city")
+            existing.venue = data.get("venue")
+            existing.topdeck_url = data["url"]
+            tournament = existing
+            created = False
+        else:
+            # Create new tournament
+            tournament = Tournament(
+                topdeck_id=topdeck_id,
+                name=data["name"],
+                format=data["format"],
+                date=data["date"],
+                player_count=data["player_count"],
+                swiss_rounds=data.get("swiss_rounds"),
+                top_cut_size=data.get("top_cut_size"),
+                city=data.get("city"),
+                venue=data.get("venue"),
+                topdeck_url=data["url"],
+            )
+            self.db.add(tournament)
+            created = True
+
+        await self.db.flush()
+
+        # Process standings from the included data
+        standings_created = 0
+        for standing_data in data.get("standings", []):
+            result = await self._process_standing_from_data(tournament, standing_data)
+            if result:
+                standings_created += 1
+
+        await self.db.flush()
+
+        logger.debug(
+            "Processed tournament",
+            topdeck_id=topdeck_id,
+            name=tournament.name,
+            created=created,
+            standings_created=standings_created
+        )
+
+        return {"created": created, "standings_created": standings_created}
+
+    async def _process_standing_from_data(
+        self,
+        tournament: Tournament,
+        standing_data: dict[str, Any]
+    ) -> Optional[TournamentStanding]:
+        """
+        Process a standing from the normalized tournament data.
+
+        Args:
+            tournament: Tournament object
+            standing_data: Standing dict with rank, wins, losses, draws
+
+        Returns:
+            TournamentStanding object or None if skipped
+        """
+        rank = standing_data.get("rank", 0)
+        wins = standing_data.get("wins", 0)
+        losses = standing_data.get("losses", 0)
+        draws = standing_data.get("draws", 0)
+
+        # Calculate win rate
+        total_games = wins + losses + draws
+        win_rate = wins / total_games if total_games > 0 else 0.0
+
+        # Use a placeholder player name since the v2 API doesn't include player names
+        # in the standings (only decklist data which may be null)
+        player_name = f"Player #{rank}"
+
+        # Check if standing already exists for this tournament and rank
+        existing = await self.db.scalar(
+            select(TournamentStanding).where(
+                and_(
+                    TournamentStanding.tournament_id == tournament.id,
+                    TournamentStanding.rank == rank
+                )
+            )
+        )
+
+        if existing:
+            # Update existing standing
+            existing.wins = wins
+            existing.losses = losses
+            existing.draws = draws
+            existing.win_rate = win_rate
+            return existing
+        else:
+            # Create new standing
+            standing = TournamentStanding(
+                tournament_id=tournament.id,
+                player_name=player_name,
+                rank=rank,
+                wins=wins,
+                losses=losses,
+                draws=draws,
+                win_rate=win_rate,
+            )
+            self.db.add(standing)
+            return standing
 
     async def ingest_tournament_details(self, topdeck_id: str) -> Optional[Tournament]:
         """

@@ -208,18 +208,23 @@ class TopDeckClient:
         Get recent tournaments for a specific format.
 
         Args:
-            format: MTG format (e.g., "modern", "standard", "legacy", "pioneer")
+            format: MTG format (e.g., "Modern", "Pioneer", "Standard", "Legacy")
+                   Note: Format names are case-sensitive!
             days: Number of days to look back (default: 30)
 
         Returns:
-            List of tournament dictionaries with fields:
-            - id: Tournament ID
+            List of tournament dictionaries with normalized fields:
+            - id: Tournament ID (from TID)
             - name: Tournament name
             - format: MTG format
-            - date: ISO 8601 date string
+            - date: datetime object
             - player_count: Number of players
-            - venue: Venue information dict
-            - url: Tournament URL
+            - swiss_rounds: Number of swiss rounds
+            - top_cut_size: Top cut size (0 if none)
+            - city: City name
+            - venue: Venue name
+            - url: Tournament URL on TopDeck.gg
+            - standings: List of standings with wins/losses/draws
 
         Raises:
             TopDeckAPIError: On API errors
@@ -232,21 +237,21 @@ class TopDeckClient:
             "game": "Magic: The Gathering",
             "format": format,  # Case-sensitive: "Modern", "EDH", "Pioneer", etc.
             "last": days,
-            "columns": ["name", "decklist", "wins", "draws", "losses"],
         }
 
         try:
             response = await self._make_request(endpoint, method="POST", json=payload)
             data = response.json()
 
-            # v2 API returns list directly, not nested under "tournaments"
-            tournaments = data if isinstance(data, list) else data.get("tournaments", [])
+            # v2 API returns list directly
+            tournaments = data if isinstance(data, list) else []
 
-            # Convert to our standard format with snake_case
+            # Convert to our normalized format
             result = []
             for tournament in tournaments:
-                converted = self._convert_keys_to_snake_case(tournament)
-                result.append(converted)
+                normalized = self._normalize_tournament(tournament)
+                if normalized:
+                    result.append(normalized)
 
             logger.debug(
                 "Fetched recent tournaments",
@@ -260,6 +265,68 @@ class TopDeckClient:
         except ValueError as e:
             logger.error("Invalid JSON response from TopDeck.gg", error=str(e))
             raise TopDeckAPIError(f"Invalid JSON response: {str(e)}") from e
+
+    def _normalize_tournament(self, raw: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """
+        Normalize a raw tournament response to our standard format.
+
+        The TopDeck.gg v2 API returns:
+        - TID: Tournament ID
+        - tournamentName: Name
+        - startDate: Unix timestamp
+        - swissNum: Number of swiss rounds
+        - topCut: Top cut size
+        - eventData: {lat, lng, city, state, location}
+        - standings: List of {wins, losses, draws, decklist, deckObj}
+        """
+        try:
+            tid = raw.get("TID")
+            if not tid:
+                return None
+
+            # Parse Unix timestamp
+            start_date = raw.get("startDate", 0)
+            tournament_date = datetime.fromtimestamp(start_date, tz=timezone.utc)
+
+            # Extract venue info
+            event_data = raw.get("eventData", {}) or {}
+
+            # Count players from standings
+            standings_raw = raw.get("standings", []) or []
+            player_count = len(standings_raw)
+
+            # Normalize standings
+            standings = []
+            for i, s in enumerate(standings_raw):
+                standings.append({
+                    "rank": i + 1,  # Standings are ordered by rank
+                    "wins": s.get("wins", 0),
+                    "losses": s.get("losses", 0),
+                    "draws": s.get("draws", 0),
+                    "decklist": s.get("decklist"),
+                    "deck_obj": s.get("deckObj"),
+                })
+
+            return {
+                "id": tid,
+                "name": raw.get("tournamentName", "Unknown Tournament"),
+                "format": raw.get("format", "Unknown"),
+                "date": tournament_date,
+                "player_count": player_count,
+                "swiss_rounds": raw.get("swissNum"),
+                "top_cut_size": raw.get("topCut", 0),
+                "city": event_data.get("city"),
+                "venue": event_data.get("location"),
+                "url": f"https://topdeck.gg/event/{tid}",
+                "standings": standings,
+            }
+        except Exception as e:
+            logger.warning(
+                "Failed to normalize tournament",
+                tid=raw.get("TID"),
+                error=str(e)
+            )
+            return None
 
     async def get_tournament(self, topdeck_id: str) -> Optional[dict[str, Any]]:
         """
