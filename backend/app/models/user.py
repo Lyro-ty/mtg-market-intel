@@ -11,6 +11,11 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.collection_stats import CollectionStats
+    from app.models.connection import (
+        ConnectionRequest,
+        Message,
+        UserEndorsement,
+    )
     from app.models.import_job import ImportJob
     from app.models.inventory import InventoryItem
     from app.models.notification import Notification
@@ -126,6 +131,48 @@ class User(Base):
     saved_searches: Mapped[list["SavedSearch"]] = relationship(
         "SavedSearch",
         back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
+    # Connection relationships
+    sent_connection_requests: Mapped[list["ConnectionRequest"]] = relationship(
+        "ConnectionRequest",
+        foreign_keys="ConnectionRequest.requester_id",
+        back_populates="requester",
+        cascade="all, delete-orphan"
+    )
+    received_connection_requests: Mapped[list["ConnectionRequest"]] = relationship(
+        "ConnectionRequest",
+        foreign_keys="ConnectionRequest.recipient_id",
+        back_populates="recipient",
+        cascade="all, delete-orphan"
+    )
+
+    # Message relationships
+    sent_messages: Mapped[list["Message"]] = relationship(
+        "Message",
+        foreign_keys="Message.sender_id",
+        back_populates="sender",
+        cascade="all, delete-orphan"
+    )
+    received_messages: Mapped[list["Message"]] = relationship(
+        "Message",
+        foreign_keys="Message.recipient_id",
+        back_populates="recipient",
+        cascade="all, delete-orphan"
+    )
+
+    # Endorsement relationships
+    given_endorsements: Mapped[list["UserEndorsement"]] = relationship(
+        "UserEndorsement",
+        foreign_keys="UserEndorsement.endorser_id",
+        back_populates="endorser",
+        cascade="all, delete-orphan"
+    )
+    received_endorsements: Mapped[list["UserEndorsement"]] = relationship(
+        "UserEndorsement",
+        foreign_keys="UserEndorsement.endorsed_id",
+        back_populates="endorsed",
         cascade="all, delete-orphan"
     )
 

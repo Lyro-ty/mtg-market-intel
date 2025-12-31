@@ -40,6 +40,13 @@ from app.models.user_milestone import UserMilestone, MilestoneType
 from app.models.import_job import ImportJob, ImportPlatform, ImportStatus
 from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.models.saved_search import SavedSearch, SearchAlertFrequency
+from app.models.connection import (
+    ConnectionRequest,
+    Message,
+    UserEndorsement,
+    BlockedUser,
+    UserReport,
+)
 
 
 # DEPRECATED: Listing model - use PriceSnapshot instead
@@ -118,6 +125,12 @@ __all__ = [
     "CardNewsMention",
     "BuylistSnapshot",
     "LegalityChange",
+    # Connection models
+    "ConnectionRequest",
+    "Message",
+    "UserEndorsement",
+    "BlockedUser",
+    "UserReport",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
 ]
