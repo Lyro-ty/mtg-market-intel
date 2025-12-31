@@ -159,6 +159,14 @@ export {
   getCardNews,
 } from './news';
 
+// Spreads
+export {
+  getBuylistOpportunities,
+  getSellingOpportunities,
+  getArbitrageOpportunities,
+  getSpreadMarketSummary,
+} from './spreads';
+
 // Types re-exports for backwards compatibility
 export type {
   ImportJob,
