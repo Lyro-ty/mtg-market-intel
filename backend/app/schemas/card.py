@@ -159,6 +159,36 @@ class RecommendationSummary(BaseModel):
     potential_profit_pct: Optional[float] = None
 
 
+class CardPublicResponse(BaseModel):
+    """Public card response - no internal ID exposed."""
+    hashid: str
+    name: str
+    set_code: str
+    set_name: Optional[str] = None
+    collector_number: str
+    rarity: Optional[str] = None
+    mana_cost: Optional[str] = None
+    cmc: Optional[float] = None
+    type_line: Optional[str] = None
+    oracle_text: Optional[str] = None
+    colors: Optional[str] = None
+    power: Optional[str] = None
+    toughness: Optional[str] = None
+    image_url: Optional[str] = None
+    image_url_small: Optional[str] = None
+    image_url_large: Optional[str] = None
+
+
+class CardPublicPriceResponse(BaseModel):
+    """Public price history response."""
+    hashid: str
+    card_name: str
+    prices: list[PricePoint] = []
+    from_date: Optional[datetime] = None
+    to_date: Optional[datetime] = None
+    data_points: int = 0
+
+
 # Update forward references
 CardPriceResponse.model_rebuild()
 CardDetailResponse.model_rebuild()

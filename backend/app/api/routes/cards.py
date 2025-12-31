@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation
+from app.core.hashids import encode_card_id, decode_card_id
 from app.schemas.card import (
     CardResponse,
     CardSearchResponse,
@@ -26,6 +27,8 @@ from app.schemas.card import (
     PricePoint,
     SignalSummary,
     RecommendationSummary,
+    CardPublicResponse,
+    CardPublicPriceResponse,
 )
 from app.schemas.signal import SignalResponse, SignalListResponse
 from app.tasks.analytics import compute_card_metrics
@@ -78,6 +81,112 @@ async def search_cards(
         page_size=page_size,
         has_more=(page * page_size) < (total or 0),
     )
+
+
+# ============================================================================
+# PUBLIC ENDPOINTS (no auth required)
+# ============================================================================
+
+
+@router.get("/public/{hashid}", response_model=CardPublicResponse)
+async def get_card_public(
+    hashid: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get card by hashid (public, no auth required).
+
+    Returns card information without exposing internal database IDs.
+    """
+    card_id = decode_card_id(hashid)
+    if card_id is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    return CardPublicResponse(
+        hashid=hashid,
+        name=card.name,
+        set_code=card.set_code,
+        set_name=card.set_name,
+        collector_number=card.collector_number,
+        rarity=card.rarity,
+        mana_cost=card.mana_cost,
+        cmc=card.cmc,
+        type_line=card.type_line,
+        oracle_text=card.oracle_text,
+        colors=card.colors,
+        power=card.power,
+        toughness=card.toughness,
+        image_url=card.image_url,
+        image_url_small=card.image_url_small,
+        image_url_large=card.image_url_large,
+    )
+
+
+@router.get("/public/{hashid}/prices", response_model=CardPublicPriceResponse)
+async def get_card_prices_public(
+    hashid: str,
+    days: int = Query(default=30, le=90, ge=1),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get price history for a card (public, no auth required).
+
+    Returns price history without exposing internal database IDs.
+    """
+    card_id = decode_card_id(hashid)
+    if card_id is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Calculate date range
+    to_date = datetime.now(timezone.utc)
+    from_date = to_date - timedelta(days=days)
+
+    # Query price snapshots
+    query = (
+        select(PriceSnapshot, Marketplace)
+        .join(Marketplace, PriceSnapshot.marketplace_id == Marketplace.id)
+        .where(PriceSnapshot.card_id == card_id)
+        .where(PriceSnapshot.time >= from_date)
+        .order_by(PriceSnapshot.time.desc())
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    prices = []
+    for snapshot, marketplace in rows:
+        prices.append(PricePoint(
+            date=snapshot.time,
+            price=float(snapshot.price) if snapshot.price else 0.0,
+            marketplace=marketplace.name,
+            currency=snapshot.currency or "USD",
+            min_price=float(snapshot.price_low) if snapshot.price_low else None,
+            max_price=float(snapshot.price_high) if snapshot.price_high else None,
+            num_listings=snapshot.num_listings,
+            condition=snapshot.condition,
+        ))
+
+    return CardPublicPriceResponse(
+        hashid=hashid,
+        card_name=card.name,
+        prices=prices,
+        from_date=from_date,
+        to_date=to_date,
+        data_points=len(prices),
+    )
+
+
+# ============================================================================
+# AUTHENTICATED ENDPOINTS
+# ============================================================================
 
 
 @router.get("/{card_id}", response_model=CardDetailResponse)

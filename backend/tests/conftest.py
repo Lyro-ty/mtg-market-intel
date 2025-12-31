@@ -166,6 +166,7 @@ async def test_card(db_session) -> "Card":
 
     card = Card(
         id=1,
+        scryfall_id="e0debb18-f57c-4b9c-9734-aef0dab42f6c",  # Required field
         name="Lightning Bolt",
         set_code="LEA",
         set_name="Limited Edition Alpha",
@@ -189,6 +190,7 @@ async def test_card_2(db_session) -> "Card":
 
     card = Card(
         id=2,
+        scryfall_id="93f9e4e4-a7e8-4c7c-a3c5-123456789abc",  # Required field
         name="Counterspell",
         set_code="LEA",
         set_name="Limited Edition Alpha",
