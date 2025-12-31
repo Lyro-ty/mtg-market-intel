@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from app.models.feature_vector import CardFeatureVector
     from app.models.news import CardNewsMention
     from app.models.buylist_snapshot import BuylistSnapshot
+    from app.models.legality import LegalityChange
 
 
 class Card(Base):
@@ -114,6 +115,9 @@ class Card(Base):
     )
     buylist_snapshots: Mapped[list["BuylistSnapshot"]] = relationship(
         "BuylistSnapshot", back_populates="card", cascade="all, delete-orphan"
+    )
+    legality_changes: Mapped[list["LegalityChange"]] = relationship(
+        "LegalityChange", back_populates="card", cascade="all, delete-orphan"
     )
 
     # Indexes for common queries

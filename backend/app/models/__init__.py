@@ -30,6 +30,7 @@ from app.models.tournament import (
 )
 from app.models.news import NewsArticle, CardNewsMention
 from app.models.buylist_snapshot import BuylistSnapshot
+from app.models.legality import LegalityChange
 from app.models.session import UserSession
 from app.models.want_list import WantListItem
 from app.models.notification import Notification, NotificationType, NotificationPriority
@@ -116,6 +117,7 @@ __all__ = [
     "NewsArticle",
     "CardNewsMention",
     "BuylistSnapshot",
+    "LegalityChange",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
 ]

@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation, CardNewsMention, NewsArticle, BuylistSnapshot
+from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation, CardNewsMention, NewsArticle, BuylistSnapshot, LegalityChange
 from app.core.hashids import encode_card_id, decode_card_id
 from app.schemas.card import (
     CardResponse,
@@ -33,6 +33,7 @@ from app.schemas.card import (
 from app.schemas.signal import SignalResponse, SignalListResponse
 from app.schemas.news import CardNewsResponse, CardNewsItem
 from app.schemas.buylist import CardBuylistResponse, BuylistPriceItem, BuylistRefreshResponse
+from app.schemas.legality import LegalityChangeItem, CardLegalityHistoryResponse
 from app.tasks.analytics import compute_card_metrics
 from app.tasks.recommendations import generate_card_recommendations
 from app.services.ingestion import ScryfallAdapter
@@ -1793,4 +1794,76 @@ async def refresh_card_buylist(
             task_id=task.id,
             status="queued",
         )
+
+
+@router.get("/{card_id}/legality-history", response_model=CardLegalityHistoryResponse)
+async def get_card_legality_history(
+    card_id: int,
+    format_filter: Optional[str] = Query(None, description="Filter by format (modern, standard, legacy, etc.)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get legality change history for a card.
+
+    Tracks all bans, unbans, and restrictions across all formats.
+    Useful for understanding a card's ban history and its price implications.
+    """
+    import json as json_module
+
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Query legality changes
+    query = (
+        select(LegalityChange)
+        .where(LegalityChange.card_id == card_id)
+        .order_by(LegalityChange.changed_at.desc())
+    )
+
+    if format_filter:
+        query = query.where(LegalityChange.format == format_filter.lower())
+
+    result = await db.execute(query)
+    changes = result.scalars().all()
+
+    # Convert to response items
+    change_items = [
+        LegalityChangeItem(
+            id=c.id,
+            format=c.format,
+            old_status=c.old_status,
+            new_status=c.new_status,
+            changed_at=c.changed_at,
+            source=c.source,
+            announcement_url=c.announcement_url,
+            is_ban=c.is_ban,
+            is_unban=c.is_unban,
+        )
+        for c in changes
+    ]
+
+    # Check if card has ever been banned
+    has_been_banned = any(c.is_ban for c in changes)
+
+    # Get current banned formats from card legalities
+    currently_banned_in = []
+    if card.legalities:
+        try:
+            legalities = json_module.loads(card.legalities)
+            currently_banned_in = [
+                fmt for fmt, status in legalities.items()
+                if status == "banned"
+            ]
+        except (json_module.JSONDecodeError, TypeError):
+            pass
+
+    return CardLegalityHistoryResponse(
+        card_id=card_id,
+        card_name=card.name,
+        changes=change_items,
+        total=len(change_items),
+        has_been_banned=has_been_banned,
+        currently_banned_in=currently_banned_in,
+    )
 
