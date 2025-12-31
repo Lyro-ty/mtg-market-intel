@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.models.inventory import InventoryItem
     from app.models.feature_vector import CardFeatureVector
     from app.models.news import CardNewsMention
+    from app.models.buylist_snapshot import BuylistSnapshot
 
 
 class Card(Base):
@@ -110,6 +111,9 @@ class Card(Base):
     )
     news_mentions: Mapped[list["CardNewsMention"]] = relationship(
         "CardNewsMention", back_populates="card", cascade="all, delete-orphan"
+    )
+    buylist_snapshots: Mapped[list["BuylistSnapshot"]] = relationship(
+        "BuylistSnapshot", back_populates="card", cascade="all, delete-orphan"
     )
 
     # Indexes for common queries

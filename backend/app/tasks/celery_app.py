@@ -32,6 +32,7 @@ celery_app = Celery(
         "app.tasks.supply_signals",
         "app.tasks.arbitrage_signals",
         "app.tasks.news_collection",
+        "app.tasks.buylist_collection",
     ],
 )
 
@@ -147,6 +148,13 @@ celery_app.conf.update(
             "task": "collect_news",
             "schedule": crontab(hour="*/6", minute=45),  # Every 6 hours at :45
         },
+
+        # Buylist collection: Daily at 6 AM
+        # Collects buylist prices from Card Kingdom for inventory cards and high-value cards
+        "buylist-collection": {
+            "task": "app.tasks.buylist_collection.collect_buylist_prices",
+            "schedule": crontab(hour=6, minute=0),  # Daily at 6 AM
+        },
     },
 
     # Task routing
@@ -167,6 +175,7 @@ celery_app.conf.update(
         "generate_supply_signals": {"queue": "analytics"},
         "generate_arbitrage_signals": {"queue": "analytics"},
         "collect_news": {"queue": "ingestion"},
+        "app.tasks.buylist_collection.*": {"queue": "ingestion"},
     },
 
     # Default queue

@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation, CardNewsMention, NewsArticle
+from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation, CardNewsMention, NewsArticle, BuylistSnapshot
 from app.core.hashids import encode_card_id, decode_card_id
 from app.schemas.card import (
     CardResponse,
@@ -32,6 +32,7 @@ from app.schemas.card import (
 )
 from app.schemas.signal import SignalResponse, SignalListResponse
 from app.schemas.news import CardNewsResponse, CardNewsItem
+from app.schemas.buylist import CardBuylistResponse, BuylistPriceItem, BuylistRefreshResponse
 from app.tasks.analytics import compute_card_metrics
 from app.tasks.recommendations import generate_card_recommendations
 from app.services.ingestion import ScryfallAdapter
@@ -1635,4 +1636,161 @@ async def get_card_news(
     ]
 
     return CardNewsResponse(items=items, total=total)
+
+
+@router.get("/{card_id}/buylist", response_model=CardBuylistResponse)
+async def get_card_buylist(
+    card_id: int,
+    vendor: Optional[str] = Query(None, description="Filter by vendor (cardkingdom, etc.)"),
+    condition: Optional[str] = Query(None, description="Filter by condition (NM, LP, MP, HP)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get buylist prices for a card from vendors.
+
+    Buylist prices are what vendors will pay to purchase cards from sellers.
+    Returns best cash and credit prices, plus spread vs retail price.
+    """
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Query latest buylist snapshots (within last 48 hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+
+    query = (
+        select(BuylistSnapshot)
+        .where(
+            BuylistSnapshot.card_id == card_id,
+            BuylistSnapshot.time >= cutoff,
+        )
+        .order_by(BuylistSnapshot.time.desc())
+    )
+
+    if vendor:
+        query = query.where(BuylistSnapshot.vendor == vendor.lower())
+    if condition:
+        query = query.where(BuylistSnapshot.condition == condition.upper())
+
+    result = await db.execute(query)
+    snapshots = result.scalars().all()
+
+    # Convert to response items
+    prices = [
+        BuylistPriceItem(
+            vendor=s.vendor,
+            condition=s.condition,
+            is_foil=s.is_foil,
+            price=float(s.price),
+            credit_price=float(s.credit_price) if s.credit_price else None,
+            quantity=s.quantity,
+            time=s.time,
+        )
+        for s in snapshots
+    ]
+
+    # Calculate best prices
+    cash_prices = [p.price for p in prices if p.price > 0]
+    credit_prices = [p.credit_price for p in prices if p.credit_price]
+    best_cash = max(cash_prices) if cash_prices else None
+    best_credit = max(credit_prices) if credit_prices else None
+
+    # Calculate spread vs retail
+    spread_vs_retail = None
+    spread_pct = None
+    if best_cash:
+        # Get current retail price
+        latest_price_query = (
+            select(PriceSnapshot.price)
+            .where(PriceSnapshot.card_id == card_id)
+            .order_by(PriceSnapshot.time.desc())
+            .limit(1)
+        )
+        latest_result = await db.execute(latest_price_query)
+        retail_price = latest_result.scalar_one_or_none()
+
+        if retail_price:
+            spread_vs_retail = float(retail_price) - best_cash
+            spread_pct = (spread_vs_retail / float(retail_price)) * 100 if retail_price > 0 else None
+
+    return CardBuylistResponse(
+        card_id=card_id,
+        card_name=card.name,
+        prices=prices,
+        best_cash_price=best_cash,
+        best_credit_price=best_credit,
+        spread_vs_retail=spread_vs_retail,
+        spread_pct=spread_pct,
+        last_updated=snapshots[0].time if snapshots else None,
+    )
+
+
+@router.post("/{card_id}/buylist/refresh", response_model=BuylistRefreshResponse)
+async def refresh_card_buylist(
+    card_id: int,
+    sync: bool = Query(True, description="Run synchronously (True) or dispatch background task (False)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trigger on-demand buylist price collection for a card.
+
+    If sync=True (default), collects buylist prices immediately and returns results.
+    If sync=False, dispatches a background task and returns the task ID.
+    """
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    if sync:
+        # Run synchronously
+        from app.services.ingestion.adapters.cardkingdom_buylist import CardKingdomBuylistAdapter
+
+        adapter = CardKingdomBuylistAdapter()
+        try:
+            prices = await adapter.get_buylist_prices(card.name, card.set_code)
+
+            # Store the prices
+            now = datetime.now(timezone.utc)
+            saved_count = 0
+
+            for price_data in prices:
+                if price_data.price <= 0:
+                    continue
+
+                snapshot = BuylistSnapshot(
+                    time=now,
+                    card_id=card_id,
+                    vendor=price_data.vendor,
+                    condition=price_data.condition,
+                    is_foil=price_data.is_foil,
+                    price=price_data.price,
+                    credit_price=price_data.credit_price,
+                    quantity=price_data.quantity,
+                )
+                db.add(snapshot)
+                saved_count += 1
+
+            await db.commit()
+
+            return BuylistRefreshResponse(
+                card_id=card_id,
+                card_name=card.name,
+                prices_found=saved_count,
+                status="completed",
+            )
+        finally:
+            await adapter.close()
+    else:
+        # Dispatch background task
+        from app.tasks.buylist_collection import collect_buylist_for_card
+
+        task = collect_buylist_for_card.delay(card_id)
+
+        return BuylistRefreshResponse(
+            card_id=card_id,
+            card_name=card.name,
+            prices_found=0,
+            task_id=task.id,
+            status="queued",
+        )
 
