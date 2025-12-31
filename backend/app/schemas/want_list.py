@@ -42,6 +42,25 @@ class WantListItemBase(BaseModel):
         default=None,
         description="Optional notes about this want list item"
     )
+    # Enhanced alert options
+    alert_on_spike: bool = Field(
+        default=False,
+        description="Alert when price spikes by threshold percentage"
+    )
+    alert_threshold_pct: Optional[Decimal] = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Price change threshold % to trigger spike alert (e.g., 15.00 = 15%)"
+    )
+    alert_on_supply_low: bool = Field(
+        default=False,
+        description="Alert when supply drops to low levels"
+    )
+    alert_on_price_drop: bool = Field(
+        default=True,
+        description="Alert when price drops below target price"
+    )
 
 
 class WantListItemCreate(WantListItemBase):
@@ -67,6 +86,25 @@ class WantListItemUpdate(BaseModel):
     notes: Optional[str] = Field(
         default=None,
         description="Optional notes about this want list item"
+    )
+    # Enhanced alert options
+    alert_on_spike: Optional[bool] = Field(
+        default=None,
+        description="Alert when price spikes by threshold percentage"
+    )
+    alert_threshold_pct: Optional[Decimal] = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Price change threshold % to trigger spike alert"
+    )
+    alert_on_supply_low: Optional[bool] = Field(
+        default=None,
+        description="Alert when supply drops to low levels"
+    )
+    alert_on_price_drop: Optional[bool] = Field(
+        default=None,
+        description="Alert when price drops below target price"
     )
 
 

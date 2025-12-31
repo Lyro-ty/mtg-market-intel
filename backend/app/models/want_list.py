@@ -33,6 +33,21 @@ class WantListItem(Base):
     alert_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Enhanced alert options
+    alert_on_spike: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    alert_threshold_pct: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 2),
+        nullable=True,
+        comment="Price change threshold % to trigger spike alert (e.g., 15.00 = 15%)"
+    )
+    alert_on_supply_low: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    alert_on_price_drop: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        comment="Alert when price drops below target"
+    )
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="want_list_items")
     card: Mapped["Card"] = relationship("Card", lazy="joined")
