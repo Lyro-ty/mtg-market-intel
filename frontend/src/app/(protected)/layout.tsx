@@ -12,16 +12,20 @@ export default function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isOAuthPending } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
+    // Don't redirect during OAuth callback processing
+    if (isOAuthPending) return;
+
     if (!isLoading && !user) {
       router.push('/login');
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading, isOAuthPending, router]);
 
-  if (isLoading) {
+  // Show loading during auth initialization or OAuth processing
+  if (isLoading || isOAuthPending) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>

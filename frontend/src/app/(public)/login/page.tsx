@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LogIn, Mail, Lock, Sparkles, AlertCircle } from 'lucide-react';
@@ -9,49 +9,69 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { GoogleLoginButton } from '@/components/auth/GoogleLoginButton';
-import { setStoredToken } from '@/lib/api';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login, isAuthenticated, refreshUser } = useAuth();
+  const { login, isAuthenticated, handleOAuthToken, isOAuthPending } = useAuth();
   const router = useRouter();
+  const oauthHandledRef = useRef(false);
 
   // Handle OAuth callback token
   useEffect(() => {
-    const handleOAuthCallback = async () => {
+    const processOAuthCallback = async () => {
+      // Prevent double execution
+      if (oauthHandledRef.current) return;
+
       const params = new URLSearchParams(window.location.search);
       const token = params.get('token');
-      const error = params.get('error');
+      const errorParam = params.get('error');
 
-      if (error) {
+      if (errorParam) {
         setError('Google login failed. Please try again.');
-        // Clean URL to remove error parameter
         window.history.replaceState({}, '', '/login');
         return;
       }
 
       if (token) {
-        // Store token using the correct key
-        setStoredToken(token);
-        // Clean URL to remove sensitive token
+        oauthHandledRef.current = true;
+        // Clean URL immediately to remove sensitive token
         window.history.replaceState({}, '', '/login');
-        // Sync auth state
-        await refreshUser();
-        // Redirect to inventory (consistent with normal login)
-        router.push('/inventory');
+
+        try {
+          // Use the atomic handleOAuthToken which stores token and fetches user
+          await handleOAuthToken(token);
+          // Redirect to inventory (consistent with normal login)
+          router.push('/inventory');
+        } catch (err) {
+          oauthHandledRef.current = false; // Allow retry on error
+          setError('Login failed. Please try again.');
+        }
       }
     };
 
-    handleOAuthCallback();
-  }, [router, refreshUser]);
+    processOAuthCallback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run once on mount
 
   // Redirect if already authenticated
   if (isAuthenticated) {
     router.push('/inventory');
     return null;
+  }
+
+  // Show loading state during OAuth
+  if (isOAuthPending) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-[rgb(var(--magic-purple))]/30 border-t-[rgb(var(--magic-purple))] rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Completing sign in...</p>
+        </div>
+      </div>
+    );
   }
 
   const handleSubmit = async (e: FormEvent) => {
