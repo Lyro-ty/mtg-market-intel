@@ -142,6 +142,13 @@ celery_app.conf.update(
             "schedule": crontab(hour="*/4", minute=25),  # Every 4 hours at :25
         },
 
+        # Price prediction signals: Every 12 hours
+        # Technical analysis for momentum, breakouts, and trend reversals
+        "prediction-signals-generation": {
+            "task": "generate_prediction_signals",
+            "schedule": crontab(hour="*/12", minute=35),  # Every 12 hours at :35
+        },
+
         # News collection: Every 6 hours
         # Fetches MTG news from RSS feeds and extracts card mentions
         "news-collection": {
@@ -174,6 +181,7 @@ celery_app.conf.update(
         "generate_meta_signals": {"queue": "analytics"},
         "generate_supply_signals": {"queue": "analytics"},
         "generate_arbitrage_signals": {"queue": "analytics"},
+        "generate_prediction_signals": {"queue": "analytics"},
         "collect_news": {"queue": "ingestion"},
         "app.tasks.buylist_collection.*": {"queue": "ingestion"},
     },
