@@ -102,6 +102,7 @@ function CardsPageContent() {
   const debouncedQuery = useDebouncedValue(query, 300);
 
   // Update URL when state changes (use debounced query for URL)
+  // Only replace if URL actually changed to avoid infinite loop
   useEffect(() => {
     const params = new URLSearchParams();
     if (debouncedQuery) params.set('q', debouncedQuery);
@@ -112,9 +113,15 @@ function CardsPageContent() {
     if (cmcMin !== undefined) params.set('cmc_min', String(cmcMin));
     if (cmcMax !== undefined) params.set('cmc_max', String(cmcMax));
 
-    const search = params.toString();
-    router.replace(`/cards${search ? `?${search}` : ''}`, { scroll: false });
-  }, [debouncedQuery, page, searchMode, selectedColors, cardType, cmcMin, cmcMax, router]);
+    const newSearch = params.toString();
+    const currentSearch = searchParams.toString();
+
+    // Only update URL if it actually changed
+    if (newSearch !== currentSearch) {
+      router.replace(`/cards${newSearch ? `?${newSearch}` : ''}`, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery, page, searchMode, selectedColors, cardType, cmcMin, cmcMax]);
 
   // Fetch cards using the search API
   const fetchCards = useCallback(async (): Promise<SearchResponse> => {
