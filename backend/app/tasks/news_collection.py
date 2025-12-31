@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import feedparser
+import httpx
 import structlog
 from celery import shared_task
 from sqlalchemy import select, and_
@@ -20,15 +21,27 @@ from app.tasks.utils import run_async
 
 logger = structlog.get_logger()
 
-# RSS feed sources
+# Browser-like headers to avoid being blocked
+REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/rss+xml, application/xml, text/xml, application/atom+xml, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+}
+
+# RSS feed sources - using known working feed URLs
 RSS_FEEDS = {
     "mtggoldfish": "https://www.mtggoldfish.com/articles.rss",
-    "channelfireball": "https://www.channelfireball.com/feed/",
-    "tcgplayer": "https://infinite.tcgplayer.com/feed",
+    "starcitygames": "https://starcitygames.com/feed/",
+    "cardkingdom": "https://blog.cardkingdom.com/feed/",
 }
 
 # Minimum card name length to avoid false positives like "Go" or "Ow"
 MIN_CARD_NAME_LENGTH = 4
+
+# HTTP client timeout
+REQUEST_TIMEOUT = 30.0
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=300, name="collect_news")
@@ -121,11 +134,34 @@ async def _fetch_source(
 
     logger.info("Fetching RSS feed", source=source_name, url=feed_url)
 
-    # Parse RSS feed
-    feed = feedparser.parse(feed_url)
+    # Fetch RSS feed with proper headers using httpx
+    try:
+        async with httpx.AsyncClient(
+            headers=REQUEST_HEADERS,
+            timeout=REQUEST_TIMEOUT,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(feed_url)
+            response.raise_for_status()
+            feed_content = response.text
+    except httpx.HTTPStatusError as e:
+        logger.error("HTTP error fetching feed", source=source_name, status=e.response.status_code)
+        return stats
+    except httpx.RequestError as e:
+        logger.error("Request error fetching feed", source=source_name, error=str(e))
+        return stats
+
+    # Parse the fetched content with feedparser
+    feed = feedparser.parse(feed_content)
 
     if feed.bozo:
         logger.warning("Feed parsing had issues", source=source_name, error=str(feed.bozo_exception))
+
+    if not feed.entries:
+        logger.warning("No entries found in feed", source=source_name)
+        return stats
+
+    logger.info("Found feed entries", source=source_name, count=len(feed.entries))
 
     for entry in feed.entries:
         try:
@@ -163,13 +199,17 @@ async def _process_entry(
             pass
 
     # Get categories/tags
-    categories = None
+    category = None
+    tags = None
     if entry.get("tags"):
-        categories = ",".join(t.get("term", "") for t in entry.tags if t.get("term"))
+        tag_list = [t.get("term", "") for t in entry.tags if t.get("term")]
+        if tag_list:
+            category = tag_list[0][:100] if tag_list else None
+            tags = ",".join(tag_list)
 
     # Check if article already exists
     existing = await db.scalar(
-        select(NewsArticle).where(NewsArticle.url == url)
+        select(NewsArticle).where(NewsArticle.external_url == url)
     )
 
     if existing:
@@ -178,13 +218,13 @@ async def _process_entry(
     # Create article
     article = NewsArticle(
         source=source,
-        url=url,
-        title=title,
-        summary=summary[:2000] if summary else None,  # Limit summary length
+        external_url=url,
+        title=title[:500] if title else "Untitled",
+        summary=summary[:2000] if summary else None,
         author=author[:100] if author else None,
         published_at=published_at,
-        fetched_at=datetime.now(timezone.utc),
-        categories=categories,
+        category=category,
+        tags=tags,
     )
     db.add(article)
     await db.flush()  # Get the article ID
@@ -238,7 +278,8 @@ async def _extract_card_mentions(
             mention = CardNewsMention(
                 article_id=article.id,
                 card_id=card_id,
-                mention_context=context[:500],
+                context=context[:500],
+                mention_count=1,
             )
             db.add(mention)
             mentioned_cards.add(card_id)

@@ -23,18 +23,24 @@ def upgrade() -> None:
     op.create_table(
         'news_articles',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('source', sa.String(50), nullable=False),
-        sa.Column('url', sa.String(500), nullable=False),
         sa.Column('title', sa.String(500), nullable=False),
         sa.Column('summary', sa.Text(), nullable=True),
+        sa.Column('content', sa.Text(), nullable=True),
+        sa.Column('source', sa.String(50), nullable=False),
         sa.Column('author', sa.String(100), nullable=True),
+        sa.Column('external_id', sa.String(255), nullable=True),
+        sa.Column('external_url', sa.String(500), nullable=False),
+        sa.Column('category', sa.String(100), nullable=True),
+        sa.Column('tags', sa.Text(), nullable=True),
         sa.Column('published_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('fetched_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column('categories', sa.Text(), nullable=True),
+        sa.Column('upvotes', sa.Integer(), nullable=True),
+        sa.Column('comments_count', sa.Integer(), nullable=True),
+        sa.Column('views', sa.Integer(), nullable=True),
+        sa.Column('raw_data', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('url')
+        sa.UniqueConstraint('external_url')
     )
     op.create_index('ix_news_articles_source', 'news_articles', ['source'])
     op.create_index('ix_news_articles_published_at', 'news_articles', ['published_at'])
@@ -44,9 +50,11 @@ def upgrade() -> None:
     op.create_table(
         'card_news_mentions',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('article_id', sa.Integer(), nullable=False),
         sa.Column('card_id', sa.Integer(), nullable=False),
-        sa.Column('mention_context', sa.String(500), nullable=True),
+        sa.Column('article_id', sa.Integer(), nullable=False),
+        sa.Column('mention_count', sa.Integer(), nullable=True),
+        sa.Column('context', sa.String(500), nullable=True),
+        sa.Column('sentiment', sa.String(20), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['article_id'], ['news_articles.id'], ondelete='CASCADE'),
