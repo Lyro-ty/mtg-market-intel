@@ -1,7 +1,16 @@
 """
 Pytest configuration and fixtures.
+
+Provides fixtures for:
+- Database sessions with automatic cleanup
+- HTTP client with mocked rate limiting
+- Test users with auth headers
+- Test cards and inventory items
+- Phase-specific fixtures (have list, want list, trades, etc.)
 """
 import asyncio
+from datetime import datetime, timezone
+from decimal import Decimal
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
@@ -81,4 +90,174 @@ async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
             yield ac
 
     app.dependency_overrides.clear()
+
+
+# Alias for db_session to match test expectations
+@pytest_asyncio.fixture
+async def db(db_session) -> AsyncSession:
+    """Alias for db_session."""
+    return db_session
+
+
+# -----------------------------------------------------------------------------
+# User Fixtures
+# -----------------------------------------------------------------------------
+
+@pytest_asyncio.fixture
+async def test_user(db_session) -> "User":
+    """Create a test user."""
+    from app.models import User
+    from app.services.auth import hash_password
+
+    user = User(
+        email="test@example.com",
+        username="testuser",
+        hashed_password=hash_password("password123"),
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture
+async def test_user_2(db_session) -> "User":
+    """Create a second test user for trading scenarios."""
+    from app.models import User
+    from app.services.auth import hash_password
+
+    user = User(
+        email="test2@example.com",
+        username="testuser2",
+        hashed_password=hash_password("password123"),
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture
+async def auth_headers(test_user) -> dict:
+    """Get auth headers for test user."""
+    from app.services.auth import create_access_token
+    token = create_access_token(test_user.id)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def auth_headers_2(test_user_2) -> dict:
+    """Get auth headers for second test user."""
+    from app.services.auth import create_access_token
+    token = create_access_token(test_user_2.id)
+    return {"Authorization": f"Bearer {token}"}
+
+
+# -----------------------------------------------------------------------------
+# Card Fixtures
+# -----------------------------------------------------------------------------
+
+@pytest_asyncio.fixture
+async def test_card(db_session) -> "Card":
+    """Create a test card."""
+    from app.models import Card
+
+    card = Card(
+        id=1,
+        name="Lightning Bolt",
+        set_code="LEA",
+        set_name="Limited Edition Alpha",
+        collector_number="161",
+        rarity="common",
+        mana_cost="{R}",
+        type_line="Instant",
+        oracle_text="Lightning Bolt deals 3 damage to any target.",
+        image_url="https://cards.scryfall.io/normal/front/example.jpg",
+    )
+    db_session.add(card)
+    await db_session.commit()
+    await db_session.refresh(card)
+    return card
+
+
+@pytest_asyncio.fixture
+async def test_card_2(db_session) -> "Card":
+    """Create a second test card."""
+    from app.models import Card
+
+    card = Card(
+        id=2,
+        name="Counterspell",
+        set_code="LEA",
+        set_name="Limited Edition Alpha",
+        collector_number="54",
+        rarity="uncommon",
+        mana_cost="{U}{U}",
+        type_line="Instant",
+        oracle_text="Counter target spell.",
+        image_url="https://cards.scryfall.io/normal/front/example2.jpg",
+    )
+    db_session.add(card)
+    await db_session.commit()
+    await db_session.refresh(card)
+    return card
+
+
+# -----------------------------------------------------------------------------
+# Inventory Fixtures
+# -----------------------------------------------------------------------------
+
+@pytest_asyncio.fixture
+async def test_inventory_item(db_session, test_user, test_card) -> dict:
+    """Create a test inventory item."""
+    from app.models import InventoryItem
+
+    item = InventoryItem(
+        user_id=test_user.id,
+        card_id=test_card.id,
+        quantity=4,
+        condition="NEAR_MINT",
+        is_foil=False,
+        acquisition_price=Decimal("5.00"),
+        acquisition_date=datetime.now(timezone.utc),
+    )
+    db_session.add(item)
+    await db_session.commit()
+    await db_session.refresh(item)
+    return {
+        "id": item.id,
+        "user_id": item.user_id,
+        "card_id": item.card_id,
+        "quantity": item.quantity,
+        "condition": item.condition,
+    }
+
+
+# -----------------------------------------------------------------------------
+# Want List Fixtures
+# -----------------------------------------------------------------------------
+
+@pytest_asyncio.fixture
+async def test_want_list_item(db_session, test_user, test_card_2) -> dict:
+    """Create a test want list item."""
+    from app.models import WantListItem
+
+    item = WantListItem(
+        user_id=test_user.id,
+        card_id=test_card_2.id,
+        target_price=Decimal("3.00"),
+        priority="high",
+        alert_enabled=True,
+        is_active=True,
+    )
+    db_session.add(item)
+    await db_session.commit()
+    await db_session.refresh(item)
+    return {
+        "id": item.id,
+        "user_id": item.user_id,
+        "card_id": item.card_id,
+    }
 
