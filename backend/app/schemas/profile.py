@@ -40,6 +40,8 @@ class PublicProfileResponse(BaseModel):
     location: Optional[str] = None
     avatar_url: Optional[str] = None
     created_at: datetime
+    hashid: Optional[str] = None
+    cards_for_trade: int = 0
 
     class Config:
         from_attributes = True
