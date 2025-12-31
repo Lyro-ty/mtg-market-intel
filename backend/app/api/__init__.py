@@ -26,6 +26,7 @@ from app.api.routes import (
     portfolio,
     saved_searches,
     profiles,
+    news,
 )
 
 api_router = APIRouter()
@@ -53,6 +54,7 @@ api_router.include_router(want_list.router, prefix="/want-list", tags=["Want Lis
 api_router.include_router(imports.router, tags=["Imports"])
 api_router.include_router(portfolio.router, tags=["Portfolio"])
 api_router.include_router(saved_searches.router, tags=["Saved Searches"])
+api_router.include_router(news.router, prefix="/news", tags=["News"])
 
 # WebSocket route (no prefix - connects at /api/ws)
 api_router.include_router(websocket.router, tags=["WebSocket"])

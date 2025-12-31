@@ -12,6 +12,7 @@ import {
   Sparkles,
   DollarSign,
   Target,
+  Newspaper,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -24,7 +25,8 @@ import {
 } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ornate/page-header';
 import { WelcomeModal } from '@/components/onboarding/WelcomeModal';
-import { getInventoryAnalytics, getInventoryTopMovers, getRecommendations } from '@/lib/api';
+import { NewsArticleCard } from '@/components/news';
+import { getInventoryAnalytics, getInventoryTopMovers, getRecommendations, getNews } from '@/lib/api';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 
 // StatCard helper component
@@ -233,6 +235,13 @@ function DashboardPageContent() {
     queryKey: ['recommendations', { page: 1, pageSize: 5 }],
     queryFn: () => getRecommendations({ page: 1, pageSize: 5 }),
     refetchInterval: 15 * 60 * 1000,
+  });
+
+  // Fetch recent news
+  const { data: newsData, isLoading: newsLoading } = useQuery({
+    queryKey: ['dashboard-news'],
+    queryFn: () => getNews({ limit: 4 }),
+    refetchInterval: 10 * 60 * 1000, // 10 minutes
   });
 
   const isLoading = analyticsLoading && !analytics;
@@ -464,6 +473,52 @@ function DashboardPageContent() {
                 <Target className="w-10 h-10 mx-auto mb-2 opacity-50" />
                 <p>No recommendations yet</p>
                 <p className="text-xs">Recommendations are generated periodically based on market data</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Latest News */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Newspaper className="w-5 h-5 text-[rgb(var(--accent))]" />
+              Latest MTG News
+            </CardTitle>
+            <Link
+              href="/news"
+              className="text-sm text-[rgb(var(--accent))] hover:underline flex items-center gap-1"
+            >
+              View all
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {newsLoading && !newsData ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="p-3 rounded-lg bg-[rgb(var(--secondary))]/50">
+                  <Skeleton className="h-4 w-24 mb-2" />
+                  <Skeleton className="h-5 w-full mb-1" />
+                  <Skeleton className="h-5 w-3/4" />
+                </div>
+              ))}
+            </div>
+          ) : newsData && newsData.items.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {newsData.items.map((article) => (
+                <NewsArticleCard key={article.id} article={article} compact />
+              ))}
+            </div>
+          ) : (
+            <div className="h-32 flex items-center justify-center text-[rgb(var(--muted-foreground))]">
+              <div className="text-center">
+                <Newspaper className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                <p>No news articles yet</p>
+                <p className="text-xs">Check back later for the latest MTG news</p>
               </div>
             </div>
           )}

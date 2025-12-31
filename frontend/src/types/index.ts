@@ -131,6 +131,56 @@ export interface WantListCheckPricesResponse {
 export type SimilarCard = components['schemas']['SearchResult'];
 export type SimilarCardsResponse = components['schemas']['SimilarCardsResponse'];
 
+// News types (frontend definitions until API types are regenerated)
+export interface NewsArticle {
+  id: number;
+  title: string;
+  source: string;
+  source_display: string;
+  published_at: string | null;
+  external_url: string;
+  summary: string | null;
+  card_mention_count: number;
+}
+
+export interface NewsArticleDetail extends NewsArticle {
+  author: string | null;
+  category: string | null;
+  card_mentions: CardMention[];
+}
+
+export interface CardMention {
+  card_id: number;
+  card_name: string;
+  context: string | null;
+}
+
+export interface NewsListResponse {
+  items: NewsArticle[];
+  total: number;
+  has_more: boolean;
+}
+
+export interface NewsSource {
+  source: string;
+  display: string;
+  count: number;
+}
+
+export interface CardNewsItem {
+  id: number;
+  title: string;
+  source_display: string;
+  published_at: string | null;
+  external_url: string;
+  context: string | null;
+}
+
+export interface CardNewsResponse {
+  items: CardNewsItem[];
+  total: number;
+}
+
 // Search types
 export type AutocompleteSuggestion = components['schemas']['AutocompleteSuggestion'];
 export type AutocompleteResponse = components['schemas']['AutocompleteResponse'];

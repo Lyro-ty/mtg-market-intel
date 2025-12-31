@@ -151,6 +151,14 @@ export {
   deleteSavedSearch,
 } from './saved-searches';
 
+// News
+export {
+  getNews,
+  getNewsArticle,
+  getNewsSources,
+  getCardNews,
+} from './news';
+
 // Types re-exports for backwards compatibility
 export type {
   ImportJob,

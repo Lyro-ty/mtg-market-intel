@@ -1,0 +1,1 @@
+export { NewsArticleCard } from './NewsArticleCard';

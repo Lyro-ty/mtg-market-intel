@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation
+from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation, CardNewsMention, NewsArticle
 from app.core.hashids import encode_card_id, decode_card_id
 from app.schemas.card import (
     CardResponse,
@@ -31,6 +31,7 @@ from app.schemas.card import (
     CardPublicPriceResponse,
 )
 from app.schemas.signal import SignalResponse, SignalListResponse
+from app.schemas.news import CardNewsResponse, CardNewsItem
 from app.tasks.analytics import compute_card_metrics
 from app.tasks.recommendations import generate_card_recommendations
 from app.services.ingestion import ScryfallAdapter
@@ -1568,7 +1569,7 @@ async def _get_or_create_scryfall_marketplace(db: AsyncSession) -> Marketplace:
     query = select(Marketplace).where(Marketplace.slug == "scryfall")
     result = await db.execute(query)
     marketplace = result.scalar_one_or_none()
-    
+
     if not marketplace:
         marketplace = Marketplace(
             name="Scryfall (TCGPlayer)",
@@ -1580,6 +1581,58 @@ async def _get_or_create_scryfall_marketplace(db: AsyncSession) -> Marketplace:
         )
         db.add(marketplace)
         await db.flush()
-    
+
     return marketplace
+
+
+def _get_source_display(source: str) -> str:
+    """Extract human-friendly source name from source field."""
+    if source.startswith("newsapi:"):
+        return source[8:]
+    return source.replace("_", " ").title()
+
+
+@router.get("/{card_id}/news", response_model=CardNewsResponse)
+async def get_card_news(
+    card_id: int,
+    limit: int = Query(5, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get news articles that mention a specific card.
+    """
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Get total count
+    count_query = select(func.count(CardNewsMention.id)).where(
+        CardNewsMention.card_id == card_id
+    )
+    total = await db.scalar(count_query) or 0
+
+    # Get mentions with articles
+    query = (
+        select(CardNewsMention, NewsArticle)
+        .join(NewsArticle, CardNewsMention.article_id == NewsArticle.id)
+        .where(CardNewsMention.card_id == card_id)
+        .order_by(desc(NewsArticle.published_at))
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    items = [
+        CardNewsItem(
+            id=article.id,
+            title=article.title,
+            source_display=_get_source_display(article.source),
+            published_at=article.published_at,
+            external_url=article.external_url,
+            context=mention.context,
+        )
+        for mention, article in rows
+    ]
+
+    return CardNewsResponse(items=items, total=total)
 

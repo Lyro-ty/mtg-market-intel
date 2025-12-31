@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, Package, Plus, X, Heart, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Package, Plus, X, Heart, ExternalLink, Newspaper } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge, ActionBadge } from '@/components/ui/badge';
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingPage } from '@/components/ui/Loading';
 import { PriceChart } from '@/components/charts/PriceChart';
 import { SpreadChart } from '@/components/charts/SpreadChart';
-import { getCard, getCardHistory, refreshCard, createInventoryItem, getSimilarCards, addToWantList } from '@/lib/api';
+import { getCard, getCardHistory, refreshCard, createInventoryItem, getSimilarCards, addToWantList, getCardNews } from '@/lib/api';
 import { formatCurrency, formatPercent, getRarityColor, getTcgPlayerUrl } from '@/lib/utils';
 import type { InventoryCondition, WantListPriority } from '@/types';
 
@@ -113,6 +113,14 @@ export default function CardDetailPage() {
     queryFn: () => getSimilarCards(cardId, 8),
     enabled: !!cardId,
     staleTime: 5 * 60 * 1000,  // Cache for 5 minutes - similar cards don't change often
+  });
+
+  // Fetch news mentioning this card
+  const { data: cardNewsData, isLoading: loadingNews } = useQuery({
+    queryKey: ['card', cardId, 'news'],
+    queryFn: () => getCardNews(cardId, 5),
+    enabled: !!cardId,
+    staleTime: 5 * 60 * 1000,
   });
 
   if (isLoading) return <LoadingPage />;
@@ -690,6 +698,76 @@ export default function CardDetailPage() {
           <p className="text-[rgb(var(--muted-foreground))] text-center py-8">
             No similar cards found
           </p>
+        )}
+      </section>
+
+      {/* Related News Section */}
+      <section className="mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-[rgb(var(--foreground))] flex items-center gap-2">
+            <Newspaper className="w-5 h-5 text-[rgb(var(--accent))]" />
+            Related News
+          </h2>
+          <Link
+            href="/news"
+            className="text-sm text-[rgb(var(--accent))] hover:underline"
+          >
+            View all news
+          </Link>
+        </div>
+        {loadingNews ? (
+          <div className="space-y-3">
+            {[...Array(3)].map((_, idx) => (
+              <div key={idx} className="p-4 rounded-lg bg-[rgb(var(--secondary))] animate-pulse">
+                <div className="h-4 w-24 rounded bg-[rgb(var(--muted))]" />
+                <div className="h-5 w-3/4 rounded bg-[rgb(var(--muted))] mt-2" />
+                <div className="h-3 w-1/2 rounded bg-[rgb(var(--muted))] mt-2" />
+              </div>
+            ))}
+          </div>
+        ) : cardNewsData && cardNewsData.items.length > 0 ? (
+          <div className="space-y-3">
+            {cardNewsData.items.map((newsItem) => (
+              <a
+                key={newsItem.id}
+                href={newsItem.external_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block p-4 rounded-lg bg-[rgb(var(--secondary))] hover:bg-[rgb(var(--secondary))]/80 transition-colors group"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <Badge variant="secondary" className="mb-2">
+                      {newsItem.source_display}
+                    </Badge>
+                    <h3 className="font-medium text-[rgb(var(--foreground))] group-hover:text-[rgb(var(--accent))] transition-colors line-clamp-2">
+                      {newsItem.title}
+                    </h3>
+                    {newsItem.context && (
+                      <p className="text-sm text-[rgb(var(--muted-foreground))] mt-1 line-clamp-2">
+                        &ldquo;...{newsItem.context}...&rdquo;
+                      </p>
+                    )}
+                    <p className="text-xs text-[rgb(var(--muted-foreground))] mt-2">
+                      {newsItem.published_at
+                        ? new Date(newsItem.published_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })
+                        : 'Unknown date'}
+                    </p>
+                  </div>
+                  <ExternalLink className="w-4 h-4 flex-shrink-0 text-[rgb(var(--muted-foreground))] group-hover:text-[rgb(var(--accent))] transition-colors" />
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 rounded-lg bg-[rgb(var(--secondary))]">
+            <Newspaper className="w-10 h-10 mx-auto text-[rgb(var(--muted-foreground))] opacity-50 mb-2" />
+            <p className="text-[rgb(var(--muted-foreground))]">No news articles mention this card</p>
+          </div>
         )}
       </section>
     </div>
