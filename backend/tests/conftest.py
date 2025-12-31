@@ -107,12 +107,12 @@ async def db(db_session) -> AsyncSession:
 async def test_user(db_session) -> "User":
     """Create a test user."""
     from app.models import User
-    from app.services.auth import hash_password
+    from app.services.auth import get_password_hash
 
     user = User(
         email="test@example.com",
         username="testuser",
-        hashed_password=hash_password("password123"),
+        hashed_password=get_password_hash("password123"),
         is_active=True,
     )
     db_session.add(user)
@@ -125,12 +125,12 @@ async def test_user(db_session) -> "User":
 async def test_user_2(db_session) -> "User":
     """Create a second test user for trading scenarios."""
     from app.models import User
-    from app.services.auth import hash_password
+    from app.services.auth import get_password_hash
 
     user = User(
         email="test2@example.com",
         username="testuser2",
-        hashed_password=hash_password("password123"),
+        hashed_password=get_password_hash("password123"),
         is_active=True,
     )
     db_session.add(user)

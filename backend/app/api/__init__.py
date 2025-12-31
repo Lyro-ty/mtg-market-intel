@@ -25,6 +25,7 @@ from app.api.routes import (
     imports,
     portfolio,
     saved_searches,
+    profiles,
 )
 
 api_router = APIRouter()
@@ -58,4 +59,7 @@ api_router.include_router(websocket.router, tags=["WebSocket"])
 
 # Session management
 api_router.include_router(sessions.router)
+
+# User profiles
+api_router.include_router(profiles.router)
 
