@@ -78,6 +78,12 @@ class Card(Base):
         server_default=func.now(),
         nullable=True
     )
+
+    # Reprint tracking
+    first_printed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reprint_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    last_reprinted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reprint_risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
     # Relationships
     price_snapshots: Mapped[list["PriceSnapshot"]] = relationship(
