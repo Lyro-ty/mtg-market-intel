@@ -29,6 +29,8 @@ celery_app = Celery(
         "app.tasks.sets_sync",
         "app.tasks.ban_detection",
         "app.tasks.meta_signals",
+        "app.tasks.supply_signals",
+        "app.tasks.arbitrage_signals",
     ],
 )
 
@@ -123,6 +125,20 @@ celery_app.conf.update(
             "task": "generate_meta_signals",
             "schedule": crontab(hour="*/6", minute=15),  # Every 6 hours at :15
         },
+
+        # Supply signals generation: Every 6 hours
+        # Generates SUPPLY_LOW and SUPPLY_VELOCITY signals from marketplace data
+        "supply-signals-generation": {
+            "task": "generate_supply_signals",
+            "schedule": crontab(hour="*/6", minute=20),  # Every 6 hours at :20
+        },
+
+        # Arbitrage signals generation: Every 4 hours
+        # Compares prices across marketplaces to find arbitrage opportunities
+        "arbitrage-signals-generation": {
+            "task": "generate_arbitrage_signals",
+            "schedule": crontab(hour="*/4", minute=25),  # Every 4 hours at :25
+        },
     },
 
     # Task routing
@@ -140,6 +156,8 @@ celery_app.conf.update(
         "sync_mtg_sets": {"queue": "ingestion"},
         "detect_ban_changes": {"queue": "analytics"},
         "generate_meta_signals": {"queue": "analytics"},
+        "generate_supply_signals": {"queue": "analytics"},
+        "generate_arbitrage_signals": {"queue": "analytics"},
     },
 
     # Default queue
