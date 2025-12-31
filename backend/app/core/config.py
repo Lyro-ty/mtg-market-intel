@@ -82,6 +82,9 @@ class Settings(BaseSettings):
 
     # Tournament Data API Keys
     topdeck_api_key: str = ""  # TopDeck.gg API key - set via TOPDECK_API_KEY env var
+
+    # News API Keys
+    newsapi_ai_key: str = ""  # NewsAPI.ai (Event Registry) API key - set via NEWSAPI_AI_KEY env var
     
     # Scraping Configuration
     scraper_user_agent: str = "MTGMarketIntel/1.0"

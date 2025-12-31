@@ -103,6 +103,7 @@ services:
       - TCGPLAYER_API_SECRET=${TCGPLAYER_API_SECRET:-}
       - MANAPOOL_API_TOKEN=${MANAPOOL_API_TOKEN:-}
       - TOPDECK_API_KEY=${TOPDECK_API_KEY:-}
+      - NEWSAPI_AI_KEY=${NEWSAPI_AI_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -153,6 +154,7 @@ services:
       - TCGPLAYER_API_SECRET=${TCGPLAYER_API_SECRET:-}
       - MANAPOOL_API_TOKEN=${MANAPOOL_API_TOKEN:-}
       - TOPDECK_API_KEY=${TOPDECK_API_KEY:-}
+      - NEWSAPI_AI_KEY=${NEWSAPI_AI_KEY:-}
     depends_on:
       db:
         condition: service_healthy
