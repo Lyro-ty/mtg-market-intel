@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.models.recommendation import Recommendation
     from app.models.inventory import InventoryItem
     from app.models.feature_vector import CardFeatureVector
+    from app.models.news import CardNewsMention
 
 
 class Card(Base):
@@ -107,7 +108,10 @@ class Card(Base):
     feature_vector: Mapped["CardFeatureVector | None"] = relationship(
         "CardFeatureVector", uselist=False, cascade="all, delete-orphan"
     )
-    
+    news_mentions: Mapped[list["CardNewsMention"]] = relationship(
+        "CardNewsMention", back_populates="card", cascade="all, delete-orphan"
+    )
+
     # Indexes for common queries
     __table_args__ = (
         Index("ix_cards_name_set", "name", "set_code"),

@@ -28,7 +28,7 @@ from app.models.tournament import (
     DecklistCard,
     CardMetaStats,
 )
-# News models removed - never implemented, no user request
+from app.models.news import NewsArticle, CardNewsMention
 from app.models.session import UserSession
 from app.models.want_list import WantListItem
 from app.models.notification import Notification, NotificationType, NotificationPriority
@@ -112,6 +112,8 @@ __all__ = [
     "PortfolioSnapshot",
     "SavedSearch",
     "SearchAlertFrequency",
+    "NewsArticle",
+    "CardNewsMention",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
 ]

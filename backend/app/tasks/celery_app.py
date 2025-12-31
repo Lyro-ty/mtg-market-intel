@@ -31,6 +31,7 @@ celery_app = Celery(
         "app.tasks.meta_signals",
         "app.tasks.supply_signals",
         "app.tasks.arbitrage_signals",
+        "app.tasks.news_collection",
     ],
 )
 
@@ -139,6 +140,13 @@ celery_app.conf.update(
             "task": "generate_arbitrage_signals",
             "schedule": crontab(hour="*/4", minute=25),  # Every 4 hours at :25
         },
+
+        # News collection: Every 6 hours
+        # Fetches MTG news from RSS feeds and extracts card mentions
+        "news-collection": {
+            "task": "collect_news",
+            "schedule": crontab(hour="*/6", minute=45),  # Every 6 hours at :45
+        },
     },
 
     # Task routing
@@ -158,6 +166,7 @@ celery_app.conf.update(
         "generate_meta_signals": {"queue": "analytics"},
         "generate_supply_signals": {"queue": "analytics"},
         "generate_arbitrage_signals": {"queue": "analytics"},
+        "collect_news": {"queue": "ingestion"},
     },
 
     # Default queue
