@@ -22,7 +22,7 @@ class DualcasterBot(commands.Bot):
 
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True  # For prefix commands if needed
+        # Note: message_content intent not needed for slash commands only
 
         super().__init__(
             command_prefix="!",
@@ -151,9 +151,13 @@ class DualcasterBot(commands.Bot):
 
 def main():
     """Run the bot."""
-    if not config:
-        logger.error("Bot configuration not loaded - check environment variables")
-        sys.exit(1)
+    import logging
+
+    # Configure standard logging
+    logging.basicConfig(
+        format="%(message)s",
+        level=logging.INFO,
+    )
 
     # Configure structlog
     structlog.configure(
@@ -165,7 +169,17 @@ def main():
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
     )
+
+    log = structlog.get_logger("main")
+    log.info("Starting Dualcaster Deals Discord Bot")
+
+    if not config:
+        log.error("Bot configuration not loaded - check environment variables")
+        sys.exit(1)
+
+    log.info("Bot configured", guild_id=config.discord_guild_id, alerts_enabled=config.enable_alerts)
 
     bot = DualcasterBot()
 

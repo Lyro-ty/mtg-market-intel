@@ -104,6 +104,10 @@ services:
       - MANAPOOL_API_TOKEN=${MANAPOOL_API_TOKEN:-}
       - TOPDECK_API_KEY=${TOPDECK_API_KEY:-}
       - NEWSAPI_AI_KEY=${NEWSAPI_AI_KEY:-}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:-}
+      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI:-}
+      - DISCORD_BOT_API_KEY=${DISCORD_BOT_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -232,6 +236,7 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-dualcaster}-discord-bot
     restart: ${RESTART_POLICY:-always}
     environment:
+      - PYTHONUNBUFFERED=1
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
       - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
       - API_BASE_URL=http://backend:8000
