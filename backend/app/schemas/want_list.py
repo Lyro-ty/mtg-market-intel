@@ -126,3 +126,33 @@ class WantListListResponse(BaseModel):
     page: int = 1
     page_size: int = 20
     has_more: bool = False
+
+
+class WantListIntelligence(BaseModel):
+    """Market intelligence data for a want list item."""
+    current_price: Optional[Decimal] = None
+    price_vs_target: Optional[Decimal] = None  # % above/below target
+    price_trend_7d: Optional[Decimal] = None   # % change over 7 days
+    meta_share: Optional[float] = None         # % of decks in format
+    reprint_risk: Optional[int] = None         # 0-100 risk score
+    supply_status: str = "unknown"             # 'normal', 'low', 'very_low', 'unknown'
+    recommendation: str = "hold"               # 'buy_now', 'wait', 'buy_before_spike', 'wait_reprint_likely', 'hold'
+
+
+class WantListItemWithIntelligence(WantListItemResponse):
+    """Want list item with market intelligence data."""
+    intelligence: WantListIntelligence
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WantListIntelligenceResponse(BaseModel):
+    """Paginated want list response with intelligence."""
+    items: list[WantListItemWithIntelligence]
+    total: int
+    page: int = 1
+    page_size: int = 20
+    has_more: bool = False
+    # Summary stats
+    buy_now_count: int = 0
+    price_alerts_count: int = 0
