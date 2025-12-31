@@ -28,6 +28,7 @@ celery_app = Celery(
         "app.tasks.collection_stats",
         "app.tasks.sets_sync",
         "app.tasks.ban_detection",
+        "app.tasks.meta_signals",
     ],
 )
 
@@ -115,6 +116,13 @@ celery_app.conf.update(
             "task": "app.tasks.recommendations.evaluate_outcomes",
             "schedule": crontab(minute=30),  # Every hour at :30
         },
+
+        # Meta signals generation: Every 6 hours
+        # Generates META_SPIKE and META_DROP signals from tournament data
+        "meta-signals-generation": {
+            "task": "generate_meta_signals",
+            "schedule": crontab(hour="*/6", minute=15),  # Every 6 hours at :15
+        },
     },
 
     # Task routing
@@ -131,6 +139,7 @@ celery_app.conf.update(
         "update_user_collection_stats": {"queue": "analytics"},
         "sync_mtg_sets": {"queue": "ingestion"},
         "detect_ban_changes": {"queue": "analytics"},
+        "generate_meta_signals": {"queue": "analytics"},
     },
 
     # Default queue
