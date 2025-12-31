@@ -167,6 +167,42 @@ export {
   getSpreadMarketSummary,
 } from './spreads';
 
+// Connections
+export {
+  sendConnectionRequest,
+  getPendingRequests,
+  acceptConnectionRequest,
+  declineConnectionRequest,
+  cancelConnectionRequest,
+  getConnections,
+  removeConnection,
+  checkConnectionStatus,
+} from './connections';
+
+export type {
+  ConnectionRequest,
+  ConnectionRequestorInfo,
+  ConnectionRequestListResponse,
+  SendConnectionRequestData,
+} from './connections';
+
+// Messages
+export {
+  sendMessage,
+  getConversations,
+  getConversation,
+  getUnreadCount as getMessageUnreadCount,
+  markMessageRead,
+} from './messages';
+
+export type {
+  Message,
+  ConversationSummary,
+  ConversationListResponse,
+  MessageListResponse,
+  SendMessageData,
+} from './messages';
+
 // Types re-exports for backwards compatibility
 export type {
   ImportJob,
