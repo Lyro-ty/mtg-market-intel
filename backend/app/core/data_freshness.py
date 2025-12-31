@@ -275,7 +275,7 @@ async def get_sets_count(db: AsyncSession) -> int:
 
 async def get_embeddings_count(db: AsyncSession) -> int:
     """Get total count of card embeddings."""
-    result = await db.scalar(select(func.count(CardFeatureVector.id)))
+    result = await db.scalar(select(func.count(CardFeatureVector.card_id)))
     return result or 0
 
 

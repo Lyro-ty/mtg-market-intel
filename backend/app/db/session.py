@@ -40,6 +40,7 @@ engine = create_async_engine(
     connect_args={
         "server_settings": {
             "statement_timeout": "25000",  # 25 second query timeout (in milliseconds)
+            "idle_in_transaction_session_timeout": "300000",  # 5 min - auto-terminate idle transactions
             "application_name": "mtg_market_intel_api",
         },
         "command_timeout": 25,  # asyncpg command timeout (in seconds)

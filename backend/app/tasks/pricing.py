@@ -324,13 +324,15 @@ async def _inventory_refresh_async() -> dict[str, Any]:
                         # Respect rate limit
                         await asyncio.sleep(SCRYFALL_RATE_LIMIT_SECONDS)
 
-                        # Flush periodically
+                        # Commit every 50 cards to release transaction during rate limiting
+                        # This prevents "idle in transaction" while waiting for API rate limits
                         if results["cards_refreshed"] % 50 == 0:
-                            await db.flush()
+                            await db.commit()
                             logger.debug(
-                                "Inventory refresh progress",
+                                "Inventory refresh progress - committed batch",
                                 cards_refreshed=results["cards_refreshed"],
                                 total=len(cards),
+                                snapshots=results["snapshots_created"],
                             )
 
                     except Exception as e:
@@ -485,13 +487,15 @@ async def _condition_refresh_async() -> dict[str, Any]:
 
                     results["cards_processed"] += 1
 
-                    # Flush periodically
+                    # Commit every 25 cards to release transaction during API calls
+                    # This prevents "idle in transaction" while waiting for external APIs
                     if results["cards_processed"] % 25 == 0:
-                        await db.flush()
+                        await db.commit()
                         logger.debug(
-                            "Condition refresh progress",
+                            "Condition refresh progress - committed batch",
                             cards_processed=results["cards_processed"],
                             total=len(high_value_cards),
+                            snapshots=results["snapshots_created"],
                         )
 
                 except Exception as e:
@@ -499,7 +503,7 @@ async def _condition_refresh_async() -> dict[str, Any]:
                     results["errors"].append(error_msg)
                     logger.warning("Failed to get condition prices", card_id=card.id, error=str(e))
 
-            await db.commit()
+            await db.commit()  # Final commit for remaining items
 
             results["completed_at"] = datetime.now(timezone.utc).isoformat()
             logger.info(

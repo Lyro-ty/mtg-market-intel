@@ -523,7 +523,7 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                                         results["total_snapshots"] += 1
                         
                         results["cards_processed"] += 1
-                        
+
                         # Flush periodically to avoid memory issues
                         if results["cards_processed"] % 100 == 0:
                             await db.flush()
@@ -532,13 +532,18 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                                 processed=results["cards_processed"],
                                 snapshots=results["total_snapshots"],
                             )
-                    
+
                     except Exception as e:
                         error_msg = f"Card {card.id} ({card.name}): {str(e)}"
                         results["errors"].append(error_msg)
                         logger.warning("Failed to collect price for card", card_id=card.id, card_name=card.name, error=str(e))
                         continue
-                
+
+                # Commit after Scryfall phase to release transaction
+                # This prevents holding the connection during subsequent API calls
+                await db.commit()
+                logger.info("Scryfall phase committed", snapshots=results["scryfall_snapshots"])
+
                 # Collect prices from CardTrader (European market data)
                 if settings.cardtrader_api_token:
                     logger.info("Collecting CardTrader price data", card_count=len(cards))
@@ -630,6 +635,10 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                             else:
                                 logger.debug("CardTrader price fetch failed", card_id=card.id, error=str(e))
                             continue
+
+                    # Commit after CardTrader phase to release transaction
+                    await db.commit()
+                    logger.info("CardTrader phase committed", snapshots=results.get("cardtrader_snapshots", 0))
                 else:
                     logger.info("CardTrader API token not configured - skipping CardTrader collection")
 
@@ -719,6 +728,10 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                             continue
                     
                     await tcgplayer.close()
+
+                    # Commit after TCGPlayer phase to release transaction
+                    await db.commit()
+                    logger.info("TCGPlayer phase committed", snapshots=results.get("tcgplayer_snapshots", 0))
                 else:
                     logger.info("TCGPlayer API credentials not configured - skipping TCGPlayer collection")
 

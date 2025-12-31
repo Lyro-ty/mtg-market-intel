@@ -101,6 +101,9 @@ async def _collect_buylist_prices_async(batch_size: int = 200) -> dict[str, Any]
                 high_value=len(high_value_cards),
             )
 
+            # Commit after query phase to release transaction before API calls
+            await db.commit()
+
             # Collect buylist prices
             now = datetime.now(timezone.utc)
 
