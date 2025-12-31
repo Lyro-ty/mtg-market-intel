@@ -252,10 +252,10 @@ class APIClient:
         """Search for cards by name."""
         data = await self._request(
             "GET",
-            "/search/cards",
+            "/cards/search",
             params={"q": query, "limit": limit},
         )
-        if not data or "results" not in data:
+        if not data or "cards" not in data:
             return []
 
         return [
@@ -268,9 +268,9 @@ class APIClient:
                 price_usd_foil=Decimal(str(c["price_usd_foil"])) if c.get("price_usd_foil") else None,
                 change_24h_pct=c.get("change_24h_pct"),
                 scryfall_uri=c.get("scryfall_uri"),
-                image_uri=c.get("image_uris", {}).get("normal") if c.get("image_uris") else None,
+                image_uri=c.get("image_url") or c.get("image_url_small"),
             )
-            for c in data["results"]
+            for c in data["cards"]
         ]
 
     async def get_card_price(self, card_id: int) -> Optional[CardPrice]:
