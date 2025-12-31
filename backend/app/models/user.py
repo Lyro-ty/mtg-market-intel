@@ -51,6 +51,11 @@ class User(Base):
     
     # Profile fields
     display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    discord_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, unique=True, index=True)
+    last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
     # Account status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
