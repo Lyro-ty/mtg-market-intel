@@ -29,6 +29,7 @@ from app.api.routes import (
     news,
     spreads,
     discovery,
+    edhrec,
 )
 
 api_router = APIRouter()
@@ -59,6 +60,7 @@ api_router.include_router(saved_searches.router, tags=["Saved Searches"])
 api_router.include_router(news.router, prefix="/news", tags=["News"])
 api_router.include_router(spreads.router, tags=["Spreads"])
 api_router.include_router(discovery.router, tags=["Discovery"])
+api_router.include_router(edhrec.router, tags=["EDHREC"])
 
 # WebSocket route (no prefix - connects at /api/ws)
 api_router.include_router(websocket.router, tags=["WebSocket"])
