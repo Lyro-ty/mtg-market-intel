@@ -13,6 +13,7 @@ import {
   FileText,
   Store,
   Calendar,
+  Newspaper,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -48,6 +49,7 @@ export const collectionNavItems: NavItem[] = [
 export const insightsNavItems: NavItem[] = [
   { title: 'Recommendations', href: '/recommendations', icon: TrendingUp, requiresAuth: true },
   { title: 'Insights', href: '/insights', icon: Lightbulb, requiresAuth: true },
+  { title: 'News', href: '/news', icon: Newspaper },
 ];
 
 export const storeNavItems: NavItem[] = [
