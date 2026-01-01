@@ -36,6 +36,7 @@ from app.api.routes import (
     moderation,
     bot,
     trading_posts,
+    quotes,
 )
 
 api_router = APIRouter()
@@ -89,4 +90,7 @@ api_router.include_router(bot.router)
 # Trading Posts (LGS)
 api_router.include_router(trading_posts.router)
 api_router.include_router(trading_posts.events_router)
+
+# Trade Quotes
+api_router.include_router(quotes.router)
 

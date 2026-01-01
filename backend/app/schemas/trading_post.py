@@ -214,3 +214,133 @@ class QuoteOffersPreview(BaseModel):
     quote_id: int
     total_market_value: Decimal
     offers: list[StoreOffer]
+
+
+# ============ Trade Quote Schemas ============
+
+class QuoteItemCreate(BaseModel):
+    """Schema for adding a card to a quote."""
+    card_id: int
+    quantity: int = Field(1, ge=1, le=100)
+    condition: str = Field("NM", max_length=20)  # NM, LP, MP, HP, DMG
+
+
+class QuoteItemUpdate(BaseModel):
+    """Schema for updating a quote item."""
+    quantity: Optional[int] = Field(None, ge=1, le=100)
+    condition: Optional[str] = Field(None, max_length=20)
+
+
+class QuoteItemResponse(BaseModel):
+    """Schema for quote item response."""
+    id: int
+    card_id: int
+    card_name: str
+    set_code: Optional[str] = None
+    quantity: int
+    condition: str
+    market_price: Optional[Decimal] = None
+    line_total: Optional[Decimal] = None  # market_price * quantity
+
+    class Config:
+        from_attributes = True
+
+
+class QuoteCreate(BaseModel):
+    """Schema for creating a new trade quote."""
+    name: Optional[str] = Field(None, max_length=100, description="Optional name for the quote")
+
+
+class QuoteUpdate(BaseModel):
+    """Schema for updating a quote."""
+    name: Optional[str] = Field(None, max_length=100)
+    status: Optional[QuoteStatus] = None
+
+
+class QuoteResponse(BaseModel):
+    """Schema for quote response."""
+    id: int
+    user_id: int
+    name: Optional[str] = None
+    status: str
+    total_market_value: Optional[Decimal] = None
+    item_count: int = 0
+    items: list[QuoteItemResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class QuoteListResponse(BaseModel):
+    """Paginated list of quotes."""
+    items: list[QuoteResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class QuoteBulkImportItem(BaseModel):
+    """Single item in a bulk import."""
+    card_name: str
+    set_code: Optional[str] = None
+    quantity: int = Field(1, ge=1)
+    condition: str = Field("NM")
+
+
+class QuoteBulkImport(BaseModel):
+    """Schema for bulk importing cards to a quote."""
+    items: list[QuoteBulkImportItem]
+
+
+class QuoteBulkImportResult(BaseModel):
+    """Result of bulk import operation."""
+    imported: int
+    failed: int
+    errors: list[str] = []
+
+
+# ============ Quote Submission Schemas ============
+
+class QuoteSubmit(BaseModel):
+    """Schema for submitting a quote to stores."""
+    trading_post_ids: list[int] = Field(..., min_length=1, max_length=5)
+    message: Optional[str] = Field(None, max_length=500)
+
+
+class SubmissionCounter(BaseModel):
+    """Schema for store counter-offer."""
+    counter_amount: Decimal = Field(..., gt=0)
+    message: Optional[str] = Field(None, max_length=500)
+
+
+class SubmissionResponse(BaseModel):
+    """Schema for quote submission response."""
+    id: int
+    quote_id: int
+    trading_post_id: int
+    status: str
+    offer_amount: Decimal
+    counter_amount: Optional[Decimal] = None
+    store_message: Optional[str] = None
+    user_message: Optional[str] = None
+    submitted_at: datetime
+    responded_at: Optional[datetime] = None
+
+    # Include store info
+    trading_post: Optional[TradingPostPublic] = None
+
+    # Include quote summary (for store view)
+    quote_name: Optional[str] = None
+    quote_item_count: Optional[int] = None
+    quote_total_value: Optional[Decimal] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SubmissionListResponse(BaseModel):
+    """List of quote submissions."""
+    items: list[SubmissionResponse]
+    total: int

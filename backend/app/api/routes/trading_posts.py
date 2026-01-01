@@ -19,6 +19,8 @@ from app.db.session import get_db
 from app.models.trading_post import (
     TradingPost,
     TradingPostEvent,
+    TradeQuote,
+    TradeQuoteSubmission,
 )
 from app.models.user import User
 from app.schemas.trading_post import (
@@ -31,6 +33,9 @@ from app.schemas.trading_post import (
     EventUpdate,
     EventResponse,
     EventListResponse,
+    SubmissionResponse,
+    SubmissionListResponse,
+    SubmissionCounter,
 )
 
 router = APIRouter(prefix="/trading-posts", tags=["Trading Posts"])
@@ -360,6 +365,242 @@ async def delete_event(
 
     await db.delete(event)
     await db.commit()
+
+
+# ============ Store Submission Management ============
+
+@router.get("/me/submissions", response_model=SubmissionListResponse)
+async def get_store_submissions(
+    status: Optional[str] = Query(None, description="Filter by status"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get incoming quote submissions for your Trading Post.
+
+    Stores can view and respond to quotes from users.
+    """
+    # Get user's trading post
+    result = await db.execute(
+        select(TradingPost).where(TradingPost.user_id == current_user.id)
+    )
+    trading_post = result.scalar_one_or_none()
+
+    if not trading_post:
+        raise HTTPException(
+            status_code=403,
+            detail="You must register a Trading Post first"
+        )
+
+    query = (
+        select(TradeQuoteSubmission)
+        .where(TradeQuoteSubmission.trading_post_id == trading_post.id)
+        .options(
+            selectinload(TradeQuoteSubmission.quote).selectinload(TradeQuote.items),
+        )
+    )
+
+    if status:
+        query = query.where(TradeQuoteSubmission.status == status)
+
+    query = query.order_by(TradeQuoteSubmission.submitted_at.desc())
+
+    result = await db.execute(query)
+    submissions = result.scalars().all()
+
+    return SubmissionListResponse(
+        items=[
+            _submission_to_response(s, trading_post, s.quote)
+            for s in submissions
+        ],
+        total=len(submissions),
+    )
+
+
+@router.get("/me/submissions/{submission_id}", response_model=SubmissionResponse)
+async def get_store_submission_detail(
+    submission_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get details of a specific quote submission including card list."""
+    # Get user's trading post
+    result = await db.execute(
+        select(TradingPost).where(TradingPost.user_id == current_user.id)
+    )
+    trading_post = result.scalar_one_or_none()
+
+    if not trading_post:
+        raise HTTPException(status_code=403, detail="Trading Post required")
+
+    # Get submission
+    result = await db.execute(
+        select(TradeQuoteSubmission)
+        .where(
+            TradeQuoteSubmission.id == submission_id,
+            TradeQuoteSubmission.trading_post_id == trading_post.id,
+        )
+        .options(
+            selectinload(TradeQuoteSubmission.quote).selectinload(TradeQuote.items),
+        )
+    )
+    submission = result.scalar_one_or_none()
+
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    return _submission_to_response(submission, trading_post, submission.quote)
+
+
+@router.post("/me/submissions/{submission_id}/accept")
+async def accept_submission(
+    submission_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Accept a quote submission at the calculated offer amount."""
+    trading_post, submission = await _get_submission_for_store(
+        db, current_user, submission_id
+    )
+
+    if submission.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Can only accept pending submissions"
+        )
+
+    submission.status = "accepted"
+    submission.responded_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {"status": "accepted", "offer_amount": float(submission.offer_amount)}
+
+
+@router.post("/me/submissions/{submission_id}/counter")
+async def counter_submission(
+    submission_id: int,
+    data: SubmissionCounter,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Make a counter-offer on a quote submission."""
+    trading_post, submission = await _get_submission_for_store(
+        db, current_user, submission_id
+    )
+
+    if submission.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Can only counter pending submissions"
+        )
+
+    submission.status = "countered"
+    submission.counter_amount = data.counter_amount
+    submission.store_message = data.message
+    submission.responded_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {
+        "status": "countered",
+        "counter_amount": float(data.counter_amount),
+    }
+
+
+@router.post("/me/submissions/{submission_id}/decline")
+async def decline_submission(
+    submission_id: int,
+    message: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Decline a quote submission."""
+    trading_post, submission = await _get_submission_for_store(
+        db, current_user, submission_id
+    )
+
+    if submission.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Can only decline pending submissions"
+        )
+
+    submission.status = "declined"
+    submission.store_message = message
+    submission.responded_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {"status": "declined"}
+
+
+async def _get_submission_for_store(
+    db: AsyncSession,
+    current_user: User,
+    submission_id: int,
+) -> tuple[TradingPost, TradeQuoteSubmission]:
+    """Helper to get trading post and submission for store endpoints."""
+    # Get user's trading post
+    result = await db.execute(
+        select(TradingPost).where(TradingPost.user_id == current_user.id)
+    )
+    trading_post = result.scalar_one_or_none()
+
+    if not trading_post:
+        raise HTTPException(status_code=403, detail="Trading Post required")
+
+    # Get submission
+    result = await db.execute(
+        select(TradeQuoteSubmission).where(
+            TradeQuoteSubmission.id == submission_id,
+            TradeQuoteSubmission.trading_post_id == trading_post.id,
+        )
+    )
+    submission = result.scalar_one_or_none()
+
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    return trading_post, submission
+
+
+def _submission_to_response(
+    submission: TradeQuoteSubmission,
+    trading_post: TradingPost,
+    quote: Optional[TradeQuote],
+) -> SubmissionResponse:
+    """Convert TradeQuoteSubmission to response schema."""
+    tp_public = TradingPostPublic(
+        id=trading_post.id,
+        store_name=trading_post.store_name,
+        description=trading_post.description,
+        city=trading_post.city,
+        state=trading_post.state,
+        country=trading_post.country,
+        website=trading_post.website,
+        hours=trading_post.hours,
+        services=trading_post.services,
+        logo_url=trading_post.logo_url,
+        is_verified=trading_post.verified_at is not None,
+    )
+
+    return SubmissionResponse(
+        id=submission.id,
+        quote_id=submission.quote_id,
+        trading_post_id=submission.trading_post_id,
+        status=submission.status,
+        offer_amount=submission.offer_amount,
+        counter_amount=submission.counter_amount,
+        store_message=submission.store_message,
+        user_message=submission.user_message,
+        submitted_at=submission.submitted_at,
+        responded_at=submission.responded_at,
+        trading_post=tp_public,
+        quote_name=quote.name if quote else None,
+        quote_item_count=len(quote.items) if quote and quote.items else None,
+        quote_total_value=quote.total_market_value if quote else None,
+    )
 
 
 # ============ Public Event Discovery ============

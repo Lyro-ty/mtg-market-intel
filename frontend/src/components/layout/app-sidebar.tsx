@@ -16,6 +16,7 @@ import {
   mainNavItems,
   collectionNavItems,
   insightsNavItems,
+  storeNavItems,
   bottomNavItems,
 } from '@/config/navigation.config';
 import { useAuth } from '@/contexts/AuthContext';
@@ -49,6 +50,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <>
             <NavMain items={filterItems(collectionNavItems)} label="Collection" />
             <NavMain items={filterItems(insightsNavItems)} label="Insights" />
+            <NavMain items={filterItems(storeNavItems)} label="Store" />
           </>
         )}
         <NavMain items={filterItems(bottomNavItems)} label="Support" />

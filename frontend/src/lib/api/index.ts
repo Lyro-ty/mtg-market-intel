@@ -206,6 +206,69 @@ export type {
   SendMessageData,
 } from './messages';
 
+// Quotes
+export {
+  createQuote,
+  getQuotes,
+  getQuote,
+  updateQuote,
+  deleteQuote,
+  addQuoteItem,
+  updateQuoteItem,
+  deleteQuoteItem,
+  bulkImportCards,
+  getQuoteOffers,
+  submitQuote,
+  getMySubmissions,
+  acceptCounterOffer,
+  declineCounterOffer,
+} from './quotes';
+
+export type {
+  Quote,
+  QuoteItem,
+  QuoteListResponse,
+  StoreOffer,
+  QuoteOffersPreview,
+  QuoteSubmission,
+  SubmissionListResponse,
+  BulkImportResult,
+} from './quotes';
+
+// Trading Posts
+export {
+  registerTradingPost,
+  getMyTradingPost,
+  updateMyTradingPost,
+  getNearbyTradingPosts,
+  getTradingPost,
+  createEvent,
+  getMyEvents,
+  updateEvent,
+  deleteEvent,
+  getTradingPostEvents,
+  getNearbyEvents,
+  getStoreSubmissions,
+  getStoreSubmission,
+  acceptSubmission,
+  counterSubmission,
+  declineSubmission,
+} from './trading-posts';
+
+export type {
+  TradingPost,
+  TradingPostPublic,
+  TradingPostCreate,
+  TradingPostUpdate,
+  TradingPostListResponse,
+  TradingPostEvent,
+  EventCreate,
+  EventUpdate,
+  EventListResponse,
+  StoreSubmission,
+  StoreSubmissionListResponse,
+} from './trading-posts';
+
 // Types re-exports for backwards compatibility
 export type {
   ImportJob,
