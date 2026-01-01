@@ -37,7 +37,7 @@ REQUEST_HEADERS = {
 # RSS feed sources - using known working feed URLs
 RSS_FEEDS = {
     "mtggoldfish": "https://www.mtggoldfish.com/articles.rss",
-    "starcitygames": "https://starcitygames.com/feed/",
+    "starcitygames": "https://articles.starcitygames.com/feed/",
     "cardkingdom": "https://blog.cardkingdom.com/feed/",
 }
 
