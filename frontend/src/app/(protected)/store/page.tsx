@@ -107,7 +107,7 @@ function StoreDashboard({ store, submissions, events, onRefresh }: StoreDashboar
       )}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card className="glow-accent">
           <CardContent className="p-4 text-center">
             <FileText className="w-6 h-6 mx-auto text-[rgb(var(--accent))] mb-2" />

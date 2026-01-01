@@ -698,32 +698,34 @@ export default function QuoteDetailPage() {
               </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Card</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>Condition</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="w-24"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {quote.items.map((item) => (
-                  <QuoteItemRow
-                    key={item.id}
-                    item={item}
-                    quoteId={quoteId}
-                    onUpdate={handleUpdateItem}
-                    onDelete={handleDeleteItem}
-                    isUpdating={updatingItemId === item.id}
-                    isDeleting={deletingItemId === item.id}
-                    disabled={!isDraft}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto -mx-6 px-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Card</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Condition</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="w-24"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {quote.items.map((item) => (
+                    <QuoteItemRow
+                      key={item.id}
+                      item={item}
+                      quoteId={quoteId}
+                      onUpdate={handleUpdateItem}
+                      onDelete={handleDeleteItem}
+                      isUpdating={updatingItemId === item.id}
+                      isDeleting={deletingItemId === item.id}
+                      disabled={!isDraft}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
 
           {quote.items.length > 0 && (
