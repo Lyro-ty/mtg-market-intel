@@ -35,6 +35,7 @@ from app.api.routes import (
     endorsements,
     moderation,
     bot,
+    trading_posts,
 )
 
 api_router = APIRouter()
@@ -84,4 +85,8 @@ api_router.include_router(profiles.router)
 
 # Discord bot integration
 api_router.include_router(bot.router)
+
+# Trading Posts (LGS)
+api_router.include_router(trading_posts.router)
+api_router.include_router(trading_posts.events_router)
 
