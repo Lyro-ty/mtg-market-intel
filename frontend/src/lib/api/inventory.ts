@@ -29,20 +29,22 @@ export async function getInventoryMarketIndex(
 export async function getInventoryTopMovers(
   window: '24h' | '7d' = '24h'
 ): Promise<{ window: string; gainers: Array<{
-  cardName: string;
-  setCode: string;
-  format: string;
-  currentPriceUsd: number;
-  changePct: number;
-  volume: number;
+  card_id: number;
+  card_name: string;
+  set_code: string;
+  image_url?: string;
+  old_price: number;
+  new_price: number;
+  change_pct: number;
 }>; losers: Array<{
-  cardName: string;
-  setCode: string;
-  format: string;
-  currentPriceUsd: number;
-  changePct: number;
-  volume: number;
-}>; isMockData?: boolean }> {
+  card_id: number;
+  card_name: string;
+  set_code: string;
+  image_url?: string;
+  old_price: number;
+  new_price: number;
+  change_pct: number;
+}>; data_freshness_hours: number }> {
   return fetchApi(`/inventory/top-movers?window=${window}`, {}, true);
 }
 

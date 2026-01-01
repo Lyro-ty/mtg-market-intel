@@ -455,14 +455,14 @@ function InventoryPageContent(): JSX.Element {
                           inventoryTopMovers.gainers.map((mover, index) => (
                             <div key={`gainer-${index}`} className="flex items-center justify-between p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors">
                               <div>
-                                <p className="font-medium text-foreground">{mover.cardName}</p>
-                                <p className="text-xs text-muted-foreground uppercase">{mover.setCode}</p>
+                                <p className="font-medium text-foreground">{mover.card_name}</p>
+                                <p className="text-xs text-muted-foreground uppercase">{mover.set_code}</p>
                               </div>
                               <div className="text-right">
                                 <p className="font-medium text-foreground">
-                                  {formatCurrency(mover.currentPriceUsd)}
+                                  {formatCurrency(mover.new_price)}
                                 </p>
-                                <PriceChange value={mover.changePct} format="percent" size="sm" />
+                                <PriceChange value={mover.change_pct} format="percent" size="sm" />
                               </div>
                             </div>
                           ))
@@ -487,14 +487,14 @@ function InventoryPageContent(): JSX.Element {
                           inventoryTopMovers.losers.map((mover, index) => (
                             <div key={`loser-${index}`} className="flex items-center justify-between p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors">
                               <div>
-                                <p className="font-medium text-foreground">{mover.cardName}</p>
-                                <p className="text-xs text-muted-foreground uppercase">{mover.setCode}</p>
+                                <p className="font-medium text-foreground">{mover.card_name}</p>
+                                <p className="text-xs text-muted-foreground uppercase">{mover.set_code}</p>
                               </div>
                               <div className="text-right">
                                 <p className="font-medium text-foreground">
-                                  {formatCurrency(mover.currentPriceUsd)}
+                                  {formatCurrency(mover.new_price)}
                                 </p>
-                                <PriceChange value={mover.changePct} format="percent" size="sm" />
+                                <PriceChange value={mover.change_pct} format="percent" size="sm" />
                               </div>
                             </div>
                           ))

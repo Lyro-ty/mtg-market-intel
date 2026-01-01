@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -26,7 +27,8 @@ import {
 import { PageHeader } from '@/components/ornate/page-header';
 import { WelcomeModal } from '@/components/onboarding/WelcomeModal';
 import { NewsArticleCard } from '@/components/news';
-import { getInventoryAnalytics, getInventoryTopMovers, getRecommendations, getNews } from '@/lib/api';
+import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
+import { getInventoryAnalytics, getInventoryTopMovers, getInventoryMarketIndex, getRecommendations, getNews } from '@/lib/api';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 
 // StatCard helper component
@@ -215,12 +217,20 @@ function MoverItem({ name, setCode, price, changePct }: MoverItemProps) {
 // Main dashboard content
 function DashboardPageContent() {
   const { user } = useAuth();
+  const [chartRange, setChartRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
 
   // Fetch inventory analytics
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
     queryKey: ['inventory-analytics'],
     queryFn: getInventoryAnalytics,
     refetchInterval: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Fetch portfolio market index for chart
+  const { data: marketIndex, isLoading: marketIndexLoading } = useQuery({
+    queryKey: ['inventory-market-index', chartRange],
+    queryFn: () => getInventoryMarketIndex(chartRange),
+    refetchInterval: 5 * 60 * 1000,
   });
 
   // Fetch top movers from inventory
@@ -305,24 +315,36 @@ function DashboardPageContent() {
 
       {/* Main content grid */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Portfolio Chart Placeholder */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-[rgb(var(--accent))]" />
-              Portfolio Value (30d)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 flex items-center justify-center border border-dashed border-[rgb(var(--border))] rounded-lg bg-[rgb(var(--secondary))]/30">
-              <div className="text-center text-[rgb(var(--muted-foreground))]">
-                <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>Chart coming soon</p>
-                <p className="text-xs">View your inventory for detailed analytics</p>
+        {/* Portfolio Value Chart */}
+        {marketIndexLoading ? (
+          <ChartSkeleton />
+        ) : marketIndex && marketIndex.points && marketIndex.points.length > 0 ? (
+          <MarketIndexChart
+            data={marketIndex}
+            title="Portfolio Value"
+            height={280}
+            onRangeChange={setChartRange}
+            showFoilToggle={false}
+          />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-[rgb(var(--accent))]" />
+                Portfolio Value
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64 flex items-center justify-center border border-dashed border-[rgb(var(--border))] rounded-lg bg-[rgb(var(--secondary))]/30">
+                <div className="text-center text-[rgb(var(--muted-foreground))]">
+                  <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>No price history available</p>
+                  <p className="text-xs">Price data will appear as your cards are tracked</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Top Movers */}
         <Card>
@@ -364,20 +386,20 @@ function DashboardPageContent() {
                 {topMovers.gainers.slice(0, 2).map((mover, idx) => (
                   <MoverItem
                     key={`gainer-${idx}`}
-                    name={mover.cardName}
-                    setCode={mover.setCode}
-                    price={mover.currentPriceUsd}
-                    changePct={mover.changePct}
+                    name={mover.card_name}
+                    setCode={mover.set_code}
+                    price={mover.new_price}
+                    changePct={mover.change_pct}
                   />
                 ))}
                 {/* Show top 1 loser */}
                 {topMovers.losers.slice(0, 1).map((mover, idx) => (
                   <MoverItem
                     key={`loser-${idx}`}
-                    name={mover.cardName}
-                    setCode={mover.setCode}
-                    price={mover.currentPriceUsd}
-                    changePct={mover.changePct}
+                    name={mover.card_name}
+                    setCode={mover.set_code}
+                    price={mover.new_price}
+                    changePct={mover.change_pct}
                   />
                 ))}
               </div>
