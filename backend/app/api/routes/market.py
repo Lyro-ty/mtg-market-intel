@@ -3,7 +3,7 @@ Market API endpoints for market-wide analytics and charts.
 """
 import json
 import asyncio
-from datetime import datetime, timedelta, timezone, date as date_class
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
 import structlog
@@ -864,42 +864,37 @@ async def get_top_movers(
         period = "7d"
     
     try:
-        # Get the latest date with metrics data
-        latest_date = await asyncio.wait_for(
-            db.scalar(select(func.max(MetricsCardsDaily.date))),
+        # Get the latest date that actually has price change data
+        # This handles cases where the most recent date exists but hasn't had
+        # price change calculations run yet (e.g., today's date with no data)
+        latest_date_with_data = await asyncio.wait_for(
+            db.scalar(
+                select(func.max(MetricsCardsDaily.date)).where(
+                    change_field.isnot(None)
+                )
+            ),
             timeout=QUERY_TIMEOUT
         )
-        
-        if not latest_date:
+
+        if not latest_date_with_data:
+            logger.warning(
+                "No metrics data with price change found for top movers",
+                window=window,
+                change_field=str(change_field)
+            )
             return {
                 "window": window,
                 "gainers": [],
                 "losers": [],
                 "isMockData": False,
             }
-        
-        # If latest date is more than 2 days old, try to use a more recent date
-        # This handles cases where metrics haven't been computed for today yet
-        today = date_class.today()
-        days_old = (today - latest_date).days
-        
-        # Use latest date, but if it's more than 2 days old, try to find any recent date
-        query_date = latest_date
-        if days_old > 2:
-            # Try to find the most recent date within the last 7 days that has data
-            recent_date_query = select(func.max(MetricsCardsDaily.date)).where(
-                MetricsCardsDaily.date >= today - timedelta(days=7),
-                change_field.isnot(None),
-            )
-            recent_date = await db.scalar(recent_date_query)
-            if recent_date:
-                query_date = recent_date
-                logger.info(
-                    "Using recent date for top movers instead of stale latest date",
-                    latest_date=latest_date.isoformat(),
-                    query_date=query_date.isoformat(),
-                    window=window
-                )
+
+        query_date = latest_date_with_data
+        logger.debug(
+            "Using date with price change data for top movers",
+            query_date=query_date.isoformat(),
+            window=window
+        )
         
         # Minimum thresholds to filter out noise
         # Require at least 1% change and minimum volume of 3 listings
