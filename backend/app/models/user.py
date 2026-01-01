@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.models.saved_search import SavedSearch
     from app.models.settings import AppSettings
     from app.models.session import UserSession
+    from app.models.trading_post import TradingPost, TradeQuote
     from app.models.user_milestone import UserMilestone
     from app.models.want_list import WantListItem
 
@@ -175,6 +176,19 @@ class User(Base):
         "UserEndorsement",
         foreign_keys="UserEndorsement.endorsed_id",
         back_populates="endorsed",
+        cascade="all, delete-orphan"
+    )
+
+    # Trading Post relationships
+    trading_post: Mapped[Optional["TradingPost"]] = relationship(
+        "TradingPost",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+    trade_quotes: Mapped[list["TradeQuote"]] = relationship(
+        "TradeQuote",
+        back_populates="user",
         cascade="all, delete-orphan"
     )
 

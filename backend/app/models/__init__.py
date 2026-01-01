@@ -48,6 +48,16 @@ from app.models.connection import (
     UserReport,
 )
 from app.models.discord_alert import DiscordAlertQueue
+from app.models.trading_post import (
+    TradingPost,
+    TradeQuote,
+    TradeQuoteItem,
+    TradeQuoteSubmission,
+    TradingPostEvent,
+    QuoteStatus,
+    SubmissionStatus,
+    EventType,
+)
 
 
 # DEPRECATED: Listing model - use PriceSnapshot instead
@@ -134,6 +144,15 @@ __all__ = [
     "UserReport",
     # Discord integration
     "DiscordAlertQueue",
+    # Trading Posts (LGS)
+    "TradingPost",
+    "TradeQuote",
+    "TradeQuoteItem",
+    "TradeQuoteSubmission",
+    "TradingPostEvent",
+    "QuoteStatus",
+    "SubmissionStatus",
+    "EventType",
     # Deprecated models (emit warnings when used)
     "Listing",  # DEPRECATED: Use PriceSnapshot
 ]

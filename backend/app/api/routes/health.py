@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.user import User
 from app.models.card import Card
+from app.models.trading_post import TradingPost
 
 router = APIRouter()
 
@@ -45,9 +46,13 @@ async def get_site_stats(db: AsyncSession = Depends(get_db)):
     )
     card_count = card_result.scalar() or 0
 
-    # Trading Posts (LGS) - future feature
-    # TODO: Add LGS/Shop model and count when implemented
-    trading_post_count = 0
+    # Count verified Trading Posts
+    trading_post_result = await db.execute(
+        select(func.count(TradingPost.id)).where(
+            TradingPost.email_verified_at.isnot(None)
+        )
+    )
+    trading_post_count = trading_post_result.scalar() or 0
 
     return SiteStats(
         seekers=seeker_count,
