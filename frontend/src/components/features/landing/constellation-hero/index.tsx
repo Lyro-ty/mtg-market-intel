@@ -171,10 +171,10 @@ export function ConstellationHero() {
         </motion.div>
       </div>
 
-      {/* Center gradient for content readability */}
-      <div className="absolute inset-0 z-15 pointer-events-none">
-        <div className="absolute inset-0 bg-radial-gradient" style={{
-          background: 'radial-gradient(circle at center, rgb(var(--background)) 0%, transparent 35%)',
+      {/* Center gradient for content readability - larger opaque area so cards don't obscure text */}
+      <div className="absolute inset-0 z-[17] pointer-events-none">
+        <div className="absolute inset-0" style={{
+          background: 'radial-gradient(ellipse 60% 50% at center, rgb(var(--background)) 0%, rgb(var(--background)) 40%, transparent 70%)',
         }} />
       </div>
 
