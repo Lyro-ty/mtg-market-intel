@@ -269,7 +269,7 @@ function DashboardPageContent() {
     profitLoss > 0 ? 'up' : profitLoss < 0 ? 'down' : 'neutral';
 
   return (
-    <div className="space-y-6 animate-in">
+    <div className="space-y-6 animate-in min-w-0">
       {/* Greeting */}
       <PageHeader
         title={`Welcome back, ${username}`}

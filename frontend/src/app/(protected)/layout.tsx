@@ -42,7 +42,7 @@ export default function ProtectedLayout({
       <AppSidebar />
       <SidebarInset>
         <SiteHeader />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 min-w-0 p-6 overflow-x-hidden">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );
