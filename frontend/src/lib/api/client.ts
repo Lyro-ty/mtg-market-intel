@@ -148,3 +148,14 @@ export async function fetchApi<T>(
 export async function checkHealth(): Promise<{ status: string }> {
   return fetchApi('/health');
 }
+
+// Site stats for landing page
+export interface SiteStats {
+  seekers: number;
+  trading_posts: number;
+  cards_in_vault: number;
+}
+
+export async function getSiteStats(): Promise<SiteStats> {
+  return fetchApi('/stats');
+}

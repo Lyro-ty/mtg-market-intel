@@ -18,7 +18,10 @@ export {
   setStoredToken,
   clearStoredToken,
   checkHealth,
+  getSiteStats,
 } from './client';
+
+export type { SiteStats } from './client';
 
 // Authentication
 export {

@@ -1,12 +1,32 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Search, Sparkles, TrendingUp, Shield } from 'lucide-react';
+import { Eye, Sparkles, MapPin, Shield, Swords } from 'lucide-react';
+import { getSiteStats, SiteStats } from '@/lib/api';
 
 export function HeroContent() {
+  const [stats, setStats] = useState<SiteStats | null>(null);
+
+  useEffect(() => {
+    getSiteStats()
+      .then(setStats)
+      .catch(() => {
+        // Fallback to null - we'll show static text
+      });
+  }, []);
+
+  // Format large numbers (e.g., 98000 -> "98K+")
+  const formatCount = (n: number) => {
+    if (n >= 1000) {
+      return `${Math.floor(n / 1000)}K+`;
+    }
+    return n.toString();
+  };
+
   return (
     <div className="relative z-20 max-w-4xl mx-auto px-6 text-center">
       {/* Logo */}
@@ -33,8 +53,8 @@ export function HeroContent() {
         transition={{ duration: 0.5, delay: 0.4 }}
         className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[rgb(var(--accent))]/10 border border-[rgb(var(--accent))]/20 text-sm text-[rgb(var(--accent))] mb-6"
       >
-        <Sparkles className="w-4 h-4" />
-        <span>AI-Powered Market Intelligence</span>
+        <Swords className="w-4 h-4" />
+        <span>Real-Time Market Intelligence</span>
       </motion.div>
 
       {/* Main heading */}
@@ -50,7 +70,7 @@ export function HeroContent() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.6 }}
         >
-          The Market is
+          Your Edge in
         </motion.span>
         <motion.span
           className="block"
@@ -58,15 +78,15 @@ export function HeroContent() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.75 }}
         >
-          <span className="foil-shimmer">Always Moving</span>
+          <span className="foil-shimmer">the Market</span>
         </motion.span>
         <motion.span
-          className="block text-[rgb(var(--muted-foreground))]"
+          className="block text-xl sm:text-2xl md:text-3xl font-normal text-[rgb(var(--muted-foreground))] mt-4"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.9 }}
         >
-          Are You Watching?
+          Scry Further. Connect Deeper. Deal Smarter.
         </motion.span>
       </motion.h1>
 
@@ -77,8 +97,8 @@ export function HeroContent() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 1.0 }}
       >
-        Track prices across 5+ marketplaces. Get AI-powered buy and sell signals.
-        Know exactly when to make your move.
+        Market intelligence meets community. Find collectors and trading posts
+        who have what you seek — and seek what you hold.
       </motion.p>
 
       {/* Search bar */}
@@ -90,8 +110,8 @@ export function HeroContent() {
       >
         <Link href="/cards">
           <div className="group flex items-center gap-3 px-5 py-4 rounded-xl border border-border bg-card/50 hover:border-[rgb(var(--accent))]/50 hover:bg-card transition-all cursor-pointer glow-accent backdrop-blur-sm">
-            <Search className="w-5 h-5 text-muted-foreground group-hover:text-[rgb(var(--accent))] transition-colors" />
-            <span className="text-muted-foreground">Search 90,000+ cards...</span>
+            <Eye className="w-5 h-5 text-muted-foreground group-hover:text-[rgb(var(--accent))] transition-colors" />
+            <span className="text-muted-foreground">Scry the vault...</span>
             <kbd className="hidden sm:inline-flex ml-auto px-2 py-1 rounded bg-secondary text-xs text-muted-foreground">
               /
             </kbd>
@@ -107,16 +127,20 @@ export function HeroContent() {
         transition={{ duration: 0.6, delay: 1.2 }}
       >
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 backdrop-blur-sm text-sm text-muted-foreground border border-border/50">
-          <TrendingUp className="w-4 h-4 text-[rgb(var(--success))]" />
-          <span>Live Prices</span>
+          <Eye className="w-4 h-4 text-[rgb(var(--success))]" />
+          <span>Market Scrying</span>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 backdrop-blur-sm text-sm text-muted-foreground border border-border/50">
           <Sparkles className="w-4 h-4 text-[rgb(var(--magic-gold))]" />
-          <span>AI Recommendations</span>
+          <span>Trade Conjuring</span>
+        </div>
+        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 backdrop-blur-sm text-sm text-muted-foreground border border-border/50">
+          <MapPin className="w-4 h-4 text-[rgb(var(--accent))]" />
+          <span>Trading Posts</span>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 backdrop-blur-sm text-sm text-muted-foreground border border-border/50">
           <Shield className="w-4 h-4 text-[rgb(var(--accent))]" />
-          <span>Portfolio Tracking</span>
+          <span>Trusted Network</span>
         </div>
       </motion.div>
 
@@ -133,7 +157,7 @@ export function HeroContent() {
           className="gradient-arcane text-white glow-accent hover-lift press-effect text-base px-8"
         >
           <Link href="/register">
-            Get Started Free
+            Enter the Bazaar
           </Link>
         </Button>
         <Button
@@ -142,36 +166,42 @@ export function HeroContent() {
           asChild
           className="hover-lift press-effect text-base px-8 backdrop-blur-sm"
         >
-          <Link href="/market">
-            View Market Data
+          <Link href="/cards">
+            Begin Your Quest
           </Link>
         </Button>
       </motion.div>
 
-      {/* Trust indicators */}
+      {/* Trust indicators - Live stats */}
       <motion.div
         className="mt-12 pt-8 border-t border-border/30"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 1.5 }}
       >
-        <p className="text-sm text-muted-foreground mb-4">Trusted by collectors worldwide</p>
+        <p className="text-sm text-muted-foreground mb-4">Join the growing community</p>
         <div className="flex flex-wrap justify-center gap-8 text-muted-foreground/60">
           <div className="text-center">
-            <p className="text-2xl font-bold text-foreground">90K+</p>
-            <p className="text-xs">Cards Tracked</p>
+            <p className="text-2xl font-bold text-foreground">
+              {stats ? stats.seekers : '—'}
+            </p>
+            <p className="text-xs">Seekers</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-foreground">30min</p>
-            <p className="text-xs">Price Updates</p>
+            <p className="text-2xl font-bold text-foreground">
+              {stats ? stats.trading_posts : '—'}
+            </p>
+            <p className="text-xs">Trading Posts</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-foreground">5+</p>
-            <p className="text-xs">Marketplaces</p>
+            <p className="text-2xl font-bold text-foreground">
+              {stats ? formatCount(stats.cards_in_vault) : '—'}
+            </p>
+            <p className="text-xs">Cards in the Vault</p>
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-foreground">Free</p>
-            <p className="text-xs">Forever</p>
+            <p className="text-xs">to Join</p>
           </div>
         </div>
       </motion.div>

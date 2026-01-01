@@ -4,12 +4,56 @@ Health check endpoints.
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import text
+from pydantic import BaseModel
+from sqlalchemy import text, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.models.user import User
+from app.models.card import Card
 
 router = APIRouter()
+
+
+class SiteStats(BaseModel):
+    """Public site statistics for the landing page."""
+    seekers: int  # User count (fantasy term)
+    trading_posts: int  # LGS count (future feature)
+    cards_in_vault: int  # Total cards tracked
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/stats", response_model=SiteStats)
+async def get_site_stats(db: AsyncSession = Depends(get_db)):
+    """
+    Get public site statistics for the landing page.
+
+    Returns live counts of users, shops, and cards.
+    No authentication required.
+    """
+    # Count active users (Seekers)
+    user_result = await db.execute(
+        select(func.count(User.id)).where(User.is_active == True)
+    )
+    seeker_count = user_result.scalar() or 0
+
+    # Count cards in the database (Vault)
+    card_result = await db.execute(
+        select(func.count(Card.id))
+    )
+    card_count = card_result.scalar() or 0
+
+    # Trading Posts (LGS) - future feature
+    # TODO: Add LGS/Shop model and count when implemented
+    trading_post_count = 0
+
+    return SiteStats(
+        seekers=seeker_count,
+        trading_posts=trading_post_count,
+        cards_in_vault=card_count,
+    )
 
 
 @router.get("/health")
