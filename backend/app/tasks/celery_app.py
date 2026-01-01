@@ -114,6 +114,13 @@ celery_app.conf.update(
             "schedule": crontab(hour=2, minute=0),  # Daily at 2 AM
         },
 
+        # Recommendation generation: Every 6 hours
+        # Generates buy/sell/hold recommendations based on signals and metrics
+        "generate-recommendations": {
+            "task": "app.tasks.recommendations.generate_recommendations",
+            "schedule": crontab(hour="*/6", minute=0),  # Every 6 hours at :00
+        },
+
         # Recommendation outcome evaluation: Every hour at :30
         # Evaluates expired recommendations against actual price data
         "evaluate-recommendation-outcomes": {
