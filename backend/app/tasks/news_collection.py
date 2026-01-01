@@ -26,11 +26,12 @@ from app.tasks.utils import run_async
 logger = structlog.get_logger()
 
 # Browser-like headers to avoid being blocked
+# Note: Don't include 'br' (Brotli) in Accept-Encoding as httpx doesn't decompress it by default
 REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/rss+xml, application/xml, text/xml, application/atom+xml, */*",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Encoding": "gzip, deflate",
     "Connection": "keep-alive",
 }
 
@@ -173,7 +174,8 @@ async def _fetch_rss_source(
         ) as client:
             response = await client.get(feed_url)
             response.raise_for_status()
-            feed_content = response.text
+            # Use bytes for feedparser - handles encoding better
+            feed_content = response.content
     except httpx.HTTPStatusError as e:
         logger.error("HTTP error fetching feed", source=source_name, status=e.response.status_code)
         return stats
