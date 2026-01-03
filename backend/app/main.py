@@ -176,10 +176,12 @@ app.add_middleware(
 )
 
 # Add rate limiting middleware (after CORS)
+# Note: 300/min allows ~5 requests/sec which is plenty for normal usage
+# Card detail pages make many parallel requests (card, history, news, similar, etc.)
 app.add_middleware(
     RateLimitMiddleware,
-    requests_per_minute=60,
-    auth_requests_per_minute=5,
+    requests_per_minute=300,
+    auth_requests_per_minute=10,
 )
 
 # Add session middleware for OAuth state management

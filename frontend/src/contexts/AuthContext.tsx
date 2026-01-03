@@ -54,9 +54,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userData = await getCurrentUser();
       setUser(userData);
     } catch (error) {
-      // Token is invalid or expired
-      clearStoredToken();
-      setUser(null);
+      // Only clear token on 401 (unauthorized) - not on rate limits or network errors
+      const isUnauthorized = error instanceof Error &&
+        'status' in error &&
+        (error as { status: number }).status === 401;
+
+      if (isUnauthorized) {
+        // Token is invalid or expired
+        clearStoredToken();
+        setUser(null);
+      }
+      // For other errors (429 rate limit, network issues), keep existing auth state
+      // This prevents logout on temporary API issues
     } finally {
       setIsLoading(false);
     }

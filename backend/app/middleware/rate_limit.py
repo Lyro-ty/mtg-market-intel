@@ -45,8 +45,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         else:
             client_ip = request.client.host if request.client else "unknown"
 
-        # Use stricter limits for auth endpoints
-        is_auth_endpoint = "/auth/" in request.url.path or "/login" in request.url.path
+        # Use stricter limits for sensitive auth endpoints (login, register, oauth)
+        # Exclude /auth/me which is called frequently for session checks
+        path = request.url.path
+        is_auth_endpoint = (
+            ("/auth/" in path or "/login" in path)
+            and "/auth/me" not in path  # /auth/me is not a login attempt
+        )
         limit = self.auth_requests_per_minute if is_auth_endpoint else self.requests_per_minute
 
         # Create rate limit key
