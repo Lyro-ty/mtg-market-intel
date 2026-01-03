@@ -1507,6 +1507,8 @@ async def _import_mtgjson_historical_prices_async(
                             )
                     
                     except Exception as e:
+                        # Rollback to recover from any database errors
+                        await db.rollback()
                         error_msg = f"Card {card.id} ({card.name}): {str(e)}"
                         results["errors"].append(error_msg)
                         logger.warning(

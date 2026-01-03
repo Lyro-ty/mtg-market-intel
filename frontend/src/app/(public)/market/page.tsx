@@ -7,13 +7,11 @@ import {
   TrendingUp,
   TrendingDown,
   BarChart3,
-  Activity,
   Flame,
   Snowflake,
   ArrowRight,
   Clock,
   DollarSign,
-  Percent,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,39 +21,7 @@ import { PageHeader } from '@/components/ornate/page-header';
 import { PriceChange } from '@/components/ornate/price-change';
 import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
 import { getMarketIndex, getTopMovers, getMarketOverview } from '@/lib/api';
-import { formatCurrency, cn } from '@/lib/utils';
-
-// Format health data - placeholder until API endpoint is implemented
-const formatHealthData = [
-  { format: 'Standard', health: 'Healthy', change: 2.3, color: 'success' },
-  { format: 'Modern', health: 'Hot', change: 5.8, color: 'mythic-orange' },
-  { format: 'Legacy', health: 'Stable', change: 0.4, color: 'accent' },
-  { format: 'Commander', health: 'Growing', change: 3.1, color: 'success' },
-  { format: 'Pioneer', health: 'Cooling', change: -1.2, color: 'warning' },
-];
-
-function FormatHealthCard({ format }: { format: typeof formatHealthData[0] }) {
-  const colorMap: Record<string, string> = {
-    success: 'text-[rgb(var(--success))]',
-    'mythic-orange': 'text-[rgb(var(--mythic-orange))]',
-    accent: 'text-[rgb(var(--accent))]',
-    warning: 'text-[rgb(var(--warning))]',
-  };
-
-  return (
-    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-      <div className="flex items-center gap-3">
-        <Activity className={cn('w-5 h-5', colorMap[format.color])} />
-        <div>
-          <p className="font-medium text-foreground">{format.format}</p>
-          <p className={cn('text-sm', colorMap[format.color])}>{format.health}</p>
-        </div>
-      </div>
-      <PriceChange value={format.change} format="percent" size="sm" />
-    </div>
-  );
-}
-
+import { formatCurrency } from '@/lib/utils';
 
 function MoverCard({
   card,
@@ -105,10 +71,6 @@ export default function MarketPage() {
     refetchInterval: 5 * 60 * 1000,
   });
 
-  // Calculate hot/cooling cards from top movers
-  const hotCardsCount = topMovers?.gainers?.filter(c => c.changePct > 10).length ?? 0;
-  const coolingCardsCount = topMovers?.losers?.filter(c => c.changePct < -10).length ?? 0;
-
   // Format volume for display
   const formatVolume = (volume: number) => {
     if (volume >= 1000000) return `$${(volume / 1000000).toFixed(1)}M`;
@@ -124,7 +86,7 @@ export default function MarketPage() {
       />
 
       {/* Market Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <Card className="glow-accent">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -159,38 +121,6 @@ export default function MarketPage() {
                 {overview?.avgPriceChange24hPct !== null && overview?.avgPriceChange24hPct !== undefined && (
                   <PriceChange value={overview.avgPriceChange24hPct} format="percent" size="sm" />
                 )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="glow-accent">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Flame className="w-5 h-5 text-[rgb(var(--mythic-orange))]" />
-              <span className="text-sm text-muted-foreground">Hot Cards</span>
-            </div>
-            {moversLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <p className="text-2xl font-bold text-foreground">{hotCardsCount}</p>
-                <p className="text-xs text-muted-foreground">Cards up &gt;10% today</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="glow-accent">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Snowflake className="w-5 h-5 text-[rgb(var(--info))]" />
-              <span className="text-sm text-muted-foreground">Cooling Off</span>
-            </div>
-            {moversLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <p className="text-2xl font-bold text-foreground">{coolingCardsCount}</p>
-                <p className="text-xs text-muted-foreground">Cards down &gt;10% today</p>
               </>
             )}
           </CardContent>
@@ -260,7 +190,7 @@ export default function MarketPage() {
               </div>
             ) : topMovers?.gainers && topMovers.gainers.length > 0 ? (
               <div className="space-y-2">
-                {topMovers.gainers.slice(0, 5).map((card, i) => (
+                {topMovers.gainers.map((card, i) => (
                   <MoverCard key={i} card={card} type="gainer" />
                 ))}
               </div>
@@ -291,7 +221,7 @@ export default function MarketPage() {
               </div>
             ) : topMovers?.losers && topMovers.losers.length > 0 ? (
               <div className="space-y-2">
-                {topMovers.losers.slice(0, 5).map((card, i) => (
+                {topMovers.losers.map((card, i) => (
                   <MoverCard key={i} card={card} type="loser" />
                 ))}
               </div>
@@ -302,31 +232,17 @@ export default function MarketPage() {
         </Card>
       </div>
 
-      {/* Format Health & Trending */}
+      {/* Hot & Cold Cards */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Format Health */}
-        <Card className="glow-accent">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-[rgb(var(--accent))]" />
-              Format Health
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {formatHealthData.map((format) => (
-                <FormatHealthCard key={format.format} format={format} />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Trending Cards */}
+        {/* Hot Cards - Cards up >10% */}
         <Card className="glow-accent">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Flame className="w-5 h-5 text-[rgb(var(--mythic-orange))]" />
-              Trending Now
+              Hot Cards
+              <Badge variant="secondary" className="ml-2 bg-[rgb(var(--mythic-orange))]/20 text-[rgb(var(--mythic-orange))]">
+                &gt;10% gain
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -336,26 +252,51 @@ export default function MarketPage() {
                   <Skeleton key={i} className="h-16 w-full" />
                 ))}
               </div>
-            ) : topMovers?.gainers && topMovers.gainers.length > 0 ? (
+            ) : (() => {
+              const hotCards = topMovers?.gainers?.filter(c => c.changePct > 10) ?? [];
+              return hotCards.length > 0 ? (
+                <div className="space-y-2">
+                  {hotCards.map((card, i) => (
+                    <MoverCard key={i} card={card} type="gainer" />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-muted-foreground py-8">No cards up &gt;10% today</p>
+              );
+            })()}
+          </CardContent>
+        </Card>
+
+        {/* Cooling Off - Cards down >10% */}
+        <Card className="glow-accent">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Snowflake className="w-5 h-5 text-[rgb(var(--info))]" />
+              Cooling Off
+              <Badge variant="secondary" className="ml-2 bg-[rgb(var(--info))]/20 text-[rgb(var(--info))]">
+                &gt;10% drop
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {moversLoading && !topMovers ? (
               <div className="space-y-3">
-                {topMovers.gainers.slice(0, 4).map((card, i) => (
-                  <Link key={i} href={`/cards?q=${encodeURIComponent(card.cardName)}`}>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-foreground truncate">{card.cardName}</p>
-                        <p className="text-xs text-muted-foreground uppercase">{card.setCode}</p>
-                      </div>
-                      <div className="text-right ml-4">
-                        <p className="font-medium text-foreground">{formatCurrency(card.currentPriceUsd)}</p>
-                        <PriceChange value={card.changePct} format="percent" size="sm" />
-                      </div>
-                    </div>
-                  </Link>
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
                 ))}
               </div>
-            ) : (
-              <p className="text-center text-muted-foreground py-8">No trending data available</p>
-            )}
+            ) : (() => {
+              const coldCards = topMovers?.losers?.filter(c => c.changePct < -10) ?? [];
+              return coldCards.length > 0 ? (
+                <div className="space-y-2">
+                  {coldCards.map((card, i) => (
+                    <MoverCard key={i} card={card} type="loser" />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-muted-foreground py-8">No cards down &gt;10% today</p>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
