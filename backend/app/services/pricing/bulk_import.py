@@ -4,6 +4,7 @@ import json
 import logging
 import tempfile
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -16,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.models.card import Card
 from app.models.price_snapshot import PriceSnapshot
 from app.models.marketplace import Marketplace
+from app.core.constants import CardCondition, CardLanguage
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +154,8 @@ class BulkPriceImporter:
                             progress_callback(stats)
 
                 except Exception as e:
+                    # Rollback to recover from database errors
+                    await db.rollback()
                     logger.warning(f"Error processing card: {e}")
                     stats["errors"] += 1
 
@@ -311,3 +315,171 @@ class BulkPriceImporter:
                 }
             )
             await db.execute(stmt)
+
+    async def import_prices_with_copy(
+        self,
+        pool,  # asyncpg.Pool
+        db: AsyncSession,
+        progress_callback: Optional[Callable[[dict[str, int]], None]] = None
+    ) -> dict[str, int]:
+        """
+        Import prices using PostgreSQL COPY for maximum speed.
+
+        COPY is 10-50x faster than batch INSERT for large datasets.
+        Use this for initial imports or large backfills.
+
+        Args:
+            pool: asyncpg connection pool (not SQLAlchemy)
+            db: SQLAlchemy session for marketplace/card lookups
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            dict with counts: cards_updated, snapshots_created, errors
+        """
+        from app.services.ingestion.bulk_ops import bulk_copy_snapshots, COPY_COLUMNS
+
+        stats = {"cards_updated": 0, "snapshots_created": 0, "errors": 0, "batches": 0}
+
+        # Get bulk data URL
+        url = await self.get_bulk_data_url()
+        logger.info(f"Downloading bulk data from {url}")
+
+        # Download to temp file
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
+        try:
+            await self.download_bulk_file(url, tmp_path)
+            logger.info(f"Downloaded to {tmp_path}")
+
+            # Get marketplace IDs
+            tcgplayer = await self._get_or_create_marketplace(db, "tcgplayer", "TCGPlayer")
+            cardmarket = await self._get_or_create_marketplace(db, "cardmarket", "Cardmarket")
+            await db.commit()
+
+            # Build scryfall_id -> card_id lookup
+            result = await db.execute(select(Card.id, Card.scryfall_id))
+            card_lookup = {row.scryfall_id: row.id for row in result}
+
+            now = datetime.now(timezone.utc)
+            batch_size = 10000  # Larger batches for COPY
+            records: list[tuple] = []
+
+            # Process cards synchronously (ijson doesn't support async)
+            loop = asyncio.get_event_loop()
+            cards_gen = await loop.run_in_executor(
+                None, lambda: list(self.stream_cards_sync(tmp_path))
+            )
+
+            for card_data in cards_gen:
+                try:
+                    parsed = self.parse_scryfall_prices(card_data)
+                    scryfall_id = parsed.get("scryfall_id")
+                    card_id = card_lookup.get(scryfall_id)
+
+                    if not card_id:
+                        continue
+
+                    # Create COPY records (tuples in COPY_COLUMNS order)
+                    copy_records = self._create_copy_records(
+                        parsed, now, card_id, tcgplayer.id, cardmarket.id
+                    )
+                    records.extend(copy_records)
+                    stats["cards_updated"] += 1
+
+                    if len(records) >= batch_size:
+                        async with pool.acquire() as conn:
+                            count = await bulk_copy_snapshots(conn, records, COPY_COLUMNS)
+                            stats["snapshots_created"] += count
+                            stats["batches"] += 1
+                        records = []
+
+                        if progress_callback:
+                            progress_callback(stats)
+
+                except Exception as e:
+                    logger.warning(f"Error processing card: {e}")
+                    stats["errors"] += 1
+
+            # Insert remaining records
+            if records:
+                async with pool.acquire() as conn:
+                    count = await bulk_copy_snapshots(conn, records, COPY_COLUMNS)
+                    stats["snapshots_created"] += count
+                    stats["batches"] += 1
+
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        return stats
+
+    def _create_copy_records(
+        self,
+        parsed: dict,
+        timestamp: datetime,
+        card_id: int,
+        tcgplayer_id: int,
+        cardmarket_id: int
+    ) -> list[tuple]:
+        """Create tuple records for COPY in COPY_COLUMNS order."""
+        from app.services.ingestion.bulk_ops import prepare_copy_record
+
+        records = []
+
+        # USD (TCGPlayer) - Non-foil
+        if parsed.get("usd"):
+            records.append(prepare_copy_record(
+                card_id=card_id,
+                marketplace_id=tcgplayer_id,
+                price=parsed["usd"],
+                time=timestamp,
+                condition=CardCondition.NEAR_MINT.value,
+                is_foil=False,
+                language=CardLanguage.ENGLISH.value,
+                currency="USD",
+                source="bulk",
+            ))
+
+        # USD Foil (TCGPlayer)
+        if parsed.get("usd_foil"):
+            records.append(prepare_copy_record(
+                card_id=card_id,
+                marketplace_id=tcgplayer_id,
+                price=parsed["usd_foil"],
+                time=timestamp,
+                condition=CardCondition.NEAR_MINT.value,
+                is_foil=True,
+                language=CardLanguage.ENGLISH.value,
+                currency="USD",
+                source="bulk",
+            ))
+
+        # EUR (Cardmarket) - Non-foil
+        if parsed.get("eur"):
+            records.append(prepare_copy_record(
+                card_id=card_id,
+                marketplace_id=cardmarket_id,
+                price=parsed["eur"],
+                time=timestamp,
+                condition=CardCondition.NEAR_MINT.value,
+                is_foil=False,
+                language=CardLanguage.ENGLISH.value,
+                currency="EUR",
+                source="bulk",
+            ))
+
+        # EUR Foil (Cardmarket)
+        if parsed.get("eur_foil"):
+            records.append(prepare_copy_record(
+                card_id=card_id,
+                marketplace_id=cardmarket_id,
+                price=parsed["eur_foil"],
+                time=timestamp,
+                condition=CardCondition.NEAR_MINT.value,
+                is_foil=True,
+                language=CardLanguage.ENGLISH.value,
+                currency="EUR",
+                source="bulk",
+            ))
+
+        return records

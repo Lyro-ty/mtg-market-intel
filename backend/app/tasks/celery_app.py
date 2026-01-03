@@ -19,6 +19,7 @@ celery_app = Celery(
     include=[
         "app.tasks.data_seeding",
         "app.tasks.ingestion",
+        "app.tasks.ingestion_v2",  # Optimized parallel ingestion
         "app.tasks.analytics",
         "app.tasks.recommendations",
         "app.tasks.pricing",
@@ -58,6 +59,14 @@ celery_app.conf.update(
 
     # Simplified beat schedule for pricing-focused tasks
     beat_schedule={
+        # Parallel price collection: Dispatch parallel adapter tasks every 5 minutes
+        # Uses optimized bulk operations and Redis caching
+        "ingestion-parallel-collection": {
+            "task": "app.tasks.ingestion_v2.dispatch_price_collection",
+            "schedule": crontab(minute="*/5"),  # Every 5 minutes
+            "args": [500],  # batch_size
+        },
+
         # Bulk price refresh: Download Scryfall bulk data every 12 hours
         # Provides comprehensive price coverage for all cards
         "pricing-bulk-refresh": {
@@ -175,6 +184,7 @@ celery_app.conf.update(
     task_routes={
         "app.tasks.data_seeding.*": {"queue": "ingestion"},
         "app.tasks.ingestion.*": {"queue": "ingestion"},
+        "app.tasks.ingestion_v2.*": {"queue": "ingestion"},
         "app.tasks.analytics.*": {"queue": "analytics"},
         "app.tasks.recommendations.*": {"queue": "recommendations"},
         "app.tasks.pricing.*": {"queue": "ingestion"},
