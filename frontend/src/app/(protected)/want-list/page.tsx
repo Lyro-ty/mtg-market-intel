@@ -421,7 +421,12 @@ export default function WantListPage() {
   const handleAddCard = async (data: { card_id: number; target_price: number; priority: WantListPriority; alert_enabled: boolean; notes?: string }) => {
     setIsAdding(true);
     try {
-      await addToWantList(data);
+      await addToWantList({
+        ...data,
+        alert_on_spike: false,
+        alert_on_supply_low: false,
+        alert_on_price_drop: true,
+      });
       await fetchWantList();
     } finally {
       setIsAdding(false);

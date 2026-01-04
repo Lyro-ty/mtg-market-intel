@@ -39,7 +39,16 @@ export type PricePoint = components['schemas']['PricePoint'];
 
 // Recommendation types
 export type ActionType = components['schemas']['ActionType'];
-export type Recommendation = components['schemas']['RecommendationResponse'];
+// Extend RecommendationResponse with outcome tracking fields (may not be in API yet)
+export type Recommendation = components['schemas']['RecommendationResponse'] & {
+  outcome_evaluated_at?: string | null;
+  outcome_price_end?: number | null;
+  outcome_price_peak?: number | null;
+  actual_profit_pct_end?: number | null;
+  actual_profit_pct_peak?: number | null;
+  accuracy_score_end?: number | null;
+  accuracy_score_peak?: number | null;
+};
 export type RecommendationList = components['schemas']['RecommendationListResponse'];
 export type RecommendationSummary = components['schemas']['RecommendationSummary'];
 
@@ -49,7 +58,7 @@ export type SignalSummary = components['schemas']['SignalSummary'];
 
 // Dashboard types
 export type DashboardSummary = components['schemas']['DashboardSummary'];
-export type TopCard = components['schemas']['TopCard'];
+export type TopCard = components['schemas']['app__schemas__dashboard__TopCard'];
 export type MarketSpread = components['schemas']['MarketSpread'];
 
 // Settings types

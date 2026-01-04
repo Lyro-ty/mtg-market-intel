@@ -13,3 +13,7 @@ export {
 } from './useWebSocket';
 
 export { useCurrency, type Currency } from './useCurrency';
+
+export { useRecentlyViewed, type RecentCard } from './useRecentlyViewed';
+
+export { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from './useKeyboardShortcuts';

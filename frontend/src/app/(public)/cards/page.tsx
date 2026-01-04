@@ -4,10 +4,11 @@ import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { Search as SearchIcon, Sparkles, Type, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { useRecentlyViewed } from '@/hooks';
+import { Search as SearchIcon, Sparkles, Type, ChevronDown, ChevronUp, X, Clock } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingPage } from '@/components/ui/Loading';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { Button } from '@/components/ui/button';
@@ -97,6 +98,9 @@ function CardsPageContent() {
   const [showFilters, setShowFilters] = useState(
     initialColors.length > 0 || initialType !== '' || initialCmcMin !== undefined || initialCmcMax !== undefined
   );
+
+  // Recently viewed cards
+  const { recentCards, isLoaded: recentLoaded } = useRecentlyViewed();
 
   // Debounce search query for better performance (300ms delay)
   const debouncedQuery = useDebouncedValue(query, 300);
@@ -385,19 +389,64 @@ function CardsPageContent() {
           onRetry={() => queryClient.invalidateQueries({ queryKey: ['cards', 'search', debouncedQuery, searchMode, page, selectedColors, cardType, cmcMin, cmcMax] })}
         />
       ) : (data?.results?.length ?? 0) === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <SearchIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              {query ? 'No cards found matching your search' : 'Start typing to search for cards'}
-            </p>
-            {hasActiveFilters && (
-              <Button variant="secondary" size="sm" onClick={clearFilters} className="mt-4">
-                Clear filters and try again
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardContent className="py-12 text-center">
+              <SearchIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                {query ? 'No cards found matching your search' : 'Start typing to search for cards'}
+              </p>
+              {hasActiveFilters && (
+                <Button variant="secondary" size="sm" onClick={clearFilters} className="mt-4">
+                  Clear filters and try again
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Recently Viewed Cards */}
+          {!query && recentLoaded && recentCards.length > 0 && (
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Clock className="w-5 h-5 text-[rgb(var(--accent))]" />
+                  Recently Viewed
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {recentCards.map((card) => (
+                    <Link key={card.id} href={`/cards/${card.id}`}>
+                      <div className="group cursor-pointer">
+                        <div className="aspect-[5/7] relative rounded-lg overflow-hidden bg-secondary">
+                          {card.image_url ? (
+                            <Image
+                              src={card.image_url}
+                              alt={card.name}
+                              fill
+                              className="object-cover group-hover:scale-105 transition-transform duration-200"
+                              sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 16vw"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                              No Image
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm font-medium text-foreground truncate group-hover:text-[rgb(var(--accent))] transition-colors">
+                          {card.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground uppercase">
+                          {card.set_code}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
       ) : (
         <>
           {/* Results count with background fetch indicator */}

@@ -2,8 +2,9 @@
 
 import { useParams } from 'next/navigation';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useRecentlyViewed } from '@/hooks';
 import { ArrowLeft, Package, Plus, X, Heart, ExternalLink, Newspaper } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -77,6 +78,9 @@ export default function CardDetailPage() {
       priority: wantListForm.priority,
       alert_enabled: wantListForm.alert_enabled,
       notes: wantListForm.notes || undefined,
+      alert_on_spike: false,
+      alert_on_supply_low: false,
+      alert_on_price_drop: true,
     }),
     onSuccess: () => {
       setShowAddWantList(false);
@@ -122,6 +126,22 @@ export default function CardDetailPage() {
     enabled: !!cardId,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Track recently viewed cards
+  const { addRecentCard } = useRecentlyViewed();
+
+  // Record this card as recently viewed when data loads
+  useEffect(() => {
+    if (cardDetail?.card) {
+      const { card } = cardDetail;
+      addRecentCard({
+        id: card.id,
+        name: card.name,
+        set_code: card.set_code,
+        image_url: card.image_url_small || card.image_url,
+      });
+    }
+  }, [cardDetail, addRecentCard]);
 
   if (isLoading) return <LoadingPage />;
 
@@ -261,6 +281,41 @@ export default function CardDetailPage() {
               <p className="text-[rgb(var(--muted-foreground))] mt-4 whitespace-pre-line">
                 {card.oracle_text}
               </p>
+            )}
+
+            {/* Format Legality Badges */}
+            {card.legalities && (
+              <div className="mt-4">
+                <p className="text-xs text-[rgb(var(--muted-foreground))] mb-2">Format Legality</p>
+                <div className="flex flex-wrap gap-2">
+                  {['standard', 'pioneer', 'modern', 'legacy', 'commander', 'vintage', 'pauper'].map((format) => {
+                    const status = (card.legalities as Record<string, string>)?.[format];
+                    if (!status) return null;
+                    const isLegal = status === 'legal';
+                    const isBanned = status === 'banned';
+                    const isRestricted = status === 'restricted';
+                    return (
+                      <span
+                        key={format}
+                        className={`px-2 py-1 rounded text-xs font-medium capitalize ${
+                          isLegal
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                            : isBanned
+                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            : isRestricted
+                            ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                            : 'bg-[rgb(var(--muted))]/30 text-[rgb(var(--muted-foreground))] border border-[rgb(var(--border))]'
+                        }`}
+                        title={`${format}: ${status}`}
+                      >
+                        {format}
+                        {isBanned && ' ✕'}
+                        {isRestricted && ' !'}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
 

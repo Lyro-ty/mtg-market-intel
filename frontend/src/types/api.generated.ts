@@ -4,6 +4,29 @@
  */
 
 export interface paths {
+    "/api/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Site Stats
+         * @description Get public site statistics for the landing page.
+         *
+         *     Returns live counts of users, shops, and cards.
+         *     No authentication required.
+         */
+        get: operations["get_site_stats_api_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -205,6 +228,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/discord/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discord Link
+         * @description Initiate Discord account linking.
+         *
+         *     Redirects to Discord OAuth to authorize account linking.
+         *     Requires authentication.
+         */
+        get: operations["discord_link_api_auth_discord_link_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/discord/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discord Callback
+         * @description Handle Discord OAuth callback.
+         *
+         *     Links the Discord account to the user who initiated the flow.
+         */
+        get: operations["discord_callback_api_auth_discord_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/discord/unlink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discord Unlink
+         * @description Unlink Discord account from user.
+         *
+         *     Removes the Discord connection from the authenticated user's account.
+         */
+        delete: operations["discord_unlink_api_auth_discord_unlink_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cards/search": {
         parameters: {
             query?: never;
@@ -219,6 +309,50 @@ export interface paths {
          *     Supports partial matching and optional set filtering.
          */
         get: operations["search_cards_api_cards_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/public/{hashid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Card Public
+         * @description Get card by hashid (public, no auth required).
+         *
+         *     Returns card information without exposing internal database IDs.
+         */
+        get: operations["get_card_public_api_cards_public__hashid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/public/{hashid}/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Card Prices Public
+         * @description Get price history for a card (public, no auth required).
+         *
+         *     Returns price history without exposing internal database IDs.
+         */
+        get: operations["get_card_prices_public_api_cards_public__hashid__prices_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -342,6 +476,123 @@ export interface paths {
          *     Consider using sync=False for background processing if you don't need immediate results.
          */
         post: operations["refresh_card_data_api_cards__card_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/{card_id}/news": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Card News
+         * @description Get news articles that mention a specific card.
+         */
+        get: operations["get_card_news_api_cards__card_id__news_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/{card_id}/buylist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Card Buylist
+         * @description Get buylist prices for a card from vendors.
+         *
+         *     Buylist prices are what vendors will pay to purchase cards from sellers.
+         *     Returns best cash and credit prices, plus spread vs retail price.
+         */
+        get: operations["get_card_buylist_api_cards__card_id__buylist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/{card_id}/buylist/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Card Buylist
+         * @description Trigger on-demand buylist price collection for a card.
+         *
+         *     If sync=True (default), collects buylist prices immediately and returns results.
+         *     If sync=False, dispatches a background task and returns the task ID.
+         */
+        post: operations["refresh_card_buylist_api_cards__card_id__buylist_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/{card_id}/legality-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Card Legality History
+         * @description Get legality change history for a card.
+         *
+         *     Tracks all bans, unbans, and restrictions across all formats.
+         *     Useful for understanding a card's ban history and its price implications.
+         */
+        get: operations["get_card_legality_history_api_cards__card_id__legality_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/{card_id}/debug-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Debug Card Prices
+         * @description Debug endpoint to see raw price data for a card.
+         *
+         *     Returns detailed information about price snapshots including:
+         *     - Snapshot timestamps and ages
+         *     - Price and currency information
+         *     - Marketplace sources
+         *     - Foil status
+         *
+         *     Useful for diagnosing chart data issues.
+         */
+        get: operations["debug_card_prices_api_cards__card_id__debug_prices_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1455,6 +1706,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/want-list/intelligence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Want List With Intelligence
+         * @description Get want list items with market intelligence data.
+         *
+         *     Returns each item with:
+         *     - Current price and comparison to target
+         *     - 7-day price trend
+         *     - Meta share (if tournament data available)
+         *     - Reprint risk score
+         *     - Supply status
+         *     - Buy recommendation
+         */
+        get: operations["get_want_list_with_intelligence_api_want_list_intelligence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/upload": {
         parameters: {
             query?: never;
@@ -1664,6 +1943,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portfolio/intelligence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Portfolio Intelligence
+         * @description Get AI-powered portfolio intelligence insights.
+         *
+         *     Analyzes portfolio composition, risk, and provides suggestions.
+         */
+        get: operations["get_portfolio_intelligence_api_portfolio_intelligence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/saved-searches": {
         parameters: {
             query?: never;
@@ -1716,6 +2017,844 @@ export interface paths {
         patch: operations["update_saved_search_api_saved_searches__search_id__patch"];
         trace?: never;
     };
+    "/api/news": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List News
+         * @description List news articles, newest first.
+         */
+        get: operations["list_news_api_news_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sources
+         * @description List available news sources with article counts.
+         */
+        get: operations["list_sources_api_news_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/{article_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get News Article
+         * @description Get a single news article with card mentions.
+         */
+        get: operations["get_news_article_api_news__article_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spreads/best-buylist-opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Best Buylist Opportunities
+         * @description Find cards with the best buylist-to-retail spreads.
+         *
+         *     A high spread means there's a large difference between what you pay retail
+         *     and what vendors will pay you on buylist. This can indicate:
+         *     - Cards that are undervalued at retail
+         *     - Cards vendors are aggressively buying
+         *     - Good selling opportunities for your collection
+         *
+         *     Returns cards sorted by spread percentage (highest first).
+         */
+        get: operations["get_best_buylist_opportunities_api_spreads_best_buylist_opportunities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spreads/best-selling-opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Best Selling Opportunities
+         * @description Find cards where buylist prices are closest to retail (best for selling).
+         *
+         *     A LOW spread means vendors are paying close to retail price - these are
+         *     the best cards to sell on buylist rather than waiting for a buyer.
+         */
+        get: operations["get_best_selling_opportunities_api_spreads_best_selling_opportunities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spreads/arbitrage-opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Arbitrage Opportunities
+         * @description Find cross-marketplace arbitrage opportunities.
+         *
+         *     Returns cards where the price difference between marketplaces
+         *     is large enough to potentially profit from buying low and selling high.
+         *
+         *     Note: Does not account for fees, shipping, or transaction costs.
+         */
+        get: operations["get_arbitrage_opportunities_api_spreads_arbitrage_opportunities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spreads/market-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Spread Market Summary
+         * @description Get summary statistics for spread analysis.
+         *
+         *     Returns average spreads, arbitrage opportunity counts, etc.
+         */
+        get: operations["get_spread_market_summary_api_spreads_market_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discovery/users-with-my-wants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Users With My Wants
+         * @description Find users who have cards I want.
+         *
+         *     Matches your want list against other users' inventory items
+         *     that are marked as available for trade.
+         *
+         *     Returns users sorted by the number of matching cards (most matches first).
+         */
+        get: operations["get_users_with_my_wants_api_discovery_users_with_my_wants_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discovery/users-who-want-mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Users Who Want Mine
+         * @description Find users who want my available-for-trade cards.
+         *
+         *     Matches your tradeable inventory against other users' want lists.
+         *
+         *     Returns users sorted by the number of matching cards (most matches first).
+         */
+        get: operations["get_users_who_want_mine_api_discovery_users_who_want_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discovery/mutual-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mutual Matches
+         * @description Find users where both parties have what the other wants.
+         *
+         *     This is the best type of match - both users can benefit from a trade.
+         *     These are sorted by total matching cards and balance of the trade.
+         */
+        get: operations["get_mutual_matches_api_discovery_mutual_matches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discovery/trade-details/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Trade Details With User
+         * @description Get detailed trade information with a specific user.
+         *
+         *     Shows exactly which cards can be traded between you and the other user:
+         *     - Cards they have that you want
+         *     - Cards you have that they want
+         *
+         *     Useful for planning a trade proposal.
+         */
+        get: operations["get_trade_details_with_user_api_discovery_trade_details__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discovery/my-tradeable-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Tradeable Cards
+         * @description Get a list of your cards that are available for trade.
+         *
+         *     Also shows how many users want each card, helping you prioritize
+         *     which cards to offer in trades.
+         */
+        get: operations["get_my_tradeable_cards_api_discovery_my_tradeable_cards_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discovery/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discovery Summary
+         * @description Get a summary of your discovery potential.
+         *
+         *     Returns counts of:
+         *     - Your tradeable inventory cards
+         *     - Your want list items
+         *     - Potential trading partners
+         *     - Mutual matches
+         */
+        get: operations["get_discovery_summary_api_discovery_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edhrec/commanders/top": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Top Commanders
+         * @description Get the most popular commanders on EDHREC.
+         *
+         *     Returns commanders sorted by deck count (most popular first).
+         */
+        get: operations["get_top_commanders_api_edhrec_commanders_top_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edhrec/cards/{card_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Card Edhrec Data
+         * @description Get EDHREC usage data for a specific card.
+         *
+         *     Returns deck count, inclusion rate, and synergistic cards.
+         */
+        get: operations["get_card_edhrec_data_api_edhrec_cards__card_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edhrec/commanders/{commander_name}/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Commander Recommendations
+         * @description Get recommended cards for a specific commander.
+         *
+         *     Returns high synergy cards, most-played cards, and new additions.
+         */
+        get: operations["get_commander_recommendations_api_edhrec_commanders__commander_name__recommendations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edhrec/staples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Commander Staples
+         * @description Get Commander staple cards.
+         *
+         *     Optionally filter by color identity. Colors use single letters:
+         *     W=White, U=Blue, B=Black, R=Red, G=Green
+         */
+        get: operations["get_commander_staples_api_edhrec_staples_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Connection Request
+         * @description Send a connection request to another user.
+         *
+         *     You can optionally include a message and reference specific cards.
+         */
+        post: operations["send_connection_request_api_connections_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pending Requests
+         * @description Get pending connection requests sent to the current user.
+         */
+        get: operations["get_pending_requests_api_connections_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/sent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Sent Requests
+         * @description Get connection requests sent by the current user.
+         */
+        get: operations["get_sent_requests_api_connections_sent_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Connections
+         * @description Get list of accepted connections (users you can message).
+         */
+        get: operations["get_connections_api_connections_list_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/{request_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Request
+         * @description Accept a connection request.
+         */
+        post: operations["accept_request_api_connections__request_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Request
+         * @description Decline a connection request.
+         */
+        post: operations["decline_request_api_connections__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Connection
+         * @description Remove an existing connection.
+         */
+        delete: operations["remove_connection_api_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/check/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Connection Status
+         * @description Check connection status with another user.
+         */
+        get: operations["check_connection_status_api_connections_check__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/messages/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Message
+         * @description Send a message to a connected user.
+         *
+         *     You must have an accepted connection to message someone.
+         */
+        post: operations["send_message_api_messages__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/messages/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversations
+         * @description Get list of conversations with last message.
+         */
+        get: operations["get_conversations_api_messages_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/messages/with/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation
+         * @description Get messages with a specific user.
+         *
+         *     Messages are returned in reverse chronological order.
+         *     Use before_id for pagination.
+         */
+        get: operations["get_conversation_api_messages_with__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/messages/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Unread Count
+         * @description Get total unread message count.
+         */
+        get: operations["get_unread_count_api_messages_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/messages/{message_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Message Read
+         * @description Mark a specific message as read.
+         */
+        post: operations["mark_message_read_api_messages__message_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/endorsements/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Endorsements
+         * @description Get all endorsements for a user.
+         */
+        get: operations["get_user_endorsements_api_endorsements_users__user_id__get"];
+        put?: never;
+        /**
+         * Endorse User
+         * @description Endorse another user.
+         *
+         *     You must be connected to endorse someone.
+         *     Valid types: trustworthy, knowledgeable, responsive, fair_trader
+         */
+        post: operations["endorse_user_api_endorsements_users__user_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/endorsements/users/{user_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Endorsement Summary
+         * @description Get endorsement summary for a user.
+         *
+         *     Returns counts by type.
+         */
+        get: operations["get_user_endorsement_summary_api_endorsements_users__user_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/endorsements/users/{user_id}/{endorsement_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Endorsement
+         * @description Remove an endorsement you gave.
+         */
+        delete: operations["remove_endorsement_api_endorsements_users__user_id___endorsement_type__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/endorsements/my-endorsements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Endorsements
+         * @description Get endorsements I've given to others.
+         */
+        get: operations["get_my_endorsements_api_endorsements_my_endorsements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/moderation/users/{user_id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block User
+         * @description Block a user from messaging and connecting.
+         *
+         *     Blocked users cannot send you messages or connection requests.
+         */
+        post: operations["block_user_api_moderation_users__user_id__block_post"];
+        /**
+         * Unblock User
+         * @description Unblock a previously blocked user.
+         */
+        delete: operations["unblock_user_api_moderation_users__user_id__block_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/moderation/blocked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Blocked Users
+         * @description Get list of users you have blocked.
+         */
+        get: operations["get_blocked_users_api_moderation_blocked_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/moderation/users/{user_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report User
+         * @description Report a user for inappropriate behavior.
+         *
+         *     Reports are reviewed by moderators.
+         */
+        post: operations["report_user_api_moderation_users__user_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/moderation/check/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Block Status
+         * @description Check if a user is blocked or has blocked you.
+         */
+        get: operations["check_block_status_api_moderation_check__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/": {
         parameters: {
             query?: never;
@@ -1760,6 +2899,800 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Profile
+         * @description Get current user's profile.
+         *
+         *     Returns all profile fields for the authenticated user.
+         */
+        get: operations["get_my_profile_api_profile_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update My Profile
+         * @description Update current user's profile.
+         *
+         *     Only provided fields will be updated.
+         */
+        patch: operations["update_my_profile_api_profile_me_patch"];
+        trace?: never;
+    };
+    "/api/profile/me/share-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Share Link
+         * @description Get the shareable link for the current user's public profile.
+         *
+         *     Returns the hashid that can be used to share the profile publicly
+         *     without exposing the username.
+         */
+        get: operations["get_my_share_link_api_profile_me_share_link_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile/public/{hashid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Public Profile
+         * @description Get a user's public profile by hashid.
+         *
+         *     Hashids provide privacy - users share their hashid URL rather than username.
+         *     Returns limited profile information visible to other users.
+         */
+        get: operations["get_public_profile_api_profile_public__hashid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Profile
+         * @description Get a user's public profile by username.
+         *
+         *     Returns limited profile information visible to other users.
+         */
+        get: operations["get_user_profile_api_profile__username__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bot/users/by-discord/{discord_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User By Discord Id
+         * @description Look up a user by their Discord ID.
+         *
+         *     Used by the bot to identify users when they run commands.
+         */
+        get: operations["get_user_by_discord_id_api_bot_users_by_discord__discord_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bot/users/{user_id}/portfolio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Portfolio
+         * @description Get a user's portfolio summary for bot display.
+         *
+         *     Returns total value, card count, and top 5 cards by value.
+         */
+        get: operations["get_user_portfolio_api_bot_users__user_id__portfolio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bot/users/{user_id}/wantlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Wantlist
+         * @description Get a user's want list summary for bot display.
+         */
+        get: operations["get_user_wantlist_api_bot_users__user_id__wantlist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bot/users/{user_id}/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Trades
+         * @description Get a user's cards available for trade.
+         */
+        get: operations["get_user_trades_api_bot_users__user_id__trades_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bot/discovery/matches/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find Trade Matches
+         * @description Find potential trade matches for a user.
+         *
+         *     Returns users who have cards the user wants AND want cards the user has.
+         */
+        get: operations["find_trade_matches_api_bot_discovery_matches__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bot/alerts/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pending Alerts
+         * @description Get pending Discord alerts for delivery.
+         *
+         *     Returns undelivered alerts ordered by creation time.
+         *     The bot should call this periodically to fetch new alerts.
+         */
+        get: operations["get_pending_alerts_api_bot_alerts_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bot/alerts/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Alerts Delivered
+         * @description Mark alerts as successfully delivered.
+         *
+         *     Called by the bot after sending alerts to Discord.
+         */
+        post: operations["mark_alerts_delivered_api_bot_alerts_delivered_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bot/alerts/{alert_id}/failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Alert Failed
+         * @description Mark an alert as failed to deliver.
+         *
+         *     Increments the attempt counter and stores the error message.
+         */
+        post: operations["mark_alert_failed_api_bot_alerts__alert_id__failed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Trading Post
+         * @description Register a new Trading Post (LGS).
+         *
+         *     Each user can only have one Trading Post profile.
+         *     Email verification is required before the store goes live.
+         */
+        post: operations["register_trading_post_api_trading_posts_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Trading Post
+         * @description Get the current user's Trading Post profile.
+         */
+        get: operations["get_my_trading_post_api_trading_posts_me_get"];
+        /**
+         * Update My Trading Post
+         * @description Update the current user's Trading Post profile.
+         */
+        put: operations["update_my_trading_post_api_trading_posts_me_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/nearby": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Nearby Trading Posts
+         * @description Find Trading Posts by location.
+         *
+         *     Returns paginated list of stores matching the location criteria.
+         *     By default, only shows email-verified stores.
+         */
+        get: operations["get_nearby_trading_posts_api_trading_posts_nearby_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/{trading_post_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Trading Post
+         * @description Get a Trading Post's public profile.
+         */
+        get: operations["get_trading_post_api_trading_posts__trading_post_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/me/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Events
+         * @description Get events for your Trading Post.
+         */
+        get: operations["get_my_events_api_trading_posts_me_events_get"];
+        put?: never;
+        /**
+         * Create Event
+         * @description Create a new event for your Trading Post.
+         */
+        post: operations["create_event_api_trading_posts_me_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/me/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Event
+         * @description Update an event.
+         */
+        put: operations["update_event_api_trading_posts_me_events__event_id__put"];
+        post?: never;
+        /**
+         * Delete Event
+         * @description Delete an event.
+         */
+        delete: operations["delete_event_api_trading_posts_me_events__event_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/me/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Store Submissions
+         * @description Get incoming quote submissions for your Trading Post.
+         *
+         *     Stores can view and respond to quotes from users.
+         */
+        get: operations["get_store_submissions_api_trading_posts_me_submissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/me/submissions/{submission_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Store Submission Detail
+         * @description Get details of a specific quote submission including card list.
+         */
+        get: operations["get_store_submission_detail_api_trading_posts_me_submissions__submission_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/me/submissions/{submission_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Submission
+         * @description Accept a quote submission at the calculated offer amount.
+         */
+        post: operations["accept_submission_api_trading_posts_me_submissions__submission_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/me/submissions/{submission_id}/counter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Counter Submission
+         * @description Make a counter-offer on a quote submission.
+         */
+        post: operations["counter_submission_api_trading_posts_me_submissions__submission_id__counter_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/me/submissions/{submission_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Submission
+         * @description Decline a quote submission.
+         */
+        post: operations["decline_submission_api_trading_posts_me_submissions__submission_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trading-posts/{trading_post_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Trading Post Events
+         * @description Get upcoming events for a specific Trading Post.
+         */
+        get: operations["get_trading_post_events_api_trading_posts__trading_post_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/nearby": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Nearby Events
+         * @description Find upcoming events near a location.
+         *
+         *     Returns events from verified Trading Posts within the specified timeframe.
+         */
+        get: operations["get_nearby_events_api_events_nearby_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Quote
+         * @description Create a new trade-in quote draft.
+         *
+         *     Users can create quotes to estimate trade-in value before
+         *     submitting to local stores.
+         */
+        post: operations["create_quote_api_quotes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/my": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Quotes
+         * @description Get the current user's trade quotes.
+         */
+        get: operations["get_my_quotes_api_quotes_my_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/{quote_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Quote
+         * @description Get a specific quote with all items.
+         */
+        get: operations["get_quote_api_quotes__quote_id__get"];
+        /**
+         * Update Quote
+         * @description Update quote name or status.
+         */
+        put: operations["update_quote_api_quotes__quote_id__put"];
+        post?: never;
+        /**
+         * Delete Quote
+         * @description Delete a quote (only drafts can be deleted).
+         */
+        delete: operations["delete_quote_api_quotes__quote_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/{quote_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Quote Item
+         * @description Add a card to a quote.
+         */
+        post: operations["add_quote_item_api_quotes__quote_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/{quote_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Quote Item
+         * @description Update a quote item's quantity or condition.
+         */
+        put: operations["update_quote_item_api_quotes__quote_id__items__item_id__put"];
+        post?: never;
+        /**
+         * Delete Quote Item
+         * @description Remove a card from a quote.
+         */
+        delete: operations["delete_quote_item_api_quotes__quote_id__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/{quote_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Import Cards
+         * @description Bulk import cards to a quote.
+         *
+         *     Matches cards by name (and optionally set code).
+         *     Returns count of imported and failed items.
+         */
+        post: operations["bulk_import_cards_api_quotes__quote_id__import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/{quote_id}/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Quote Offers
+         * @description Preview offers from nearby Trading Posts.
+         *
+         *     Shows what each store would pay based on their buylist margin.
+         */
+        get: operations["get_quote_offers_api_quotes__quote_id__offers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/{quote_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Quote
+         * @description Submit a quote to selected Trading Posts.
+         *
+         *     Creates submission records for each store, calculating
+         *     offer based on their buylist margin.
+         */
+        post: operations["submit_quote_api_quotes__quote_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/submissions/my": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Submissions
+         * @description Get the user's quote submissions with status.
+         */
+        get: operations["get_my_submissions_api_quotes_submissions_my_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/submissions/{submission_id}/accept-counter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Counter Offer
+         * @description Accept a store's counter-offer.
+         */
+        post: operations["accept_counter_offer_api_quotes_submissions__submission_id__accept_counter_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quotes/submissions/{submission_id}/decline-counter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Counter Offer
+         * @description Decline a store's counter-offer.
+         */
+        post: operations["decline_counter_offer_api_quotes_submissions__submission_id__decline_counter_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1770,6 +3703,53 @@ export interface components {
          * @enum {string}
          */
         ActionType: "BUY" | "SELL" | "HOLD";
+        /**
+         * AlertDeliveryConfirm
+         * @description Confirmation of alert delivery.
+         */
+        AlertDeliveryConfirm: {
+            /**
+             * Alert Ids
+             * @description IDs of alerts successfully delivered
+             */
+            alert_ids: number[];
+        };
+        /**
+         * ArbitrageOpportunitiesResponse
+         * @description Response for arbitrage opportunities endpoint.
+         */
+        ArbitrageOpportunitiesResponse: {
+            /** Opportunities */
+            opportunities: components["schemas"]["ArbitrageOpportunity"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ArbitrageOpportunity
+         * @description A cross-marketplace arbitrage opportunity.
+         */
+        ArbitrageOpportunity: {
+            /** Card Id */
+            card_id: number;
+            /** Card Name */
+            card_name: string;
+            /** Set Code */
+            set_code: string;
+            /** Image Url */
+            image_url?: string | null;
+            /** Buy Marketplace */
+            buy_marketplace: string;
+            /** Buy Price */
+            buy_price: number;
+            /** Sell Marketplace */
+            sell_marketplace: string;
+            /** Sell Price */
+            sell_price: number;
+            /** Profit */
+            profit: number;
+            /** Profit Pct */
+            profit_pct: number;
+        };
         /**
          * AutocompleteResponse
          * @description Autocomplete response.
@@ -1794,6 +3774,33 @@ export interface components {
             /** Image Url */
             image_url?: string | null;
         };
+        /**
+         * BlockUserCreate
+         * @description Schema for blocking a user.
+         */
+        BlockUserCreate: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * BlockedUserResponse
+         * @description Response for a blocked user.
+         */
+        BlockedUserResponse: {
+            /** Id */
+            id: number;
+            /** Blocked Id */
+            blocked_id: number;
+            /** Blocked Username */
+            blocked_username: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** Body_upload_import_file_api_imports_upload_post */
         Body_upload_import_file_api_imports_upload_post: {
             /**
@@ -1803,6 +3810,134 @@ export interface components {
             file: string;
             /** Platform */
             platform: string;
+        };
+        /**
+         * BotUserResponse
+         * @description User data returned to the bot for linked Discord accounts.
+         */
+        BotUserResponse: {
+            /**
+             * User Id
+             * @description Internal user ID
+             */
+            user_id: number;
+            /**
+             * Username
+             * @description Username on the platform
+             */
+            username: string;
+            /**
+             * Display Name
+             * @description Display name if set
+             */
+            display_name?: string | null;
+            /**
+             * Discord Alerts Enabled
+             * @description Whether Discord alerts are enabled
+             */
+            discord_alerts_enabled: boolean;
+        };
+        /**
+         * BuylistOpportunitiesResponse
+         * @description Response for buylist opportunities endpoint.
+         */
+        BuylistOpportunitiesResponse: {
+            /** Opportunities */
+            opportunities: components["schemas"]["BuylistOpportunity"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * BuylistOpportunity
+         * @description A card with a favorable buylist-to-retail spread.
+         */
+        BuylistOpportunity: {
+            /** Card Id */
+            card_id: number;
+            /** Card Name */
+            card_name: string;
+            /** Set Code */
+            set_code: string;
+            /** Image Url */
+            image_url?: string | null;
+            /** Retail Price */
+            retail_price: number;
+            /** Buylist Price */
+            buylist_price: number;
+            /** Vendor */
+            vendor: string;
+            /** Spread */
+            spread: number;
+            /** Spread Pct */
+            spread_pct: number;
+            /** Credit Price */
+            credit_price?: number | null;
+            /** Credit Spread Pct */
+            credit_spread_pct?: number | null;
+        };
+        /**
+         * BuylistPriceItem
+         * @description Single buylist price from a vendor.
+         */
+        BuylistPriceItem: {
+            /** Vendor */
+            vendor: string;
+            /** Condition */
+            condition: string;
+            /** Is Foil */
+            is_foil: boolean;
+            /** Price */
+            price: number;
+            /** Credit Price */
+            credit_price?: number | null;
+            /** Quantity */
+            quantity?: number | null;
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+        };
+        /**
+         * BuylistRefreshResponse
+         * @description Response for on-demand buylist collection.
+         */
+        BuylistRefreshResponse: {
+            /** Card Id */
+            card_id: number;
+            /** Card Name */
+            card_name: string;
+            /** Prices Found */
+            prices_found: number;
+            /** Task Id */
+            task_id?: string | null;
+            /**
+             * Status
+             * @default completed
+             */
+            status: string;
+        };
+        /**
+         * CardBuylistResponse
+         * @description Buylist prices for a card.
+         */
+        CardBuylistResponse: {
+            /** Card Id */
+            card_id: number;
+            /** Card Name */
+            card_name: string;
+            /** Prices */
+            prices: components["schemas"]["BuylistPriceItem"][];
+            /** Best Cash Price */
+            best_cash_price?: number | null;
+            /** Best Credit Price */
+            best_credit_price?: number | null;
+            /** Spread Vs Retail */
+            spread_vs_retail?: number | null;
+            /** Spread Pct */
+            spread_pct?: number | null;
+            /** Last Updated */
+            last_updated?: string | null;
         };
         /**
          * CardDetailResponse
@@ -1861,6 +3996,36 @@ export interface components {
             latest_snapshot_time?: string | null;
             /** Data Freshness Minutes */
             data_freshness_minutes?: number | null;
+        };
+        /**
+         * CardLegalityHistoryResponse
+         * @description Legality change history for a card.
+         */
+        CardLegalityHistoryResponse: {
+            /** Card Id */
+            card_id: number;
+            /** Card Name */
+            card_name: string;
+            /** Changes */
+            changes: components["schemas"]["LegalityChangeItem"][];
+            /** Total */
+            total: number;
+            /** Has Been Banned */
+            has_been_banned: boolean;
+            /** Currently Banned In */
+            currently_banned_in: string[];
+        };
+        /**
+         * CardMentionResponse
+         * @description A card mentioned in a news article.
+         */
+        CardMentionResponse: {
+            /** Card Id */
+            card_id: number;
+            /** Card Name */
+            card_name: string;
+            /** Context */
+            context?: string | null;
         };
         /**
          * CardMetaResponse
@@ -1938,6 +4103,34 @@ export interface components {
             total_listings?: number | null;
         };
         /**
+         * CardNewsItem
+         * @description News article for card detail page.
+         */
+        CardNewsItem: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Source Display */
+            source_display: string;
+            /** Published At */
+            published_at?: string | null;
+            /** External Url */
+            external_url: string;
+            /** Context */
+            context?: string | null;
+        };
+        /**
+         * CardNewsResponse
+         * @description News articles mentioning a specific card.
+         */
+        CardNewsResponse: {
+            /** Items */
+            items: components["schemas"]["CardNewsItem"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * CardPriceResponse
          * @description Current prices across marketplaces.
          */
@@ -1959,6 +4152,68 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * CardPublicPriceResponse
+         * @description Public price history response.
+         */
+        CardPublicPriceResponse: {
+            /** Hashid */
+            hashid: string;
+            /** Card Name */
+            card_name: string;
+            /**
+             * Prices
+             * @default []
+             */
+            prices: components["schemas"]["PricePoint"][];
+            /** From Date */
+            from_date?: string | null;
+            /** To Date */
+            to_date?: string | null;
+            /**
+             * Data Points
+             * @default 0
+             */
+            data_points: number;
+        };
+        /**
+         * CardPublicResponse
+         * @description Public card response - no internal ID exposed.
+         */
+        CardPublicResponse: {
+            /** Hashid */
+            hashid: string;
+            /** Name */
+            name: string;
+            /** Set Code */
+            set_code: string;
+            /** Set Name */
+            set_name?: string | null;
+            /** Collector Number */
+            collector_number: string;
+            /** Rarity */
+            rarity?: string | null;
+            /** Mana Cost */
+            mana_cost?: string | null;
+            /** Cmc */
+            cmc?: number | null;
+            /** Type Line */
+            type_line?: string | null;
+            /** Oracle Text */
+            oracle_text?: string | null;
+            /** Colors */
+            colors?: string | null;
+            /** Power */
+            power?: string | null;
+            /** Toughness */
+            toughness?: string | null;
+            /** Image Url */
+            image_url?: string | null;
+            /** Image Url Small */
+            image_url_small?: string | null;
+            /** Image Url Large */
+            image_url_large?: string | null;
         };
         /**
          * CardResponse
@@ -1997,6 +4252,10 @@ export interface components {
             image_url?: string | null;
             /** Image Url Small */
             image_url_small?: string | null;
+            /** Legalities */
+            legalities?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * CardSearchResponse
@@ -2038,6 +4297,26 @@ export interface components {
             current_price?: string | null;
         };
         /**
+         * CardUsage
+         * @description Card usage data from EDHREC.
+         */
+        CardUsage: {
+            /** Name */
+            name: string;
+            /** Num Decks */
+            num_decks: number;
+            /** Rank */
+            rank?: number | null;
+            /** Potential Decks */
+            potential_decks: number;
+            /** Inclusion Rate */
+            inclusion_rate: number;
+            /** Synergies */
+            synergies: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
          * CollectionStatsResponse
          * @description Cached collection statistics response.
          */
@@ -2062,6 +4341,48 @@ export interface components {
             last_calculated_at?: string | null;
         };
         /**
+         * Commander
+         * @description Commander data from EDHREC.
+         */
+        Commander: {
+            /** Name */
+            name: string;
+            /** Color Identity */
+            color_identity: string[];
+            /** Num Decks */
+            num_decks: number;
+            /** Rank */
+            rank?: number | null;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * CommanderRecommendations
+         * @description Recommended cards for a commander.
+         */
+        CommanderRecommendations: {
+            /** Commander */
+            commander: string;
+            /** High Synergy */
+            high_synergy: components["schemas"]["SynergyCard"][];
+            /** Top Cards */
+            top_cards: components["schemas"]["app__api__routes__edhrec__TopCard"][];
+            /** New Cards */
+            new_cards: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * CommandersResponse
+         * @description Response for top commanders.
+         */
+        CommandersResponse: {
+            /** Commanders */
+            commanders: components["schemas"]["Commander"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * ConfirmImportRequest
          * @description Request to confirm an import.
          */
@@ -2071,6 +4392,113 @@ export interface components {
              * @default true
              */
             skip_unmatched: boolean;
+        };
+        /**
+         * ConnectionRequestCreate
+         * @description Schema for creating a connection request.
+         */
+        ConnectionRequestCreate: {
+            /** Recipient Id */
+            recipient_id: number;
+            /**
+             * Message
+             * @description Optional message to include with the request
+             */
+            message?: string | null;
+            /**
+             * Card Ids
+             * @description Optional card IDs to reference in the request
+             */
+            card_ids?: number[] | null;
+        };
+        /**
+         * ConnectionRequestListResponse
+         * @description List of connection requests.
+         */
+        ConnectionRequestListResponse: {
+            /** Requests */
+            requests: components["schemas"]["ConnectionRequestResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ConnectionRequestResponse
+         * @description Response schema for a connection request.
+         */
+        ConnectionRequestResponse: {
+            /** Id */
+            id: number;
+            /** Requester Id */
+            requester_id: number;
+            /** Recipient Id */
+            recipient_id: number;
+            /** Message */
+            message?: string | null;
+            /** Card Ids */
+            card_ids?: number[] | null;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Responded At */
+            responded_at?: string | null;
+            requester?: components["schemas"]["ConnectionRequestorInfo"] | null;
+            recipient?: components["schemas"]["ConnectionRequestorInfo"] | null;
+        };
+        /**
+         * ConnectionRequestorInfo
+         * @description Brief info about the requester/recipient.
+         */
+        ConnectionRequestorInfo: {
+            /** Id */
+            id: number;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Location */
+            location?: string | null;
+        };
+        /**
+         * ConversationListResponse
+         * @description List of conversations.
+         */
+        ConversationListResponse: {
+            /** Conversations */
+            conversations: components["schemas"]["ConversationSummary"][];
+        };
+        /**
+         * ConversationSummary
+         * @description Summary of a conversation with another user.
+         */
+        ConversationSummary: {
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Last Message */
+            last_message: string;
+            /**
+             * Last Message At
+             * Format: date-time
+             */
+            last_message_at: string;
+            /** Unread Count */
+            unread_count: number;
         };
         /**
          * DashboardSummary
@@ -2084,9 +4512,9 @@ export interface components {
             /** Total Marketplaces */
             total_marketplaces: number;
             /** Top Gainers */
-            top_gainers: components["schemas"]["TopCard"][];
+            top_gainers: components["schemas"]["app__schemas__dashboard__TopCard"][];
             /** Top Losers */
-            top_losers: components["schemas"]["TopCard"][];
+            top_losers: components["schemas"]["app__schemas__dashboard__TopCard"][];
             /** Highest Spreads */
             highest_spreads: components["schemas"]["MarketSpread"][];
             /** Total Recommendations */
@@ -2187,6 +4615,185 @@ export interface components {
             /** Card Count */
             card_count?: number | null;
         };
+        /**
+         * DiscoveryResponse
+         * @description Response for discovery endpoints.
+         */
+        DiscoveryResponse: {
+            /** Matches */
+            matches: {
+                [key: string]: unknown;
+            }[];
+            /** Total */
+            total: number;
+        };
+        /**
+         * EndorsementCreate
+         * @description Schema for creating an endorsement.
+         */
+        EndorsementCreate: {
+            /**
+             * Endorsement Type
+             * @description Type: trustworthy, knowledgeable, responsive, fair_trader
+             */
+            endorsement_type: string;
+            /** Comment */
+            comment?: string | null;
+        };
+        /**
+         * EndorsementResponse
+         * @description Response schema for an endorsement.
+         */
+        EndorsementResponse: {
+            /** Id */
+            id: number;
+            /** Endorser Id */
+            endorser_id: number;
+            /** Endorsed Id */
+            endorsed_id: number;
+            /** Endorsement Type */
+            endorsement_type: string;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            endorser?: components["schemas"]["ConnectionRequestorInfo"] | null;
+        };
+        /**
+         * EndorsementSummary
+         * @description Summary of endorsements for a user.
+         */
+        EndorsementSummary: {
+            /**
+             * Trustworthy
+             * @default 0
+             */
+            trustworthy: number;
+            /**
+             * Knowledgeable
+             * @default 0
+             */
+            knowledgeable: number;
+            /**
+             * Responsive
+             * @default 0
+             */
+            responsive: number;
+            /**
+             * Fair Trader
+             * @default 0
+             */
+            fair_trader: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * EventCreate
+         * @description Schema for creating a trading post event.
+         */
+        EventCreate: {
+            /** Title */
+            title: string;
+            /** Description */
+            description?: string | null;
+            event_type: components["schemas"]["EventType"];
+            /** Format */
+            format?: string | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** End Time */
+            end_time?: string | null;
+            /** Entry Fee */
+            entry_fee?: number | string | null;
+            /** Max Players */
+            max_players?: number | null;
+        };
+        /**
+         * EventListResponse
+         * @description Paginated list of events.
+         */
+        EventListResponse: {
+            /** Items */
+            items: components["schemas"]["EventResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * EventResponse
+         * @description Schema for event response.
+         */
+        EventResponse: {
+            /** Id */
+            id: number;
+            /** Trading Post Id */
+            trading_post_id: number;
+            /** Title */
+            title: string;
+            /** Description */
+            description?: string | null;
+            /** Event Type */
+            event_type: string;
+            /** Format */
+            format?: string | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** End Time */
+            end_time?: string | null;
+            /** Entry Fee */
+            entry_fee?: string | null;
+            /** Max Players */
+            max_players?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            trading_post?: components["schemas"]["TradingPostPublic"] | null;
+        };
+        /**
+         * EventType
+         * @description Types of trading post events.
+         * @enum {string}
+         */
+        EventType: "tournament" | "sale" | "release" | "meetup";
+        /**
+         * EventUpdate
+         * @description Schema for updating an event.
+         */
+        EventUpdate: {
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            event_type?: components["schemas"]["EventType"] | null;
+            /** Format */
+            format?: string | null;
+            /** Start Time */
+            start_time?: string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Entry Fee */
+            entry_fee?: number | string | null;
+            /** Max Players */
+            max_players?: number | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2222,7 +4829,9 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
             /** Preview Data */
-            preview_data?: Record<string, never> | null;
+            preview_data?: {
+                [key: string]: unknown;
+            } | null;
             /** Started At */
             started_at?: string | null;
             /** Completed At */
@@ -2393,6 +5002,11 @@ export interface components {
             acquisition_source?: string | null;
             /** Notes */
             notes?: string | null;
+            /**
+             * Available For Trade
+             * @default false
+             */
+            available_for_trade: boolean;
             /** Card Id */
             card_id: number;
         };
@@ -2431,6 +5045,11 @@ export interface components {
             acquisition_source?: string | null;
             /** Notes */
             notes?: string | null;
+            /**
+             * Available For Trade
+             * @default false
+             */
+            available_for_trade: boolean;
             /** Id */
             id: number;
             /** Card Id */
@@ -2486,6 +5105,8 @@ export interface components {
             acquisition_source?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Available For Trade */
+            available_for_trade?: boolean | null;
         };
         /**
          * InventoryListResponse
@@ -2689,6 +5310,33 @@ export interface components {
          */
         InventoryUrgency: "LOW" | "NORMAL" | "HIGH" | "CRITICAL";
         /**
+         * LegalityChangeItem
+         * @description Single legality change record.
+         */
+        LegalityChangeItem: {
+            /** Id */
+            id: number;
+            /** Format */
+            format: string;
+            /** Old Status */
+            old_status: string | null;
+            /** New Status */
+            new_status: string;
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+            /** Source */
+            source?: string | null;
+            /** Announcement Url */
+            announcement_url?: string | null;
+            /** Is Ban */
+            is_ban: boolean;
+            /** Is Unban */
+            is_unban: boolean;
+        };
+        /**
          * MTGSetList
          * @description Paginated list of MTG sets.
          */
@@ -2820,6 +5468,47 @@ export interface components {
             default_currency: string;
         };
         /**
+         * MessageCreate
+         * @description Schema for creating a message.
+         */
+        MessageCreate: {
+            /** Recipient Id */
+            recipient_id: number;
+            /** Content */
+            content: string;
+        };
+        /**
+         * MessageListResponse
+         * @description Paginated message list.
+         */
+        MessageListResponse: {
+            /** Messages */
+            messages: components["schemas"]["MessageResponse"][];
+            /** Has More */
+            has_more: boolean;
+        };
+        /**
+         * MessageResponse
+         * @description Response schema for a message.
+         */
+        MessageResponse: {
+            /** Id */
+            id: number;
+            /** Sender Id */
+            sender_id: number;
+            /** Recipient Id */
+            recipient_id: number;
+            /** Content */
+            content: string;
+            /** Read At */
+            read_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
          * MetaCardsListResponse
          * @description Paginated meta cards list.
          */
@@ -2886,7 +5575,81 @@ export interface components {
              */
             achieved_at: string;
             /** Extra Data */
-            extra_data?: Record<string, never> | null;
+            extra_data?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * NewsArticleDetail
+         * @description Full news article with card mentions.
+         */
+        NewsArticleDetail: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Source */
+            source: string;
+            /**
+             * Source Display
+             * @description Human-friendly source name
+             */
+            source_display: string;
+            /** Published At */
+            published_at?: string | null;
+            /** External Url */
+            external_url: string;
+            /** Summary */
+            summary?: string | null;
+            /** Author */
+            author?: string | null;
+            /** Category */
+            category?: string | null;
+            /**
+             * Card Mentions
+             * @default []
+             */
+            card_mentions: components["schemas"]["CardMentionResponse"][];
+        };
+        /**
+         * NewsArticleListItem
+         * @description News article in list view with mention count.
+         */
+        NewsArticleListItem: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Source */
+            source: string;
+            /**
+             * Source Display
+             * @description Human-friendly source name
+             */
+            source_display: string;
+            /** Published At */
+            published_at?: string | null;
+            /** External Url */
+            external_url: string;
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Card Mention Count
+             * @default 0
+             */
+            card_mention_count: number;
+        };
+        /**
+         * NewsListResponse
+         * @description Paginated list of news articles.
+         */
+        NewsListResponse: {
+            /** Items */
+            items: components["schemas"]["NewsArticleListItem"][];
+            /** Total */
+            total: number;
+            /** Has More */
+            has_more: boolean;
         };
         /**
          * NotificationList
@@ -2920,7 +5683,9 @@ export interface components {
             /** Card Id */
             card_id?: number | null;
             /** Extra Data */
-            extra_data?: Record<string, never> | null;
+            extra_data?: {
+                [key: string]: unknown;
+            } | null;
             /** Read */
             read: boolean;
             /** Read At */
@@ -2952,6 +5717,60 @@ export interface components {
             new_password: string;
         };
         /**
+         * PendingAlert
+         * @description Alert pending delivery to Discord.
+         */
+        PendingAlert: {
+            /** Alert Id */
+            alert_id: number;
+            /** User Id */
+            user_id: number;
+            /** Discord Id */
+            discord_id: string;
+            /**
+             * Alert Type
+             * @description Type: price_alert, price_spike, etc.
+             */
+            alert_type: string;
+            /** Title */
+            title: string;
+            /** Message */
+            message: string;
+            /** Card Id */
+            card_id?: number | null;
+            /** Card Name */
+            card_name?: string | null;
+            /** Current Price */
+            current_price?: string | null;
+            /** Target Price */
+            target_price?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * PortfolioCard
+         * @description Card in portfolio summary.
+         */
+        PortfolioCard: {
+            /** Card Id */
+            card_id: number;
+            /** Name */
+            name: string;
+            /** Set Code */
+            set_code: string;
+            /** Quantity */
+            quantity: number;
+            /** Current Price */
+            current_price: string;
+            /** Total Value */
+            total_value: string;
+            /** Change 24H Pct */
+            change_24h_pct?: number | null;
+        };
+        /**
          * PortfolioHistoryResponse
          * @description Response for portfolio history.
          */
@@ -2960,6 +5779,50 @@ export interface components {
             snapshots: components["schemas"]["PortfolioSnapshotResponse"][];
             /** Days */
             days: number;
+        };
+        /**
+         * PortfolioIntelligence
+         * @description Portfolio intelligence insights.
+         */
+        PortfolioIntelligence: {
+            /** Health Score */
+            health_score: number;
+            /** Health Factors */
+            health_factors: {
+                [key: string]: unknown;
+            }[];
+            /** Diversification Score */
+            diversification_score: number;
+            /** Format Breakdown */
+            format_breakdown: {
+                [key: string]: number;
+            };
+            /** Color Breakdown */
+            color_breakdown: {
+                [key: string]: number;
+            };
+            /** Rarity Breakdown */
+            rarity_breakdown: {
+                [key: string]: number;
+            };
+            /** Volatility Score */
+            volatility_score: number;
+            /** Concentration Risk */
+            concentration_risk: number;
+            /** Reprint Risk Cards */
+            reprint_risk_cards: {
+                [key: string]: unknown;
+            }[];
+            /** Bullish Signals */
+            bullish_signals: number;
+            /** Bearish Signals */
+            bearish_signals: number;
+            /** Active Alerts */
+            active_alerts: number;
+            /** Suggestions */
+            suggestions: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * PortfolioSnapshotResponse
@@ -2991,11 +5854,53 @@ export interface components {
             /** Value Change Pct 30D */
             value_change_pct_30d?: number | null;
             /** Breakdown */
-            breakdown?: Record<string, never> | null;
+            breakdown?: {
+                [key: string]: unknown;
+            } | null;
             /** Top Gainers */
-            top_gainers?: Record<string, never>[] | null;
+            top_gainers?: {
+                [key: string]: unknown;
+            }[] | null;
             /** Top Losers */
-            top_losers?: Record<string, never>[] | null;
+            top_losers?: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        /**
+         * PortfolioSummary
+         * @description Summary of a user's portfolio for bot display.
+         */
+        PortfolioSummary: {
+            /**
+             * Total Value
+             * @description Total portfolio value in USD
+             */
+            total_value: string;
+            /**
+             * Total Cards
+             * @description Total number of cards
+             */
+            total_cards: number;
+            /**
+             * Unique Cards
+             * @description Number of unique cards
+             */
+            unique_cards: number;
+            /**
+             * Change 24H
+             * @description 24h value change
+             */
+            change_24h?: string | null;
+            /**
+             * Change 24H Pct
+             * @description 24h change percentage
+             */
+            change_24h_pct?: number | null;
+            /**
+             * Top Cards
+             * @description Top 5 cards by value
+             */
+            top_cards?: components["schemas"]["PortfolioCard"][];
         };
         /**
          * PortfolioSummaryResponse
@@ -3027,9 +5932,13 @@ export interface components {
             /** Value Change Pct 30D */
             value_change_pct_30d?: number | null;
             /** Top Gainers */
-            top_gainers?: Record<string, never>[] | null;
+            top_gainers?: {
+                [key: string]: unknown;
+            }[] | null;
             /** Top Losers */
-            top_losers?: Record<string, never>[] | null;
+            top_losers?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /**
          * PricePoint
@@ -3064,6 +5973,268 @@ export interface components {
             condition?: string | null;
             /** Price Foil */
             price_foil?: number | null;
+        };
+        /**
+         * ProfileResponse
+         * @description Profile response schema.
+         */
+        ProfileResponse: {
+            /** Id */
+            id: number;
+            /** Email */
+            email: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Bio */
+            bio?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Discord Id */
+            discord_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Active At */
+            last_active_at?: string | null;
+        };
+        /**
+         * ProfileUpdate
+         * @description Schema for updating user profile.
+         */
+        ProfileUpdate: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Bio */
+            bio?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+        };
+        /**
+         * PublicProfileResponse
+         * @description Public profile response - limited fields for other users.
+         */
+        PublicProfileResponse: {
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Bio */
+            bio?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hashid */
+            hashid?: string | null;
+            /**
+             * Cards For Trade
+             * @default 0
+             */
+            cards_for_trade: number;
+        };
+        /**
+         * QuoteBulkImport
+         * @description Schema for bulk importing cards to a quote.
+         */
+        QuoteBulkImport: {
+            /** Items */
+            items: components["schemas"]["QuoteBulkImportItem"][];
+        };
+        /**
+         * QuoteBulkImportItem
+         * @description Single item in a bulk import.
+         */
+        QuoteBulkImportItem: {
+            /** Card Name */
+            card_name: string;
+            /** Set Code */
+            set_code?: string | null;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: number;
+            /**
+             * Condition
+             * @default NM
+             */
+            condition: string;
+        };
+        /**
+         * QuoteBulkImportResult
+         * @description Result of bulk import operation.
+         */
+        QuoteBulkImportResult: {
+            /** Imported */
+            imported: number;
+            /** Failed */
+            failed: number;
+            /**
+             * Errors
+             * @default []
+             */
+            errors: string[];
+        };
+        /**
+         * QuoteCreate
+         * @description Schema for creating a new trade quote.
+         */
+        QuoteCreate: {
+            /**
+             * Name
+             * @description Optional name for the quote
+             */
+            name?: string | null;
+        };
+        /**
+         * QuoteItemCreate
+         * @description Schema for adding a card to a quote.
+         */
+        QuoteItemCreate: {
+            /** Card Id */
+            card_id: number;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: number;
+            /**
+             * Condition
+             * @default NM
+             */
+            condition: string;
+        };
+        /**
+         * QuoteItemResponse
+         * @description Schema for quote item response.
+         */
+        QuoteItemResponse: {
+            /** Id */
+            id: number;
+            /** Card Id */
+            card_id: number;
+            /** Card Name */
+            card_name: string;
+            /** Set Code */
+            set_code?: string | null;
+            /** Quantity */
+            quantity: number;
+            /** Condition */
+            condition: string;
+            /** Market Price */
+            market_price?: string | null;
+            /** Line Total */
+            line_total?: string | null;
+        };
+        /**
+         * QuoteItemUpdate
+         * @description Schema for updating a quote item.
+         */
+        QuoteItemUpdate: {
+            /** Quantity */
+            quantity?: number | null;
+            /** Condition */
+            condition?: string | null;
+        };
+        /**
+         * QuoteListResponse
+         * @description Paginated list of quotes.
+         */
+        QuoteListResponse: {
+            /** Items */
+            items: components["schemas"]["QuoteResponse"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /**
+         * QuoteOffersPreview
+         * @description Preview of offers from nearby stores.
+         */
+        QuoteOffersPreview: {
+            /** Quote Id */
+            quote_id: number;
+            /** Total Market Value */
+            total_market_value: string;
+            /** Offers */
+            offers: components["schemas"]["StoreOffer"][];
+        };
+        /**
+         * QuoteResponse
+         * @description Schema for quote response.
+         */
+        QuoteResponse: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status: string;
+            /** Total Market Value */
+            total_market_value?: string | null;
+            /**
+             * Item Count
+             * @default 0
+             */
+            item_count: number;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["QuoteItemResponse"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * QuoteStatus
+         * @description Status of a trade quote.
+         * @enum {string}
+         */
+        QuoteStatus: "draft" | "submitted" | "completed" | "expired";
+        /**
+         * QuoteSubmit
+         * @description Schema for submitting a quote to stores.
+         */
+        QuoteSubmit: {
+            /** Trading Post Ids */
+            trading_post_ids: number[];
+            /** Message */
+            message?: string | null;
+        };
+        /**
+         * QuoteUpdate
+         * @description Schema for updating a quote.
+         */
+        QuoteUpdate: {
+            /** Name */
+            name?: string | null;
+            status?: components["schemas"]["QuoteStatus"] | null;
         };
         /**
          * RecommendationListResponse
@@ -3154,22 +6325,6 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Outcome Evaluated At */
-            outcome_evaluated_at?: string | null;
-            /** Outcome Price End */
-            outcome_price_end?: number | null;
-            /** Outcome Price Peak */
-            outcome_price_peak?: number | null;
-            /** Outcome Price Peak At */
-            outcome_price_peak_at?: string | null;
-            /** Accuracy Score End */
-            accuracy_score_end?: number | null;
-            /** Accuracy Score Peak */
-            accuracy_score_peak?: number | null;
-            /** Actual Profit Pct End */
-            actual_profit_pct_end?: number | null;
-            /** Actual Profit Pct Peak */
-            actual_profit_pct_peak?: number | null;
         };
         /**
          * RecommendationSummary
@@ -3187,6 +6342,16 @@ export interface components {
             /** Potential Profit Pct */
             potential_profit_pct?: number | null;
         };
+        /**
+         * ReportUserCreate
+         * @description Schema for reporting a user.
+         */
+        ReportUserCreate: {
+            /** Reason */
+            reason: string;
+            /** Details */
+            details?: string | null;
+        };
         /** RunRecommendationsRequest */
         RunRecommendationsRequest: {
             /** Item Ids */
@@ -3202,7 +6367,9 @@ export interface components {
             /** Query */
             query?: string | null;
             /** Filters */
-            filters?: Record<string, never> | null;
+            filters?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Alert Enabled
              * @default false
@@ -3235,7 +6402,9 @@ export interface components {
             /** Query */
             query?: string | null;
             /** Filters */
-            filters?: Record<string, never> | null;
+            filters?: {
+                [key: string]: unknown;
+            } | null;
             /** Alert Enabled */
             alert_enabled: boolean;
             /** Alert Frequency */
@@ -3259,7 +6428,9 @@ export interface components {
             /** Query */
             query?: string | null;
             /** Filters */
-            filters?: Record<string, never> | null;
+            filters?: {
+                [key: string]: unknown;
+            } | null;
             /** Alert Enabled */
             alert_enabled?: boolean | null;
             alert_frequency?: components["schemas"]["SearchAlertFrequency"] | null;
@@ -3373,7 +6544,9 @@ export interface components {
          */
         SettingsResponse: {
             /** Settings */
-            settings: Record<string, never>;
+            settings: {
+                [key: string]: unknown;
+            };
             /**
              * Enabled Marketplaces
              * @default []
@@ -3463,7 +6636,9 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Details */
-            details?: Record<string, never> | null;
+            details?: {
+                [key: string]: unknown;
+            } | null;
             /** Llm Insight */
             llm_insight?: string | null;
             /** Llm Provider */
@@ -3500,6 +6675,18 @@ export interface components {
             similar_cards: components["schemas"]["SearchResult"][];
         };
         /**
+         * SiteStats
+         * @description Public site statistics for the landing page.
+         */
+        SiteStats: {
+            /** Seekers */
+            seekers: number;
+            /** Trading Posts */
+            trading_posts: number;
+            /** Cards In Vault */
+            cards_in_vault: number;
+        };
+        /**
          * StandingResponse
          * @description Standing with optional decklist summary.
          */
@@ -3525,6 +6712,116 @@ export interface components {
             decklist?: components["schemas"]["DecklistSummary"] | null;
         };
         /**
+         * StapleCard
+         * @description Commander staple card.
+         */
+        StapleCard: {
+            /** Name */
+            name: string;
+            /**
+             * Num Decks
+             * @default 0
+             */
+            num_decks: number;
+            /**
+             * Inclusion
+             * @default 0
+             */
+            inclusion: number;
+        };
+        /**
+         * StoreOffer
+         * @description Preview of what a store would pay for a quote.
+         */
+        StoreOffer: {
+            /** Trading Post Id */
+            trading_post_id: number;
+            /** Store Name */
+            store_name: string;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /**
+             * Is Verified
+             * @default false
+             */
+            is_verified: boolean;
+            /** Buylist Margin */
+            buylist_margin: string;
+            /** Offer Amount */
+            offer_amount: string;
+        };
+        /**
+         * SubmissionCounter
+         * @description Schema for store counter-offer.
+         */
+        SubmissionCounter: {
+            /** Counter Amount */
+            counter_amount: number | string;
+            /** Message */
+            message?: string | null;
+        };
+        /**
+         * SubmissionListResponse
+         * @description List of quote submissions.
+         */
+        SubmissionListResponse: {
+            /** Items */
+            items: components["schemas"]["SubmissionResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * SubmissionResponse
+         * @description Schema for quote submission response.
+         */
+        SubmissionResponse: {
+            /** Id */
+            id: number;
+            /** Quote Id */
+            quote_id: number;
+            /** Trading Post Id */
+            trading_post_id: number;
+            /** Status */
+            status: string;
+            /** Offer Amount */
+            offer_amount: string;
+            /** Counter Amount */
+            counter_amount?: string | null;
+            /** Store Message */
+            store_message?: string | null;
+            /** User Message */
+            user_message?: string | null;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Responded At */
+            responded_at?: string | null;
+            trading_post?: components["schemas"]["TradingPostPublic"] | null;
+            /** Quote Name */
+            quote_name?: string | null;
+            /** Quote Item Count */
+            quote_item_count?: number | null;
+            /** Quote Total Value */
+            quote_total_value?: string | null;
+        };
+        /**
+         * SynergyCard
+         * @description Card with synergy score.
+         */
+        SynergyCard: {
+            /** Name */
+            name: string;
+            /**
+             * Synergy
+             * @default 0
+             */
+            synergy: number;
+        };
+        /**
          * Token
          * @description Schema for access token response.
          */
@@ -3538,29 +6835,6 @@ export interface components {
             token_type: string;
             /** Expires In */
             expires_in: number;
-        };
-        /**
-         * TopCard
-         * @description Card with price change info for dashboard.
-         */
-        TopCard: {
-            /** Card Id */
-            card_id: number;
-            /** Card Name */
-            card_name: string;
-            /** Set Code */
-            set_code: string;
-            /** Image Url */
-            image_url?: string | null;
-            /** Current Price */
-            current_price?: number | null;
-            /** Price Change Pct */
-            price_change_pct: number;
-            /**
-             * Price Change Period
-             * @default 7d
-             */
-            price_change_period: string;
         };
         /**
          * TopMoverCard
@@ -3685,6 +6959,299 @@ export interface components {
             id: number;
         };
         /**
+         * TradeCard
+         * @description A card in a potential trade.
+         */
+        TradeCard: {
+            /** Card Id */
+            card_id: number;
+            /** Name */
+            name: string;
+            /** Set Code */
+            set_code: string;
+            /** Image Url Small */
+            image_url_small?: string | null;
+            /** Quantity */
+            quantity: number;
+            /** Condition */
+            condition: string;
+            /** Is Foil */
+            is_foil: boolean;
+            /** Target Price */
+            target_price?: number | null;
+        };
+        /**
+         * TradeDetailsResponse
+         * @description Detailed trade information between two users.
+         */
+        TradeDetailsResponse: {
+            other_user: components["schemas"]["TradeUser"];
+            /** Cards They Have I Want */
+            cards_they_have_i_want: components["schemas"]["TradeCard"][];
+            /** Cards I Have They Want */
+            cards_i_have_they_want: components["schemas"]["TradeCard"][];
+            trade_summary: components["schemas"]["TradeSummary"];
+        };
+        /**
+         * TradeItem
+         * @description Item available for trade.
+         */
+        TradeItem: {
+            /** Card Id */
+            card_id: number;
+            /** Name */
+            name: string;
+            /** Set Code */
+            set_code: string;
+            /** Quantity */
+            quantity: number;
+            /** Condition */
+            condition: string;
+            /** Is Foil */
+            is_foil: boolean;
+            /** Current Price */
+            current_price?: string | null;
+        };
+        /**
+         * TradeSummary
+         * @description Summary of a potential trade.
+         */
+        TradeSummary: {
+            /** Cards I Can Get */
+            cards_i_can_get: number;
+            /** Cards I Can Give */
+            cards_i_can_give: number;
+            /** Is Mutual */
+            is_mutual: boolean;
+        };
+        /**
+         * TradeUser
+         * @description User info in trade details.
+         */
+        TradeUser: {
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+        };
+        /**
+         * TraderMatch
+         * @description A potential trade match between users.
+         */
+        TraderMatch: {
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
+            /** Discord Id */
+            discord_id?: string | null;
+            /** Discord Username */
+            discord_username?: string | null;
+            /**
+             * Has Cards
+             * @description Cards they have that you want
+             */
+            has_cards?: string[];
+            /**
+             * Wants Cards
+             * @description Cards they want that you have
+             */
+            wants_cards?: string[];
+            /**
+             * Match Score
+             * @description Number of matching cards
+             */
+            match_score: number;
+        };
+        /**
+         * TradingPostCreate
+         * @description Schema for creating a new trading post.
+         */
+        TradingPostCreate: {
+            /** Store Name */
+            store_name: string;
+            /** Description */
+            description?: string | null;
+            /** Address */
+            address?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /**
+             * Country
+             * @default US
+             */
+            country: string;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Hours */
+            hours?: {
+                [key: string]: unknown;
+            } | null;
+            /** Services */
+            services?: string[] | null;
+            /**
+             * Buylist Margin
+             * @description Percentage of market price paid for cards (0.50 = 50%)
+             * @default 0.50
+             */
+            buylist_margin: number | string;
+        };
+        /**
+         * TradingPostListResponse
+         * @description Paginated list of trading posts.
+         */
+        TradingPostListResponse: {
+            /** Items */
+            items: components["schemas"]["TradingPostPublic"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /**
+         * TradingPostPublic
+         * @description Public-facing trading post info (no sensitive data).
+         */
+        TradingPostPublic: {
+            /** Id */
+            id: number;
+            /** Store Name */
+            store_name: string;
+            /** Description */
+            description?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /** Country */
+            country: string;
+            /** Website */
+            website?: string | null;
+            /** Hours */
+            hours?: {
+                [key: string]: unknown;
+            } | null;
+            /** Services */
+            services?: string[] | null;
+            /** Logo Url */
+            logo_url?: string | null;
+            /**
+             * Is Verified
+             * @default false
+             */
+            is_verified: boolean;
+        };
+        /**
+         * TradingPostResponse
+         * @description Schema for trading post response.
+         */
+        TradingPostResponse: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /** Store Name */
+            store_name: string;
+            /** Description */
+            description?: string | null;
+            /** Address */
+            address?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /** Country */
+            country: string;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Hours */
+            hours?: {
+                [key: string]: unknown;
+            } | null;
+            /** Services */
+            services?: string[] | null;
+            /** Logo Url */
+            logo_url?: string | null;
+            /** Buylist Margin */
+            buylist_margin: string;
+            /** Email Verified At */
+            email_verified_at?: string | null;
+            /** Verified At */
+            verified_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Is Verified
+             * @default false
+             */
+            is_verified: boolean;
+            /**
+             * Is Email Verified
+             * @default false
+             */
+            is_email_verified: boolean;
+        };
+        /**
+         * TradingPostUpdate
+         * @description Schema for updating a trading post.
+         */
+        TradingPostUpdate: {
+            /** Store Name */
+            store_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Address */
+            address?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /** Country */
+            country?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Hours */
+            hours?: {
+                [key: string]: unknown;
+            } | null;
+            /** Services */
+            services?: string[] | null;
+            /** Logo Url */
+            logo_url?: string | null;
+            /** Buylist Margin */
+            buylist_margin?: number | string | null;
+        };
+        /**
          * UnreadCountResponse
          * @description Response for unread notification count endpoint.
          */
@@ -3752,6 +7319,22 @@ export interface components {
             last_login?: string | null;
         };
         /**
+         * UserTradeList
+         * @description User's trade list for bot display.
+         */
+        UserTradeList: {
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
+            /** Discord Username */
+            discord_username?: string | null;
+            /** Total For Trade */
+            total_for_trade: number;
+            /** Items */
+            items?: components["schemas"]["TradeItem"][];
+        };
+        /**
          * UserUpdate
          * @description Schema for updating user profile.
          */
@@ -3767,6 +7350,88 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WantListIntelligence
+         * @description Market intelligence data for a want list item.
+         */
+        WantListIntelligence: {
+            /** Current Price */
+            current_price?: string | null;
+            /** Price Vs Target */
+            price_vs_target?: string | null;
+            /** Price Trend 7D */
+            price_trend_7d?: string | null;
+            /** Meta Share */
+            meta_share?: number | null;
+            /** Reprint Risk */
+            reprint_risk?: number | null;
+            /**
+             * Supply Status
+             * @default unknown
+             */
+            supply_status: string;
+            /**
+             * Recommendation
+             * @default hold
+             */
+            recommendation: string;
+        };
+        /**
+         * WantListIntelligenceResponse
+         * @description Paginated want list response with intelligence.
+         */
+        WantListIntelligenceResponse: {
+            /** Items */
+            items: components["schemas"]["WantListItemWithIntelligence"][];
+            /** Total */
+            total: number;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 20
+             */
+            page_size: number;
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+            /**
+             * Buy Now Count
+             * @default 0
+             */
+            buy_now_count: number;
+            /**
+             * Price Alerts Count
+             * @default 0
+             */
+            price_alerts_count: number;
+        };
+        /**
+         * WantListItemBrief
+         * @description Brief want list item for bot display.
+         */
+        WantListItemBrief: {
+            /** Card Id */
+            card_id: number;
+            /** Name */
+            name: string;
+            /** Set Code */
+            set_code: string;
+            /** Target Price */
+            target_price?: string | null;
+            /** Current Price */
+            current_price?: string | null;
+            /**
+             * Alert Triggered
+             * @default false
+             */
+            alert_triggered: boolean;
         };
         /**
          * WantListItemCreate
@@ -3796,6 +7461,29 @@ export interface components {
              * @description Optional notes about this want list item
              */
             notes?: string | null;
+            /**
+             * Alert On Spike
+             * @description Alert when price spikes by threshold percentage
+             * @default false
+             */
+            alert_on_spike: boolean;
+            /**
+             * Alert Threshold Pct
+             * @description Price change threshold % to trigger spike alert (e.g., 15.00 = 15%)
+             */
+            alert_threshold_pct?: number | string | null;
+            /**
+             * Alert On Supply Low
+             * @description Alert when supply drops to low levels
+             * @default false
+             */
+            alert_on_supply_low: boolean;
+            /**
+             * Alert On Price Drop
+             * @description Alert when price drops below target price
+             * @default true
+             */
+            alert_on_price_drop: boolean;
         };
         /**
          * WantListItemResponse
@@ -3825,6 +7513,29 @@ export interface components {
              * @description Optional notes about this want list item
              */
             notes?: string | null;
+            /**
+             * Alert On Spike
+             * @description Alert when price spikes by threshold percentage
+             * @default false
+             */
+            alert_on_spike: boolean;
+            /**
+             * Alert Threshold Pct
+             * @description Price change threshold % to trigger spike alert (e.g., 15.00 = 15%)
+             */
+            alert_threshold_pct?: string | null;
+            /**
+             * Alert On Supply Low
+             * @description Alert when supply drops to low levels
+             * @default false
+             */
+            alert_on_supply_low: boolean;
+            /**
+             * Alert On Price Drop
+             * @description Alert when price drops below target price
+             * @default true
+             */
+            alert_on_price_drop: boolean;
             /** Id */
             id: number;
             /** User Id */
@@ -3847,7 +7558,7 @@ export interface components {
              * Target Price
              * @description Target price to buy at
              */
-            target_price?: (number | string) | null;
+            target_price?: number | string | null;
             /** @description Priority level for this want */
             priority?: components["schemas"]["WantListPriority"] | null;
             /**
@@ -3860,6 +7571,91 @@ export interface components {
              * @description Optional notes about this want list item
              */
             notes?: string | null;
+            /**
+             * Alert On Spike
+             * @description Alert when price spikes by threshold percentage
+             */
+            alert_on_spike?: boolean | null;
+            /**
+             * Alert Threshold Pct
+             * @description Price change threshold % to trigger spike alert
+             */
+            alert_threshold_pct?: number | string | null;
+            /**
+             * Alert On Supply Low
+             * @description Alert when supply drops to low levels
+             */
+            alert_on_supply_low?: boolean | null;
+            /**
+             * Alert On Price Drop
+             * @description Alert when price drops below target price
+             */
+            alert_on_price_drop?: boolean | null;
+        };
+        /**
+         * WantListItemWithIntelligence
+         * @description Want list item with market intelligence data.
+         */
+        WantListItemWithIntelligence: {
+            /** Card Id */
+            card_id: number;
+            /**
+             * Target Price
+             * @description Target price to buy at
+             */
+            target_price: string;
+            /**
+             * @description Priority level for this want
+             * @default medium
+             */
+            priority: components["schemas"]["WantListPriority"];
+            /**
+             * Alert Enabled
+             * @description Whether to send alerts when price drops below target
+             * @default true
+             */
+            alert_enabled: boolean;
+            /**
+             * Notes
+             * @description Optional notes about this want list item
+             */
+            notes?: string | null;
+            /**
+             * Alert On Spike
+             * @description Alert when price spikes by threshold percentage
+             * @default false
+             */
+            alert_on_spike: boolean;
+            /**
+             * Alert Threshold Pct
+             * @description Price change threshold % to trigger spike alert (e.g., 15.00 = 15%)
+             */
+            alert_threshold_pct?: string | null;
+            /**
+             * Alert On Supply Low
+             * @description Alert when supply drops to low levels
+             * @default false
+             */
+            alert_on_supply_low: boolean;
+            /**
+             * Alert On Price Drop
+             * @description Alert when price drops below target price
+             * @default true
+             */
+            alert_on_price_drop: boolean;
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            card: components["schemas"]["CardSummary"];
+            intelligence: components["schemas"]["WantListIntelligence"];
         };
         /**
          * WantListListResponse
@@ -3892,6 +7688,68 @@ export interface components {
          * @enum {string}
          */
         WantListPriority: "low" | "medium" | "high";
+        /**
+         * WantListSummary
+         * @description Summary of a user's want list for bot display.
+         */
+        WantListSummary: {
+            /**
+             * Total Items
+             * @description Total items on want list
+             */
+            total_items: number;
+            /**
+             * Items With Alerts
+             * @description Items with price alerts set
+             */
+            items_with_alerts: number;
+            /**
+             * Alerts Triggered
+             * @description Alerts triggered (target hit)
+             */
+            alerts_triggered: number;
+            /**
+             * Items
+             * @description Want list items
+             */
+            items?: components["schemas"]["WantListItemBrief"][];
+        };
+        /**
+         * TopCard
+         * @description Card with inclusion rate.
+         */
+        app__api__routes__edhrec__TopCard: {
+            /** Name */
+            name: string;
+            /**
+             * Inclusion
+             * @default 0
+             */
+            inclusion: number;
+        };
+        /**
+         * TopCard
+         * @description Card with price change info for dashboard.
+         */
+        app__schemas__dashboard__TopCard: {
+            /** Card Id */
+            card_id: number;
+            /** Card Name */
+            card_name: string;
+            /** Set Code */
+            set_code: string;
+            /** Image Url */
+            image_url?: string | null;
+            /** Current Price */
+            current_price?: number | null;
+            /** Price Change Pct */
+            price_change_pct: number;
+            /**
+             * Price Change Period
+             * @default 7d
+             */
+            price_change_period: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -3901,6 +7759,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_site_stats_api_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteStats"];
+                };
+            };
+        };
+    };
     health_check_api_health_get: {
         parameters: {
             query?: never;
@@ -4166,6 +8044,80 @@ export interface operations {
             };
         };
     };
+    discord_link_api_auth_discord_link_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    discord_callback_api_auth_discord_callback_get: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+                error_description?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discord_unlink_api_auth_discord_unlink_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     search_cards_api_cards_search_get: {
         parameters: {
             query: {
@@ -4189,6 +8141,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_card_public_api_cards_public__hashid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hashid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardPublicResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_card_prices_public_api_cards_public__hashid__prices_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                hashid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardPublicPriceResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4354,9 +8370,182 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": Record<string, never> | null;
+                "application/json": {
+                    [key: string]: unknown;
+                } | null;
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_card_news_api_cards__card_id__news_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                card_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardNewsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_card_buylist_api_cards__card_id__buylist_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by vendor (cardkingdom, etc.) */
+                vendor?: string | null;
+                /** @description Filter by condition (NM, LP, MP, HP) */
+                condition?: string | null;
+            };
+            header?: never;
+            path: {
+                card_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardBuylistResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_card_buylist_api_cards__card_id__buylist_refresh_post: {
+        parameters: {
+            query?: {
+                /** @description Run synchronously (True) or dispatch background task (False) */
+                sync?: boolean;
+            };
+            header?: never;
+            path: {
+                card_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuylistRefreshResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_card_legality_history_api_cards__card_id__legality_history_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by format (modern, standard, legacy, etc.) */
+                format_filter?: string | null;
+            };
+            header?: never;
+            path: {
+                card_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardLegalityHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    debug_card_prices_api_cards__card_id__debug_prices_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum snapshots to return */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                card_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -4740,6 +8929,7 @@ export interface operations {
                 set_code?: string | null;
                 condition?: components["schemas"]["InventoryCondition"] | null;
                 is_foil?: boolean | null;
+                available_for_trade?: boolean | null;
                 min_value?: number | null;
                 max_value?: number | null;
                 sort_by?: string;
@@ -5806,7 +9996,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -5846,7 +10038,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -6081,6 +10275,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_want_list_with_intelligence_api_want_list_intelligence_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                priority?: components["schemas"]["WantListPriority"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WantListIntelligenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -6366,7 +10593,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -6376,6 +10605,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_portfolio_intelligence_api_portfolio_intelligence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioIntelligence"];
                 };
             };
         };
@@ -6528,6 +10777,1175 @@ export interface operations {
             };
         };
     };
+    list_news_api_news_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by source */
+                source?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sources_api_news_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_news_article_api_news__article_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsArticleDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_best_buylist_opportunities_api_spreads_best_buylist_opportunities_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Minimum spread percentage */
+                min_spread_pct?: number;
+                /** @description Minimum retail price to consider */
+                min_price?: number;
+                /** @description Filter by vendor (cardkingdom, etc.) */
+                vendor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuylistOpportunitiesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_best_selling_opportunities_api_spreads_best_selling_opportunities_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Maximum spread percentage (lower = better for selling) */
+                max_spread_pct?: number;
+                /** @description Minimum buylist price */
+                min_buylist?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuylistOpportunitiesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_arbitrage_opportunities_api_spreads_arbitrage_opportunities_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Minimum profit percentage */
+                min_profit_pct?: number;
+                /** @description Minimum absolute profit in USD */
+                min_profit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArbitrageOpportunitiesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_spread_market_summary_api_spreads_market_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_users_with_my_wants_api_discovery_users_with_my_wants_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_users_who_want_mine_api_discovery_users_who_want_mine_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mutual_matches_api_discovery_mutual_matches_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trade_details_with_user_api_discovery_trade_details__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeDetailsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_tradeable_cards_api_discovery_my_tradeable_cards_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_discovery_summary_api_discovery_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_top_commanders_api_edhrec_commanders_top_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandersResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_card_edhrec_data_api_edhrec_cards__card_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardUsage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_commander_recommendations_api_edhrec_commanders__commander_name__recommendations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commander_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommanderRecommendations"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_commander_staples_api_edhrec_staples_get: {
+        parameters: {
+            query?: {
+                /** @description Color identity filter (e.g., 'WU' for Azorius, 'BRG' for Jund) */
+                colors?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StapleCard"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_connection_request_api_connections_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionRequestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pending_requests_api_connections_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionRequestListResponse"];
+                };
+            };
+        };
+    };
+    get_sent_requests_api_connections_sent_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionRequestListResponse"];
+                };
+            };
+        };
+    };
+    get_connections_api_connections_list_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    accept_request_api_connections__request_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_request_api_connections__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_connection_api_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_connection_status_api_connections_check__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_message_api_messages__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversations_api_messages_conversations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationListResponse"];
+                };
+            };
+        };
+    };
+    get_conversation_api_messages_with__user_id__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before_id?: number | null;
+            };
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_unread_count_api_messages_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mark_message_read_api_messages__message_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_endorsements_api_endorsements_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndorsementResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    endorse_user_api_endorsements_users__user_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndorsementCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndorsementResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_endorsement_summary_api_endorsements_users__user_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndorsementSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_endorsement_api_endorsements_users__user_id___endorsement_type__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+                endorsement_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_endorsements_api_endorsements_my_endorsements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    block_user_api_moderation_users__user_id__block_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BlockUserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unblock_user_api_moderation_users__user_id__block_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_blocked_users_api_moderation_blocked_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockedUserResponse"][];
+                };
+            };
+        };
+    };
+    report_user_api_moderation_users__user_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportUserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_block_status_api_moderation_check__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_sessions_api_sessions__get: {
         parameters: {
             query?: never;
@@ -6563,7 +11981,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -6585,7 +12005,1397 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_profile_api_profile_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+        };
+    };
+    update_my_profile_api_profile_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_share_link_api_profile_me_share_link_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_public_profile_api_profile_public__hashid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hashid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_profile_api_profile__username__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_by_discord_id_api_bot_users_by_discord__discord_id__get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Bot-Token": string;
+            };
+            path: {
+                discord_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotUserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_portfolio_api_bot_users__user_id__portfolio_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Bot-Token": string;
+            };
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_wantlist_api_bot_users__user_id__wantlist_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header: {
+                "X-Bot-Token": string;
+            };
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WantListSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_trades_api_bot_users__user_id__trades_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header: {
+                "X-Bot-Token": string;
+            };
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserTradeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    find_trade_matches_api_bot_discovery_matches__user_id__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header: {
+                "X-Bot-Token": string;
+            };
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraderMatch"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pending_alerts_api_bot_alerts_pending_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header: {
+                "X-Bot-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingAlert"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_alerts_delivered_api_bot_alerts_delivered_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Bot-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertDeliveryConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_alert_failed_api_bot_alerts__alert_id__failed_post: {
+        parameters: {
+            query?: {
+                error?: string;
+            };
+            header: {
+                "X-Bot-Token": string;
+            };
+            path: {
+                alert_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_trading_post_api_trading_posts_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TradingPostCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingPostResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_trading_post_api_trading_posts_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingPostResponse"];
+                };
+            };
+        };
+    };
+    update_my_trading_post_api_trading_posts_me_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TradingPostUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingPostResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_nearby_trading_posts_api_trading_posts_nearby_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by city */
+                city?: string | null;
+                /** @description Filter by state */
+                state?: string | null;
+                /** @description Only show email-verified stores */
+                verified_only?: boolean;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingPostListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trading_post_api_trading_posts__trading_post_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trading_post_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingPostPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_events_api_trading_posts_me_events_get: {
+        parameters: {
+            query?: {
+                /** @description Include past events */
+                include_past?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_event_api_trading_posts_me_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_event_api_trading_posts_me_events__event_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_event_api_trading_posts_me_events__event_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_store_submissions_api_trading_posts_me_submissions_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by status */
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_store_submission_detail_api_trading_posts_me_submissions__submission_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                submission_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_submission_api_trading_posts_me_submissions__submission_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                submission_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    counter_submission_api_trading_posts_me_submissions__submission_id__counter_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                submission_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmissionCounter"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_submission_api_trading_posts_me_submissions__submission_id__decline_post: {
+        parameters: {
+            query?: {
+                message?: string | null;
+            };
+            header?: never;
+            path: {
+                submission_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trading_post_events_api_trading_posts__trading_post_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trading_post_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_nearby_events_api_events_nearby_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by city */
+                city?: string | null;
+                /** @description Filter by state */
+                state?: string | null;
+                /** @description Filter by format (modern, standard, commander) */
+                format?: string | null;
+                /** @description Filter by event type */
+                event_type?: string | null;
+                /** @description Days ahead to search */
+                days?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_quote_api_quotes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_quotes_api_quotes_my_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by status */
+                status?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_quote_api_quotes__quote_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_quote_api_quotes__quote_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_quote_api_quotes__quote_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_quote_item_api_quotes__quote_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_quote_item_api_quotes__quote_id__items__item_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: number;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteItemUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_quote_item_api_quotes__quote_id__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: number;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_import_cards_api_quotes__quote_id__import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteBulkImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteBulkImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_quote_offers_api_quotes__quote_id__offers_get: {
+        parameters: {
+            query?: {
+                city?: string | null;
+                state?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                quote_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteOffersPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_quote_api_quotes__quote_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_submissions_api_quotes_submissions_my_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_counter_offer_api_quotes_submissions__submission_id__accept_counter_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                submission_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_counter_offer_api_quotes_submissions__submission_id__decline_counter_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                submission_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

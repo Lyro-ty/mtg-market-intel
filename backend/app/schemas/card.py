@@ -4,7 +4,8 @@ Card-related Pydantic schemas.
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+import json
+from pydantic import BaseModel, Field, field_validator
 
 
 class CardBase(BaseModel):
@@ -49,7 +50,23 @@ class CardResponse(CardBase):
     toughness: Optional[str] = None
     image_url: Optional[str] = None
     image_url_small: Optional[str] = None
-    
+    legalities: Optional[dict] = None
+
+    @field_validator('legalities', mode='before')
+    @classmethod
+    def parse_legalities(cls, v):
+        """Parse legalities from JSON string if needed."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return None
+        return None
+
     class Config:
         from_attributes = True
 

@@ -6,6 +6,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { WebSocketProvider } from '@/contexts/WebSocketContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { KeyboardShortcutsProvider } from '@/components/layout/KeyboardShortcutsProvider';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -26,7 +27,9 @@ export function Providers({ children }: { children: ReactNode }) {
         <ThemeProvider>
           <WebSocketProvider>
             <ErrorBoundary title="Application Error">
-              {children}
+              <KeyboardShortcutsProvider>
+                {children}
+              </KeyboardShortcutsProvider>
             </ErrorBoundary>
           </WebSocketProvider>
         </ThemeProvider>
