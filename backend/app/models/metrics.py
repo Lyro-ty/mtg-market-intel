@@ -52,9 +52,9 @@ class MetricsCardsDaily(Base):
     price_change_7d: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     price_change_30d: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     
-    price_change_pct_1d: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)
-    price_change_pct_7d: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)
-    price_change_pct_30d: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)
+    price_change_pct_1d: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    price_change_pct_7d: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    price_change_pct_30d: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     
     # Moving averages
     ma_7d: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)

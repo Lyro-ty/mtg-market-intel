@@ -897,9 +897,10 @@ async def get_top_movers(
         )
         
         # Minimum thresholds to filter out noise
-        # Require at least 1% change and minimum volume of 3 listings
+        # Require at least 1% change and minimum volume of 1 listing
+        # Note: total_listings reflects marketplace sources, not individual listings
         min_change_pct = 1.0  # At least 1% change
-        min_volume = 3  # At least 3 listings
+        min_volume = 1  # At least 1 marketplace source
         
         # Get top gainers
         gainers_query = select(MetricsCardsDaily, Card).join(
