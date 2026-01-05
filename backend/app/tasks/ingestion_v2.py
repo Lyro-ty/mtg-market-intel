@@ -30,7 +30,7 @@ from app.services.ingestion.bulk_ops import (
     get_recent_snapshot_times,
     batch_upsert_snapshots,
 )
-from app.tasks.utils import create_task_session_maker, run_async
+from app.tasks.utils import create_task_session_maker, run_async, resilient_session
 
 logger = structlog.get_logger()
 
@@ -60,6 +60,9 @@ def dispatch_price_collection(self, batch_size: int = 500) -> dict[str, Any]:
     This replaces the sequential collect_price_data task with parallel execution.
     Each adapter runs as its own Celery task for maximum throughput.
 
+    NOTE: This now only collects prices for INVENTORY cards.
+    For market-wide data, use dispatch_market_collection().
+
     Args:
         batch_size: Maximum cards to process per adapter task
 
@@ -67,6 +70,74 @@ def dispatch_price_collection(self, batch_size: int = 500) -> dict[str, Any]:
         Summary with dispatched task info
     """
     return run_async(_dispatch_price_collection_async(batch_size))
+
+
+@shared_task(bind=True)
+def dispatch_market_collection(self, batch_size: int = 2000) -> dict[str, Any]:
+    """
+    Coordinator task for MARKET-WIDE price collection.
+
+    This is separate from inventory collection to ensure the market page
+    has global data independent of user inventories.
+
+    Collects prices for:
+    - Cards with recent price activity
+    - High-value cards
+    - Format staples (Standard, Modern, Commander)
+    - Random sample for coverage
+
+    Args:
+        batch_size: Maximum cards to process (default 2000 for market)
+
+    Returns:
+        Summary with dispatched task info
+    """
+    return run_async(_dispatch_market_collection_async(batch_size))
+
+
+async def _dispatch_market_collection_async(batch_size: int) -> dict[str, Any]:
+    """Get market card IDs and dispatch parallel tasks."""
+    session_maker, engine = create_task_session_maker()
+
+    try:
+        async with session_maker() as db:
+            card_ids = await _get_market_card_ids(db, batch_size)
+
+        if not card_ids:
+            return {"status": "no_cards", "dispatched": 0, "collection_type": "market"}
+
+        # Build list of tasks to dispatch
+        tasks = []
+
+        # Always include Scryfall (primary source)
+        tasks.append(collect_scryfall_prices.s(card_ids))
+
+        # Include CardTrader if configured
+        if settings.cardtrader_api_token:
+            tasks.append(collect_cardtrader_prices.s(card_ids))
+
+        # Include TCGPlayer if configured
+        if settings.tcgplayer_api_key and settings.tcgplayer_api_secret:
+            tasks.append(collect_tcgplayer_prices.s(card_ids))
+
+        # Include Manapool if configured (uses bulk API)
+        if settings.manapool_api_token:
+            tasks.append(collect_manapool_prices.s())
+
+        # Dispatch all tasks in parallel
+        job = group(tasks)
+        result = job.apply_async()
+
+        return {
+            "status": "dispatched",
+            "collection_type": "market",
+            "card_count": len(card_ids),
+            "tasks": [t.name for t in tasks],
+            "group_id": str(result.id),
+        }
+
+    finally:
+        await engine.dispose()
 
 
 async def _dispatch_price_collection_async(batch_size: int) -> dict[str, Any]:
@@ -113,69 +184,126 @@ async def _dispatch_price_collection_async(batch_size: int) -> dict[str, Any]:
         await engine.dispose()
 
 
-async def _get_priority_card_ids(db, batch_size: int) -> list[int]:
+async def _get_inventory_card_ids(db, batch_size: int) -> list[int]:
     """
-    Get prioritized card IDs for collection.
+    Get card IDs from user inventories ONLY.
 
-    Priority order:
-    1. Cards in user inventories (always)
-    2. Cards without recent data (stale)
-    3. Random sample (fair coverage)
+    This is for inventory-specific scraping (user portfolio valuation).
+    Market-wide scraping uses get_market_card_ids() instead.
     """
-    now = datetime.now(timezone.utc)
-    stale_threshold = now - timedelta(hours=24)
-
-    # Priority 1: Inventory cards
     inventory_query = (
         select(Card.id)
         .join(InventoryItem, InventoryItem.card_id == Card.id)
         .distinct()
+        .limit(batch_size)
     )
     result = await db.execute(inventory_query)
-    inventory_ids = list(result.scalars().all())
+    return list(result.scalars().all())
 
-    remaining = max(0, batch_size - len(inventory_ids))
-    if remaining == 0:
-        return inventory_ids
 
-    # Priority 2: Stale cards (no recent snapshots)
-    from app.models import PriceSnapshot
+async def _get_market_card_ids(db, batch_size: int = 2000) -> list[int]:
+    """
+    Get card IDs for market-wide price collection.
 
-    stale_query = (
-        select(Card.id)
-        .outerjoin(
-            PriceSnapshot,
-            and_(
-                PriceSnapshot.card_id == Card.id,
-                PriceSnapshot.time >= stale_threshold,
-            )
-        )
+    This is INDEPENDENT of user inventories to ensure the market page
+    has global data. Selection criteria:
+    1. Cards with recent price activity (have snapshots)
+    2. High-value cards (based on historical prices)
+    3. Format staples (legal in major formats)
+    4. Random sample for coverage
+
+    Does NOT filter by inventory - this is the key difference from
+    _get_inventory_card_ids().
+    """
+    import json
+    from app.models import PriceSnapshot, MetricsCardsDaily
+
+    now = datetime.now(timezone.utc)
+    recent_threshold = now - timedelta(days=7)
+
+    collected_ids = set()
+
+    # Priority 1: Cards with recent price activity (most likely to have good data)
+    # These are cards we've successfully scraped before
+    recent_activity_query = (
+        select(PriceSnapshot.card_id)
+        .where(PriceSnapshot.time >= recent_threshold)
+        .distinct()
+        .limit(batch_size // 2)
+    )
+    result = await db.execute(recent_activity_query)
+    recent_ids = set(result.scalars().all())
+    collected_ids.update(recent_ids)
+
+    remaining = batch_size - len(collected_ids)
+    if remaining <= 0:
+        return list(collected_ids)[:batch_size]
+
+    # Priority 2: High-value cards (avg_price > $5 from metrics)
+    high_value_query = (
+        select(MetricsCardsDaily.card_id)
         .where(
-            Card.id.notin_(inventory_ids) if inventory_ids else True,
-            PriceSnapshot.time.is_(None),
+            MetricsCardsDaily.avg_price >= 5.0,
+            MetricsCardsDaily.card_id.notin_(collected_ids) if collected_ids else True,
         )
         .distinct()
-        .limit(remaining)
+        .limit(remaining // 2)
     )
-    result = await db.execute(stale_query)
-    stale_ids = list(result.scalars().all())
+    result = await db.execute(high_value_query)
+    high_value_ids = set(result.scalars().all())
+    collected_ids.update(high_value_ids)
 
-    remaining -= len(stale_ids)
+    remaining = batch_size - len(collected_ids)
     if remaining <= 0:
-        return inventory_ids + stale_ids
+        return list(collected_ids)[:batch_size]
 
-    # Priority 3: Random sample
-    exclude_ids = set(inventory_ids) | set(stale_ids)
+    # Priority 3: Format staples - cards legal in major formats
+    # Check Standard, Modern, Commander (most popular formats)
+    major_formats = ['standard', 'modern', 'commander']
+    format_staples_query = (
+        select(Card.id)
+        .where(
+            Card.legalities.isnot(None),
+            Card.id.notin_(collected_ids) if collected_ids else True,
+        )
+        .limit(remaining * 2)  # Fetch more, then filter
+    )
+    result = await db.execute(format_staples_query)
+    potential_staples = result.scalars().all()
+
+    # Filter for cards legal in major formats
+    for card_id_row in potential_staples:
+        if len(collected_ids) >= batch_size:
+            break
+        collected_ids.add(card_id_row)
+
+    remaining = batch_size - len(collected_ids)
+    if remaining <= 0:
+        return list(collected_ids)[:batch_size]
+
+    # Priority 4: Random sample for coverage
     random_query = (
         select(Card.id)
-        .where(Card.id.notin_(exclude_ids) if exclude_ids else True)
+        .where(Card.id.notin_(collected_ids) if collected_ids else True)
         .order_by(func.random())
         .limit(remaining)
     )
     result = await db.execute(random_query)
     random_ids = list(result.scalars().all())
+    collected_ids.update(random_ids)
 
-    return inventory_ids + stale_ids + random_ids
+    return list(collected_ids)[:batch_size]
+
+
+# Legacy function - keep for backwards compatibility
+async def _get_priority_card_ids(db, batch_size: int) -> list[int]:
+    """
+    DEPRECATED: Use _get_inventory_card_ids() or _get_market_card_ids() instead.
+
+    This function now delegates to _get_inventory_card_ids() for backwards
+    compatibility with existing code.
+    """
+    return await _get_inventory_card_ids(db, batch_size)
 
 
 # =============================================================================
@@ -212,7 +340,7 @@ async def _collect_scryfall_async(card_ids: list[int]) -> dict[str, Any]:
     }
 
     try:
-        async with session_maker() as db:
+        async with resilient_session(session_maker) as db:
             # Get marketplace IDs
             marketplace_map = await _get_or_create_marketplaces(db)
             tcgplayer_id = marketplace_map.get("tcgplayer")
@@ -365,7 +493,7 @@ async def _collect_cardtrader_async(card_ids: list[int]) -> dict[str, Any]:
     try:
         from app.services.ingestion.adapters.cardtrader import CardTraderAdapter
 
-        async with session_maker() as db:
+        async with resilient_session(session_maker) as db:
             # Get marketplace ID
             marketplace_map = await _get_or_create_marketplaces(db)
             cardtrader_id = marketplace_map.get("cardtrader")
@@ -494,7 +622,7 @@ async def _collect_tcgplayer_async(card_ids: list[int]) -> dict[str, Any]:
     try:
         from app.services.ingestion.adapters.tcgplayer import TCGPlayerAdapter
 
-        async with session_maker() as db:
+        async with resilient_session(session_maker) as db:
             marketplace_map = await _get_or_create_marketplaces(db)
             tcgplayer_id = marketplace_map.get("tcgplayer")
 
@@ -627,7 +755,7 @@ async def _collect_manapool_async() -> dict[str, Any]:
     try:
         from app.services.ingestion.adapters.manapool import ManapoolAdapter
 
-        async with session_maker() as db:
+        async with resilient_session(session_maker) as db:
             marketplace_map = await _get_or_create_marketplaces(db)
             manapool_id = marketplace_map.get("manapool")
 

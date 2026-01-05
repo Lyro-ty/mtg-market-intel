@@ -128,12 +128,51 @@ services:
     networks:
       - dualcaster-network
 
-  # Celery Worker
-  worker:
+  # Celery Worker - Ingestion (dedicated to price collection)
+  # Isolated from other queues to prevent blocking by failed recommendation tasks
+  worker-ingestion:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ${COMPOSE_PROJECT_NAME:-dualcaster}-worker
+    container_name: ${COMPOSE_PROJECT_NAME:-dualcaster}-worker-ingestion
+    restart: ${RESTART_POLICY:-always}
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - SCRYFALL_BASE_URL=${SCRYFALL_BASE_URL:-https://api.scryfall.com}
+      - CARDTRADER_API_TOKEN=${CARDTRADER_API_TOKEN:-}
+      - CARDTRADER_SECRET_KEY=${CARDTRADER_SECRET_KEY:-}
+      - TCGPLAYER_API_KEY=${TCGPLAYER_API_KEY:-}
+      - TCGPLAYER_API_SECRET=${TCGPLAYER_API_SECRET:-}
+      - MANAPOOL_API_TOKEN=${MANAPOOL_API_TOKEN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A app.tasks.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=ingestion
+      --hostname=ingestion@%h
+    networks:
+      - dualcaster-network
+
+  # Celery Worker - General (analytics, recommendations, default tasks)
+  worker-general:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-dualcaster}-worker-general
     restart: ${RESTART_POLICY:-always}
     environment:
       - POSTGRES_HOST=db
@@ -151,12 +190,6 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-3-haiku-20240307}
-      - SCRYFALL_BASE_URL=${SCRYFALL_BASE_URL:-https://api.scryfall.com}
-      - CARDTRADER_API_TOKEN=${CARDTRADER_API_TOKEN:-}
-      - CARDTRADER_SECRET_KEY=${CARDTRADER_SECRET_KEY:-}
-      - TCGPLAYER_API_KEY=${TCGPLAYER_API_KEY:-}
-      - TCGPLAYER_API_SECRET=${TCGPLAYER_API_SECRET:-}
-      - MANAPOOL_API_TOKEN=${MANAPOOL_API_TOKEN:-}
       - TOPDECK_API_KEY=${TOPDECK_API_KEY:-}
       - NEWSAPI_AI_KEY=${NEWSAPI_AI_KEY:-}
     depends_on:
@@ -167,11 +200,9 @@ services:
     command: >
       celery -A app.tasks.celery_app worker
       --loglevel=info
-      --concurrency=4
-      --queues=default,ingestion,analytics,recommendations
-    # Uncomment for development hot reload (comment out in production)
-    # volumes:
-    #   - ./backend:/app
+      --concurrency=2
+      --queues=default,analytics,recommendations
+      --hostname=general@%h
     networks:
       - dualcaster-network
 

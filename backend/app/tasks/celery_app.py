@@ -59,12 +59,22 @@ celery_app.conf.update(
 
     # Simplified beat schedule for pricing-focused tasks
     beat_schedule={
-        # Parallel price collection: Dispatch parallel adapter tasks every 5 minutes
+        # Inventory price collection: Every 15 minutes
+        # Collects prices for cards in user inventories only
         # Uses optimized bulk operations and Redis caching
-        "ingestion-parallel-collection": {
+        "ingestion-inventory-collection": {
             "task": "app.tasks.ingestion_v2.dispatch_price_collection",
-            "schedule": crontab(minute="*/5"),  # Every 5 minutes
+            "schedule": crontab(minute="*/15"),  # Every 15 minutes
             "args": [500],  # batch_size
+        },
+
+        # Market-wide price collection: Every 30 minutes
+        # Collects prices for market-relevant cards (NOT inventory-dependent)
+        # Ensures market page has global data independent of user inventories
+        "ingestion-market-collection": {
+            "task": "app.tasks.ingestion_v2.dispatch_market_collection",
+            "schedule": crontab(minute="5,35"),  # Every 30 minutes (offset from inventory)
+            "args": [2000],  # batch_size - larger for market coverage
         },
 
         # Bulk price refresh: Download Scryfall bulk data every 12 hours
@@ -121,6 +131,14 @@ celery_app.conf.update(
         "sets-sync": {
             "task": "sync_mtg_sets",
             "schedule": crontab(hour=2, minute=0),  # Daily at 2 AM
+        },
+
+        # Market analytics: Every hour at :45
+        # Computes metrics for market cards (independent of inventory)
+        # Runs after market collection to ensure fresh data
+        "market-analytics": {
+            "task": "app.tasks.analytics.run_market_analytics",
+            "schedule": crontab(minute=45),  # Every hour at :45
         },
 
         # Recommendation generation: Every 6 hours
