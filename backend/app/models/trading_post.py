@@ -16,12 +16,12 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -88,8 +88,8 @@ class TradingPost(Base):
     website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Store details
-    hours: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # {"monday": "10:00-20:00", ...}
-    services: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)  # ['singles', 'tournaments', 'buylist']
+    hours: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {"monday": "10:00-20:00", ...}
+    services: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)  # ['singles', 'tournaments', 'buylist']
     logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Buylist settings
