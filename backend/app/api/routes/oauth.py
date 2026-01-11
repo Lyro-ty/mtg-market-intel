@@ -53,7 +53,7 @@ async def google_login():
     }
 
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
-    query_string = "&".join(f"{k}={v}" for k, v in params.items())
+    query_string = urlencode(params)
 
     return RedirectResponse(url=f"{auth_url}?{query_string}")
 
