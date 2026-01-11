@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy import select, func, and_, or_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError, DBAPIError
 
 from app.core.constants import MAX_SEARCH_LENGTH, MAX_IDS_PER_REQUEST
 from app.core.config import settings
@@ -1205,8 +1206,11 @@ async def _get_inventory_currency_index(
             timeout=settings.db_query_timeout
         )
         rows = result.all()
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, DBAPIError) as e:
+        logger.error(f"Error fetching inventory {currency} index: database error", error=str(e), error_type=type(e).__name__)
+        return []
     except Exception as e:
-        logger.error(f"Error fetching inventory {currency} index", error=str(e))
+        logger.error(f"Error fetching inventory {currency} index: unexpected error", error=str(e), error_type=type(e).__name__)
         return []
     
     # Group by time bucket and calculate weighted average

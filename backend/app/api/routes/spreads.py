@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, text, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError, DBAPIError
 
 from app.db.session import get_db
 from app.models import Card, PriceSnapshot, Marketplace, BuylistSnapshot
@@ -455,8 +456,12 @@ async def get_spread_market_summary(
         row = result.first()
         avg_spread_pct = float(row.avg_spread_pct) if row and row.avg_spread_pct else None
         sample_size = row.sample_size if row else 0
-    except Exception as e:
-        logger.warning("Failed to calculate average spread", error=str(e))
+    except (OperationalError, SQLTimeoutError, DBAPIError) as e:
+        logger.warning("Database error calculating average spread", error=str(e), error_type=type(e).__name__)
+        avg_spread_pct = None
+        sample_size = 0
+    except (ValueError, TypeError) as e:
+        logger.warning("Data parsing error calculating average spread", error=str(e))
         avg_spread_pct = None
         sample_size = 0
 

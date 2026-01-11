@@ -394,8 +394,11 @@ async def _get_currency_index(
             timeout=QUERY_TIMEOUT
         )
         rows = result.all()
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError) as e:
+        logger.error(f"Error fetching {currency} index: database timeout", error=str(e))
+        return []
     except Exception as e:
-        logger.error(f"Error fetching {currency} index", error=str(e))
+        logger.error(f"Error fetching {currency} index", error=str(e), error_type=type(e).__name__)
         return []
     
     if not rows:
