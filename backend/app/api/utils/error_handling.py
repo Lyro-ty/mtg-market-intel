@@ -27,8 +27,7 @@ def is_database_connection_error(error: Exception) -> bool:
         True if error is related to database connection/pool
     """
     error_str = str(error).lower()
-    error_type = type(error).__name__
-    
+
     # Check for connection pool errors
     if "QueuePool" in error_str or "connection pool" in error_str:
         return True

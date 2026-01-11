@@ -646,8 +646,6 @@ class CardTraderAdapter(MarketplaceAdapter):
         prices = []
         for product in products:
             # CardTrader product structure varies, check common fields
-            price_data = None
-            
             # Check for seller_price (most common)
             if "seller_price" in product and product["seller_price"]:
                 price_info = product["seller_price"]

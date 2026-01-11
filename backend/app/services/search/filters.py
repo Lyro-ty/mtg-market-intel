@@ -164,7 +164,7 @@ def build_filter_query(base_query, filters: dict):
     Returns:
         Modified query with filters applied
     """
-    from sqlalchemy import and_, or_
+    from sqlalchemy import or_
     from app.models import Card
 
     if filters.get("colors"):

@@ -10,7 +10,6 @@ import sys
 sys.path.insert(0, "/app")
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_maker
 from app.models import Marketplace

@@ -1,7 +1,7 @@
 """CSV parsers for different collection platforms."""
 import csv
 import io
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from app.models.import_job import ImportPlatform

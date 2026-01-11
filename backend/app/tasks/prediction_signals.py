@@ -5,17 +5,15 @@ Generates price prediction signals using technical analysis of historical price 
 Identifies momentum patterns, trend reversals, and generates buy/sell predictions.
 """
 import json
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
-from typing import Any, Optional
+from datetime import date, datetime, timezone
+from typing import Any
 
 import structlog
 from celery import shared_task
-from sqlalchemy import select, func, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_maker
-from app.models.card import Card
 from app.models.signal import Signal
 from app.tasks.utils import run_async
 
@@ -284,12 +282,12 @@ def _generate_signals_from_indicators(
 
     momentum_7d = indicators.get("momentum_7d", 0)
     momentum_14d = indicators.get("momentum_14d", 0)
-    trend_bullish = indicators.get("trend_bullish", False)
+    _trend_bullish = indicators.get("trend_bullish", False)  # noqa: F841 - reserved for future signals
     relative_position = indicators.get("relative_position", 50)
     is_breakout = indicators.get("is_breakout", False)
     is_breakdown = indicators.get("is_breakdown", False)
     volume_increasing = indicators.get("volume_increasing", False)
-    volatility = indicators.get("volatility", 0)
+    _volatility = indicators.get("volatility", 0)  # noqa: F841 - reserved for future signals
     current_price = indicators.get("current_price", 0)
 
     # Momentum signals
@@ -355,7 +353,7 @@ def _generate_signals_from_indicators(
         })
 
     # Trend reversal signals
-    sma_7 = indicators.get("sma_7", 0)
+    _sma_7 = indicators.get("sma_7", 0)  # noqa: F841 - reserved for future trend signals
     sma_14 = indicators.get("sma_14", 0)
     prev_price = indicators.get("prev_price", 0)
 

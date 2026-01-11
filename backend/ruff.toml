@@ -1,0 +1,22 @@
+# Ruff configuration for MTG Market Intel backend
+
+# Line length - use 120 for readability in modern displays
+line-length = 120
+
+[lint]
+# Enable standard rules
+select = ["E", "F", "W"]
+
+# Ignore certain rules that conflict with SQLAlchemy patterns or are too noisy:
+# E501: line too long (we use 120 char line length)
+# E711: comparison to None (SQLAlchemy needs == None for IS NULL queries)
+# E712: comparison to True/False (SQLAlchemy needs == True/False for SQL generation)
+# E402: module level import not at top (sometimes needed for circular import avoidance)
+# E722: bare except (sometimes needed for catch-all error handling)
+# W293: blank line contains whitespace (noisy, handled by formatters)
+# W291: trailing whitespace (noisy, handled by formatters)
+ignore = ["E501", "E711", "E712", "E402", "E722", "W293", "W291"]
+
+[lint.per-file-ignores]
+# Allow unused imports in __init__.py files (re-exports)
+"__init__.py" = ["F401"]

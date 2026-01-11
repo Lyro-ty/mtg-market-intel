@@ -4,7 +4,6 @@ Aggressive Inventory Recommendation Agent service.
 Generates more aggressive buy/sell/hold recommendations for inventory items.
 Uses lower thresholds and shorter time horizons than the standard market recommendations.
 """
-import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -13,7 +12,7 @@ from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
-    Card, Marketplace, MetricsCardsDaily, Signal, 
+    Card, MetricsCardsDaily, Signal, 
     InventoryItem, InventoryRecommendation, ActionType
 )
 from app.services.llm import get_llm_client
@@ -553,7 +552,7 @@ class InventoryRecommendationAgent:
                 current_price = float(metrics.avg_price) if metrics.avg_price else None
                 
                 rationale = (
-                    f"Bullish trend detected. Hold position for potential further gains."
+                    "Bullish trend detected. Hold position for potential further gains."
                 )
             
             return InventoryRecommendation(

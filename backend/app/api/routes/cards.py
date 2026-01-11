@@ -1,7 +1,6 @@
 """
 Card-related API endpoints.
 """
-import hashlib
 import json
 from datetime import datetime, timedelta, time, timezone
 from typing import Optional
@@ -10,14 +9,13 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.constants import MAX_SEARCH_LENGTH
 
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import Card, PriceSnapshot, Marketplace, MetricsCardsDaily, Signal, Recommendation, CardNewsMention, NewsArticle, BuylistSnapshot, LegalityChange
-from app.core.hashids import encode_card_id, decode_card_id
+from app.core.hashids import decode_card_id
 from app.schemas.card import (
     CardResponse,
     CardSearchResponse,
@@ -41,8 +39,6 @@ from app.tasks.recommendations import generate_card_recommendations
 from app.services.ingestion import ScryfallAdapter
 from app.services.agents.analytics import AnalyticsAgent
 from app.services.agents.recommendation import RecommendationAgent
-from app.services.vectorization.service import VectorizationService
-from app.services.vectorization.ingestion import vectorize_card
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)

@@ -9,7 +9,7 @@ from typing import Any
 
 import structlog
 from celery import shared_task
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from app.models import WantListItem, PriceSnapshot

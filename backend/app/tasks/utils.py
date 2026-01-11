@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
-from functools import wraps
 from typing import Any, Callable, Coroutine, List, Optional, TypeVar
 
 from sqlalchemy.ext.asyncio import (
@@ -340,7 +339,6 @@ async def write_price_snapshots_batch(
     Returns:
         dict with 'written' and 'errors' counts
     """
-    from sqlalchemy import select
     from sqlalchemy.dialects.postgresql import insert
     from app.models.price import PriceSnapshot
 

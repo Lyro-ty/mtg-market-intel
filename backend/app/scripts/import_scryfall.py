@@ -35,7 +35,6 @@ from app.db.session import async_session_maker
 from app.models.card import Card
 from app.models.marketplace import Marketplace
 from app.models.price_snapshot import PriceSnapshot
-from app.services.ingestion.scryfall import ScryfallAdapter
 
 logger = structlog.get_logger()
 

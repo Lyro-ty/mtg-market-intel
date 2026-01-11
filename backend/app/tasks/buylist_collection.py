@@ -4,14 +4,12 @@ Buylist price collection task.
 Collects buylist prices from vendors like Card Kingdom.
 Runs daily at 6 AM since buylist prices change slowly.
 """
-import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
 import structlog
 from celery import shared_task
-from sqlalchemy import select, and_, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
 
 from app.models import Card, PriceSnapshot, InventoryItem, BuylistSnapshot
 from app.services.ingestion.adapters.cardkingdom_buylist import CardKingdomBuylistAdapter

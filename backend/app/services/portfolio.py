@@ -2,13 +2,12 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.card import Card
 from app.models.inventory import InventoryItem
 from app.models.portfolio_snapshot import PortfolioSnapshot
-from app.models.price_snapshot import PriceSnapshot
 
 
 class PortfolioService:

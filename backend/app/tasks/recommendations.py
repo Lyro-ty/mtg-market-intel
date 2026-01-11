@@ -9,7 +9,7 @@ from celery import shared_task
 from sqlalchemy import select, and_
 
 from app.core.utils import parse_setting_value
-from app.models import Card, AppSettings, Recommendation
+from app.models import AppSettings, Recommendation
 from app.models.price_snapshot import PriceSnapshot
 from app.services.agents.recommendation import RecommendationAgent
 from app.services.outcomes.evaluator import OutcomeEvaluator

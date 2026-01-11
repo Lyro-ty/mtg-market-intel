@@ -6,7 +6,7 @@ search, filtering, and retrieval of card metadata.
 """
 from typing import Any, Sequence
 
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.card import Card

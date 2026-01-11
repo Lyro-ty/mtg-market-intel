@@ -10,7 +10,6 @@ Key optimizations:
 3. Redis cache-aside for snapshot timestamps
 4. Batch upserts (500 records per statement)
 """
-import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -18,7 +17,7 @@ from typing import Any
 import structlog
 from celery import group, shared_task
 from redis.asyncio import Redis
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, func
 
 from app.core.config import settings
 from app.core.constants import CardCondition, CardLanguage
@@ -215,7 +214,6 @@ async def _get_market_card_ids(db, batch_size: int = 2000) -> list[int]:
     Does NOT filter by inventory - this is the key difference from
     _get_inventory_card_ids().
     """
-    import json
     from app.models import PriceSnapshot, MetricsCardsDaily
 
     now = datetime.now(timezone.utc)
@@ -259,7 +257,7 @@ async def _get_market_card_ids(db, batch_size: int = 2000) -> list[int]:
 
     # Priority 3: Format staples - cards legal in major formats
     # Check Standard, Modern, Commander (most popular formats)
-    major_formats = ['standard', 'modern', 'commander']
+    _major_formats = ['standard', 'modern', 'commander']  # noqa: F841 - reserved for format filtering
     format_staples_query = (
         select(Card.id)
         .where(

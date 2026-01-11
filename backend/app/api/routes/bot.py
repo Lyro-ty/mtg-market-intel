@@ -6,7 +6,7 @@ by the Discord bot to fetch user data and deliver alerts.
 """
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, List
+from typing import List
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query

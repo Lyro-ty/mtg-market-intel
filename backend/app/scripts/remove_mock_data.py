@@ -253,7 +253,7 @@ async def main():
         # Count mock data
         counts = await count_mock_data(session, mock_mp)
         
-        print(f"\n  Current state:")
+        print("\n  Current state:")
         print(f"    Mock marketplace: {'Yes' if mock_mp else 'No'}")
         print(
             f"    Price snapshots from mock marketplace: {counts['mock_price_snapshots']:,}"
@@ -296,7 +296,7 @@ async def main():
         # Delete mock marketplace (cascades to price_snapshots)
         if mock_mp:
             deleted_counts["marketplace"] = await remove_mock_marketplace(session, mock_mp)
-            print(f"    ✓ Deleted mock marketplace")
+            print("    ✓ Deleted mock marketplace")
 
         # Delete price snapshots from non-real marketplaces
         deleted_counts["price_snapshots"] = await remove_non_real_price_snapshots(

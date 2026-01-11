@@ -17,7 +17,6 @@ from celery import shared_task
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
-import json
 import ijson
 
 from app.models import Card, Marketplace, PriceSnapshot

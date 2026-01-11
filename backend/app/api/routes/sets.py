@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models import MTGSet
-from app.schemas.sets import MTGSetList, MTGSetResponse, SetSearchQuery
+from app.schemas.sets import MTGSetList, MTGSetResponse
 
 router = APIRouter(prefix="/sets", tags=["Sets"])
 

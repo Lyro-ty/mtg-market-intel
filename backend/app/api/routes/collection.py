@@ -4,10 +4,9 @@ Collection statistics and milestones API endpoints.
 All collection endpoints require authentication and return data for the current user.
 """
 from decimal import Decimal
-from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +16,6 @@ from app.models import (
     Card,
     CollectionStats,
     InventoryItem,
-    MTGSet,
     UserMilestone,
 )
 from app.schemas.collection import (

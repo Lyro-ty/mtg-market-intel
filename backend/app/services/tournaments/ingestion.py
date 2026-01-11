@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import structlog
-from sqlalchemy import select, func, and_, case, delete
+from sqlalchemy import select, func, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Card, Tournament, TournamentStanding, Decklist, DecklistCard, CardMetaStats

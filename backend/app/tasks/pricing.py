@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 from celery import shared_task
-from sqlalchemy import select, and_, func, distinct
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings

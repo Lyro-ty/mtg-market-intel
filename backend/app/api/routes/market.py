@@ -8,12 +8,12 @@ from typing import Optional, List, Dict, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy import select, func, desc, and_, or_, case
+from sqlalchemy import select, func, desc, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 
 from app.api.deps import Cache
-from app.core.config import get_settings, settings
+from app.core.config import settings
 from app.db.session import get_db
 from app.models import (
     Card,
@@ -21,7 +21,6 @@ from app.models import (
     PriceSnapshot,
     Marketplace,
 )
-from app.schemas.dashboard import TopCard
 from app.api.utils import (
     handle_database_query,
     get_empty_market_overview_response,
@@ -861,10 +860,8 @@ async def get_top_movers(
     # Determine time window
     if window == "24h":
         change_field = MetricsCardsDaily.price_change_pct_1d
-        period = "1d"
     else:  # 7d
         change_field = MetricsCardsDaily.price_change_pct_7d
-        period = "7d"
     
     try:
         # Get the latest date that actually has price change data

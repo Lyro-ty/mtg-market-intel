@@ -11,7 +11,6 @@ This script checks:
 import asyncio
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, func, and_
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import SessionLocal
 from app.models import PriceSnapshot, Marketplace, Card

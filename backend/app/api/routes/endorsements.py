@@ -3,7 +3,6 @@ User Endorsements API endpoints.
 
 Community-based endorsement system for users.
 """
-from datetime import datetime, timezone
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException

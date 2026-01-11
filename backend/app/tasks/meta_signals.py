@@ -6,7 +6,7 @@ Generates signals based on changes in tournament meta statistics:
 - META_DROP: Card's meta presence significantly decreased
 """
 import json
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any
 
 import structlog
@@ -15,7 +15,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_maker
-from app.models import Card, CardMetaStats, Signal
+from app.models import CardMetaStats, Signal
 from app.tasks.utils import run_async
 
 logger = structlog.get_logger()
@@ -88,8 +88,6 @@ async def _analyze_format(db: AsyncSession, format: str) -> dict[str, int]:
         "meta_drop_signals": 0,
         "top8_spike_signals": 0,
     }
-
-    today = date.today()
 
     # Get all cards with both 7d and 30d stats for this format
     query = select(CardMetaStats).where(

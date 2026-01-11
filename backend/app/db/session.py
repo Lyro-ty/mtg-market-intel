@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import (
 try:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 except ImportError as e:
-    import sys
     raise ImportError(
         f"async_sessionmaker is not available in your SQLAlchemy installation. "
         f"This requires SQLAlchemy 1.4+ (you have an older version).\n"

@@ -15,8 +15,7 @@ import feedparser
 import httpx
 import structlog
 from celery import shared_task
-from sqlalchemy import select, and_
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.session import async_session_maker

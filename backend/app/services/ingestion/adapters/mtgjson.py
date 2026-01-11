@@ -10,12 +10,10 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
 
 import httpx
 import structlog
 
-from app.core.config import settings
 from app.services.ingestion.base import (
     AdapterConfig,
     CardListing,

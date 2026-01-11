@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
-from app.models import NewsArticle, CardNewsMention, Card
+from app.models import NewsArticle, CardNewsMention
 from app.schemas.news import (
     NewsListResponse,
     NewsArticleListItem,

@@ -92,9 +92,10 @@ def build_search_url(
     params: dict[str, Any] | None = None,
 ) -> str:
     """Build a search URL for a marketplace."""
-    # URL encode the card name
-    encoded_name = quote(card_name)
-    
+    # Note: card_name could be used for building search URLs
+    # Currently the base_url is expected to contain the search parameter
+    _ = quote(card_name)  # Reserved for future URL building
+
     # Build query parameters
     query_params = {}
     if params:

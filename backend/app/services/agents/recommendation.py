@@ -8,10 +8,10 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import structlog
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Card, Marketplace, MetricsCardsDaily, Signal, Recommendation, ActionType
+from app.models import Card, MetricsCardsDaily, Signal, Recommendation, ActionType
 from app.services.llm import get_llm_client
 
 logger = structlog.get_logger()
@@ -252,13 +252,13 @@ class RecommendationAgent:
         except Exception:
             if action == ActionType.BUY.value:
                 rationale = (
-                    f"Strong upward momentum detected with 7-day MA above 30-day MA. "
-                    f"Price trend suggests continued growth in the short term."
+                    "Strong upward momentum detected with 7-day MA above 30-day MA. "
+                    "Price trend suggests continued growth in the short term."
                 )
             else:
                 rationale = (
-                    f"Downward momentum detected with 7-day MA below 30-day MA. "
-                    f"Consider selling to avoid further price decline."
+                    "Downward momentum detected with 7-day MA below 30-day MA. "
+                    "Consider selling to avoid further price decline."
                 )
         
         return Recommendation(

@@ -224,7 +224,7 @@ async def get_portfolio_intelligence(
 
     Analyzes portfolio composition, risk, and provides suggestions.
     """
-    from sqlalchemy import text, select, func
+    from sqlalchemy import text, select
     from app.models.inventory import InventoryItem
     from app.models.card import Card
     from app.models.signal import Signal
@@ -257,7 +257,7 @@ async def get_portfolio_intelligence(
 
     # Calculate portfolio totals
     total_value = sum((item[0].current_value or 0) * item[0].quantity for item in items)
-    total_cards = sum(item[0].quantity for item in items)
+    _total_cards = sum(item[0].quantity for item in items)  # noqa: F841 - reserved for future use
     unique_cards = len(items)
 
     # Format breakdown (from card legalities)

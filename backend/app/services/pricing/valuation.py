@@ -1,5 +1,4 @@
 """Inventory valuation service."""
-from typing import Optional
 
 
 class ConditionMultiplier:

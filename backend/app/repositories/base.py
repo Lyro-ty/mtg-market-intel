@@ -7,7 +7,7 @@ implementing common patterns like CRUD operations and query building.
 from typing import Any, Generic, TypeVar, Type, Sequence
 from datetime import datetime
 
-from sqlalchemy import select, func, delete, update
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Base

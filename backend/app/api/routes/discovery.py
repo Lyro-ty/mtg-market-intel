@@ -3,7 +3,6 @@ User Discovery API endpoints.
 
 Helps users find trading partners by matching wants and haves.
 """
-from typing import Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query

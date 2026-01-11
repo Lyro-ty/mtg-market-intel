@@ -3,8 +3,8 @@ Dashboard API endpoints.
 """
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, desc
+from fastapi import APIRouter, Depends
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Cache
@@ -176,7 +176,6 @@ async def _get_highest_spreads(
     
     # Batch fetch all price snapshots for these cards in a single query
     # Get min and max prices per card using subqueries
-    from sqlalchemy import and_
     
     # Get lowest price per card
     lowest_subq = select(

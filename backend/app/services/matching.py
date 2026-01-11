@@ -5,7 +5,6 @@ Helps users find trading partners by matching:
 - Users who have cards I want
 - Users who want cards I have available for trade
 """
-from typing import Optional
 
 import structlog
 from sqlalchemy import text

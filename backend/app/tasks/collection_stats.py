@@ -24,7 +24,6 @@ from app.models import (
     Notification,
     NotificationPriority,
     NotificationType,
-    User,
     UserMilestone,
 )
 from app.tasks.utils import create_task_session_maker, run_async

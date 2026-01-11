@@ -20,12 +20,11 @@ from datetime import datetime
 from typing import Any
 from collections import defaultdict
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from redis.asyncio import Redis
 import structlog
 
 from app.core.config import settings
-from app.api.deps import get_optional_current_user
 from app.models.user import User
 
 logger = structlog.get_logger()

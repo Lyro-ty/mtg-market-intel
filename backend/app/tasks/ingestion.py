@@ -4,8 +4,6 @@ Ingestion tasks for marketplace data collection.
 Focus: Aggressive price data collection from Scryfall and MTGJSON.
 No web scraping - using free, reliable APIs only.
 """
-import asyncio
-import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -18,11 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.constants import CardCondition, CardLanguage
 from app.models import Card, Marketplace, PriceSnapshot, InventoryItem, CardFeatureVector
-from app.services.ingestion import get_adapter, get_all_adapters, ScryfallAdapter
-from app.services.ingestion.base import AdapterConfig
+from app.services.ingestion import ScryfallAdapter
 from app.services.agents.normalization import NormalizationService
 from app.services.vectorization import get_vectorization_service
-from app.services.vectorization.service import VectorizationService
 from app.services.vectorization.ingestion import vectorize_card
 from app.tasks.utils import create_task_session_maker, run_async
 
@@ -839,7 +835,7 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                                     await db.flush()
                                     logger.debug("Manapool progress", snapshots=manapool_snapshots)
 
-                            except Exception as e:
+                            except Exception:
                                 # Individual price errors are non-fatal
                                 continue
 

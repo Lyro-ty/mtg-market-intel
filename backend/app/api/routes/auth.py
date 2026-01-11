@@ -1,7 +1,6 @@
 """
 Authentication API endpoints for user registration, login, and profile management.
 """
-from datetime import timedelta
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -12,7 +11,6 @@ from app.db.session import get_db
 from app.schemas.auth import (
     PasswordChange,
     RefreshTokenRequest,
-    Token,
     TokenResponse,
     UserLogin,
     UserRegister,
@@ -20,10 +18,8 @@ from app.schemas.auth import (
     UserUpdate,
 )
 from app.services.auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
     blacklist_token,
-    create_access_token,
     create_token_pair,
     create_user,
     decode_refresh_token,

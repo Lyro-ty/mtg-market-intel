@@ -4,10 +4,9 @@ Connection Request API endpoints.
 Handles user-to-user connection requests for trading.
 """
 from datetime import datetime, timezone
-from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload

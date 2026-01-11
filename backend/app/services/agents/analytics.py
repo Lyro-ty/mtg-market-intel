@@ -4,8 +4,7 @@ Analytics Agent service.
 Computes market metrics, detects trends, and generates AI-powered insights.
 """
 import json
-from datetime import date, datetime, timedelta
-from decimal import Decimal
+from datetime import date, timedelta
 from typing import Any
 
 import numpy as np

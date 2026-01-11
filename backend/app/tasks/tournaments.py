@@ -3,7 +3,6 @@ Tournament data ingestion tasks.
 
 Fetches tournament results from TopDeck.gg and updates card meta statistics.
 """
-import asyncio
 from typing import Any
 
 import structlog

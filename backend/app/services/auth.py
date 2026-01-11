@@ -11,7 +11,6 @@ Security measures implemented:
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-import secrets
 import uuid
 
 from jose import JWTError, jwt

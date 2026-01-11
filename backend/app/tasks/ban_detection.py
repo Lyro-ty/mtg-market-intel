@@ -5,10 +5,9 @@ Compares card legalities before and after sync to detect bans, unbans,
 and restriction changes. Notifies users who own affected cards.
 """
 import json
-from datetime import datetime, timezone
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_maker

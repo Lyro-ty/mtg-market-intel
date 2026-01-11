@@ -6,7 +6,6 @@ All inventory endpoints require authentication and filter data by the current us
 import asyncio
 import csv
 import io
-import json
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -15,7 +14,7 @@ from typing import Optional, List, Dict, Any
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from sqlalchemy import select, func, and_, or_, case, desc
+from sqlalchemy import select, func, and_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError, DBAPIError
 
@@ -24,8 +23,8 @@ from app.core.config import settings
 
 from app.api.deps import CurrentUser
 from app.db.session import get_db
-from app.models import Card, InventoryItem, InventoryRecommendation, MetricsCardsDaily, PriceSnapshot, Marketplace
-from app.api.utils import is_database_connection_error, interpolate_missing_points
+from app.models import Card, InventoryItem, InventoryRecommendation, MetricsCardsDaily, PriceSnapshot
+from app.api.utils import interpolate_missing_points
 from pydantic import BaseModel, Field
 from app.schemas.inventory import (
     InventoryImportRequest,
@@ -42,7 +41,6 @@ from app.schemas.inventory import (
     InventoryUrgency,
     ActionType,
     InventoryTopMoversResponse,
-    TopMoverCard,
     InventorySummaryResponse,
 )
 from app.services.pricing.valuation import InventoryValuator

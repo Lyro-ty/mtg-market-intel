@@ -327,7 +327,7 @@ class ScryfallAdapter(MarketplaceAdapter):
     async def fetch_set_cards(self, set_code: str) -> list[dict]:
         """Fetch all cards from a specific set."""
         cards = []
-        endpoint = f"/cards/search"
+        endpoint = "/cards/search"
         params = {"q": f"set:{set_code.lower()}", "order": "set"}
         
         while endpoint:

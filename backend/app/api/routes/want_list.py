@@ -472,7 +472,6 @@ async def get_want_list_with_intelligence(
     - Buy recommendation
     """
     from decimal import Decimal as Dec
-    from datetime import datetime, timezone
 
     # Build base query filtered by current user
     query = (

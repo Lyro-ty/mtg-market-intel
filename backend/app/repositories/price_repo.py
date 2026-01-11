@@ -5,8 +5,8 @@ This repository handles all price-related database operations,
 including inserting new snapshots and querying historical data
 from both the hypertable and continuous aggregates.
 """
-from datetime import datetime, timedelta
-from typing import Any, Sequence
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

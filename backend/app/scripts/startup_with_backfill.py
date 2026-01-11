@@ -36,7 +36,7 @@ async def run_migrations():
     """Run database migrations."""
     logger.info("Running database migrations...")
     try:
-        result = subprocess.run(
+        subprocess.run(
             ["alembic", "upgrade", "head"],
             check=True,
             capture_output=True,

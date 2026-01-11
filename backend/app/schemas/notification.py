@@ -6,7 +6,6 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.notification import NotificationPriority, NotificationType
 
 
 class NotificationResponse(BaseModel):

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models import User, Message, BlockedUser
+from app.models import User, Message
 from app.api.routes.connections import check_connection, is_blocked
 from app.schemas.connection import (
     MessageCreate,
