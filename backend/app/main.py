@@ -14,6 +14,7 @@ from app.api import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.request_id import RequestIdMiddleware
 from app.services.ingestion import enable_adapter_caching
 
 # Setup logging
@@ -197,6 +198,10 @@ app.add_middleware(
     same_site="lax",
     https_only=not settings.api_debug,
 )
+
+# Add request ID middleware for distributed tracing
+# Runs before other middleware to ensure request_id is available early
+app.add_middleware(RequestIdMiddleware)
 
 
 # Global exception handler
