@@ -1,14 +1,13 @@
 """
 Token blacklist for secure JWT invalidation.
 
-Implements a Redis-based token blacklist with in-memory fallback.
-Tokens are stored with TTL matching their expiration to auto-cleanup.
+Implements a Redis-based token blacklist. When Redis is unavailable,
+operations fail secure - tokens are treated as potentially blacklisted.
 """
-import time
+import structlog
 from datetime import datetime, timezone
 from typing import Optional
 
-import structlog
 import redis
 
 from app.core.config import settings
@@ -18,20 +17,22 @@ logger = structlog.get_logger()
 
 class TokenBlacklist:
     """
-    Token blacklist implementation using Redis with in-memory fallback.
+    Token blacklist implementation using Redis.
 
-    Uses JTI (JWT ID) as the key and stores until token expiration.
+    SECURITY: No in-memory fallback. When Redis is unavailable:
+    - add() returns False (failed to blacklist)
+    - is_blacklisted() returns True (fail secure - assume token invalid)
     """
 
     def __init__(self):
         self._redis: Optional[redis.Redis] = None
-        self._local_cache: dict[str, float] = {}  # jti -> expiry timestamp
         self._initialized = False
+        self._redis_available = False
 
     def _get_redis(self) -> Optional[redis.Redis]:
         """Get Redis connection, initializing if needed."""
         if self._initialized:
-            return self._redis
+            return self._redis if self._redis_available else None
 
         try:
             self._redis = redis.from_url(
@@ -42,16 +43,18 @@ class TokenBlacklist:
             )
             # Test connection
             self._redis.ping()
+            self._redis_available = True
             logger.info("Token blacklist connected to Redis")
         except Exception as e:
-            logger.warning(
-                "Token blacklist Redis connection failed, using in-memory fallback",
+            logger.error(
+                "Token blacklist Redis connection failed - tokens will be treated as invalid",
                 error=str(e)
             )
             self._redis = None
+            self._redis_available = False
 
         self._initialized = True
-        return self._redis
+        return self._redis if self._redis_available else None
 
     def add(self, jti: str, expires_at: datetime) -> bool:
         """
@@ -62,7 +65,7 @@ class TokenBlacklist:
             expires_at: Token expiration time
 
         Returns:
-            True if successfully blacklisted
+            True if successfully blacklisted, False if failed
         """
         # Calculate TTL
         now = datetime.now(timezone.utc)
@@ -73,56 +76,52 @@ class TokenBlacklist:
             return True
 
         redis_client = self._get_redis()
-        if redis_client:
-            try:
-                # Use Redis SET with EX (expiry)
-                key = f"token_blacklist:{jti}"
-                redis_client.setex(key, ttl_seconds, "1")
-                logger.debug("Token blacklisted in Redis", jti=jti, ttl=ttl_seconds)
-                return True
-            except Exception as e:
-                logger.warning("Failed to blacklist token in Redis", error=str(e))
+        if not redis_client:
+            logger.warning("Cannot blacklist token - Redis unavailable", jti=jti)
+            return False
 
-        # Fallback to in-memory cache
-        self._local_cache[jti] = time.time() + ttl_seconds
-        self._cleanup_local_cache()
-        logger.debug("Token blacklisted in memory", jti=jti, ttl=ttl_seconds)
-        return True
+        try:
+            key = f"token_blacklist:{jti}"
+            redis_client.setex(key, ttl_seconds, "1")
+            logger.debug("Token blacklisted in Redis", jti=jti, ttl=ttl_seconds)
+            return True
+        except Exception as e:
+            logger.error("Failed to blacklist token in Redis", error=str(e), jti=jti)
+            return False
 
     def is_blacklisted(self, jti: str) -> bool:
         """
         Check if a token JTI is blacklisted.
 
+        SECURITY: Fails secure - if Redis unavailable, returns True
+        (assumes token is blacklisted to prevent unauthorized access).
+
         Args:
             jti: JWT ID to check
 
         Returns:
-            True if token is blacklisted
+            True if token is blacklisted OR if check failed (fail secure)
         """
         redis_client = self._get_redis()
-        if redis_client:
-            try:
-                key = f"token_blacklist:{jti}"
-                return redis_client.exists(key) > 0
-            except Exception as e:
-                logger.warning("Failed to check Redis blacklist", error=str(e))
+        if not redis_client:
+            # SECURITY: Fail secure - treat as blacklisted when we can't verify
+            logger.warning(
+                "Cannot verify token blacklist status - Redis unavailable, treating as blacklisted",
+                jti=jti
+            )
+            return True
 
-        # Check in-memory cache
-        if jti in self._local_cache:
-            if time.time() < self._local_cache[jti]:
-                return True
-            else:
-                # Expired, clean up
-                del self._local_cache[jti]
-
-        return False
-
-    def _cleanup_local_cache(self) -> None:
-        """Remove expired entries from local cache."""
-        now = time.time()
-        expired = [jti for jti, expiry in self._local_cache.items() if now >= expiry]
-        for jti in expired:
-            del self._local_cache[jti]
+        try:
+            key = f"token_blacklist:{jti}"
+            return redis_client.exists(key) > 0
+        except Exception as e:
+            # SECURITY: Fail secure on error
+            logger.warning(
+                "Failed to check Redis blacklist - treating as blacklisted",
+                error=str(e),
+                jti=jti
+            )
+            return True
 
 
 # Global blacklist instance
