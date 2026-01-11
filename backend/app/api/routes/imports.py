@@ -93,16 +93,42 @@ async def upload_import_file(
             detail=f"Invalid platform. Supported: {[p.value for p in ImportPlatform]}",
         )
 
-    # Validate file type
+    # Validate file extension
     if not file.filename.endswith(".csv"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only CSV files are supported",
         )
 
+    # Validate content type (MIME type)
+    allowed_content_types = [
+        "text/csv",
+        "text/plain",
+        "application/csv",
+        "application/vnd.ms-excel",
+    ]
+
+    if file.content_type not in allowed_content_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Expected CSV, got {file.content_type}",
+        )
+
     # Read file content
+    content = await file.read()
+
+    # Check first 1KB for non-printable characters (UTF-8 validation)
+    sample = content[:1024]
     try:
-        content = await file.read()
+        sample.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File contains invalid characters. Must be UTF-8 text.",
+        )
+
+    # Decode full content
+    try:
         content_str = content.decode("utf-8")
     except UnicodeDecodeError:
         raise HTTPException(
