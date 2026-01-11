@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { AlertTriangle, TrendingDown, Pause, Clock, DollarSign, Store } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatCurrency, formatRelativeTime } from '@/lib/utils';
+import { formatCurrency, formatRelativeTime, formatPercent } from '@/lib/utils';
 import type { InventoryRecommendation } from '@/types';
 
 interface InventoryRecommendationCardProps {
@@ -128,7 +128,7 @@ export function InventoryRecommendationCard({ recommendation }: InventoryRecomme
                 <div>
                   <span className="text-[rgb(var(--muted-foreground))]">ROI: </span>
                   <span className={`font-bold ${recommendation.roi_from_acquisition >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {recommendation.roi_from_acquisition >= 0 ? '+' : ''}{recommendation.roi_from_acquisition.toFixed(1)}%
+                    {formatPercent(recommendation.roi_from_acquisition, 1)}
                   </span>
                 </div>
               )}

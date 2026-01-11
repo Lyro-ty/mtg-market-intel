@@ -21,7 +21,7 @@ import { PageHeader } from '@/components/ornate/page-header';
 import { PriceChange } from '@/components/ornate/price-change';
 import { MarketIndexChart } from '@/components/charts/MarketIndexChart';
 import { getMarketIndex, getTopMovers, getMarketOverview } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, safeToFixed } from '@/lib/utils';
 
 function MoverCard({
   card,
@@ -72,10 +72,11 @@ export default function MarketPage() {
   });
 
   // Format volume for display
-  const formatVolume = (volume: number) => {
-    if (volume >= 1000000) return `$${(volume / 1000000).toFixed(1)}M`;
-    if (volume >= 1000) return `$${(volume / 1000).toFixed(0)}K`;
-    return `$${volume.toFixed(0)}`;
+  const formatVolume = (volume: number | null | undefined) => {
+    if (volume === null || volume === undefined || isNaN(volume)) return '-';
+    if (volume >= 1000000) return `$${safeToFixed(volume / 1000000, 1)}M`;
+    if (volume >= 1000) return `$${safeToFixed(volume / 1000, 0)}K`;
+    return `$${safeToFixed(volume, 0)}`;
   };
 
   return (

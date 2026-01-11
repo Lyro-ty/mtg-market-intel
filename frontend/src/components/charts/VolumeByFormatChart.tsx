@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { formatCurrency, formatNumber } from '@/lib/utils';
+import { formatCurrency, formatNumber, safeToFixed } from '@/lib/utils';
 import type { VolumeByFormat } from '@/types';
 
 interface VolumeByFormatChartProps {
@@ -158,8 +158,8 @@ export function VolumeByFormatChart({
                 fontSize={12}
                 tickLine={false}
                 tickFormatter={(value) => {
-                  if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-                  if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
+                  if (value >= 1000000) return `$${safeToFixed(value / 1000000, 1)}M`;
+                  if (value >= 1000) return `$${safeToFixed(value / 1000, 0)}K`;
                   return `$${value}`;
                 }}
               />

@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { LoadingPage } from '@/components/ui/Loading';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { getNearbyEvents, type TradingPostEvent } from '@/lib/api/trading-posts';
+import { safeToFixed } from '@/lib/utils';
 
 const EVENT_TYPE_OPTIONS = [
   { value: '', label: 'All Events', icon: Calendar },
@@ -208,7 +209,7 @@ function EventCard({ event }: { event: TradingPostEvent }) {
                 {event.entry_fee !== null && event.entry_fee !== undefined && (
                   <Badge variant="secondary">
                     <DollarSign className="w-3 h-3 mr-1" />
-                    ${event.entry_fee.toFixed(2)} Entry
+                    ${safeToFixed(event.entry_fee, 2)} Entry
                   </Badge>
                 )}
                 {event.max_players && (

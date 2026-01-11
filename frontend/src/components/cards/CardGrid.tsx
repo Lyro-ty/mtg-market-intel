@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { formatCurrency, getRarityColor } from '@/lib/utils';
+import { formatCurrency, getRarityColor, formatPercent } from '@/lib/utils';
 import type { Card as CardType, TopCard } from '@/types';
 
 interface CardGridProps {
@@ -68,7 +68,7 @@ export function CardGrid({ cards, showPrice = false, showChange = false }: CardG
                     <span className="font-semibold text-[rgb(var(--foreground))]">
                       {formatCurrency(card.current_price)}
                     </span>
-                    {showChange && 'price_change_pct' in card && (
+                    {showChange && 'price_change_pct' in card && card.price_change_pct != null && (
                       <span
                         className={
                           card.price_change_pct > 0
@@ -78,8 +78,7 @@ export function CardGrid({ cards, showPrice = false, showChange = false }: CardG
                             : 'text-[rgb(var(--muted-foreground))]'
                         }
                       >
-                        {card.price_change_pct > 0 ? '+' : ''}
-                        {card.price_change_pct.toFixed(1)}%
+                        {formatPercent(card.price_change_pct, 1)}
                       </span>
                     )}
                   </div>

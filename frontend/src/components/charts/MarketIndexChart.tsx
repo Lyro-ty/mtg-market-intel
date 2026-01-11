@@ -13,7 +13,7 @@ import {
 import { format } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { formatPercent } from '@/lib/utils';
+import { formatPercent, safeToFixed } from '@/lib/utils';
 import type { MarketIndex } from '@/types';
 
 interface MarketIndexChartProps {
@@ -183,7 +183,7 @@ export function MarketIndexChart({
         <div className="mb-4">
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-[rgb(var(--foreground))]">
-              {currentValue.toFixed(2)}
+              {safeToFixed(currentValue, 2)}
             </span>
             <span
               className={`text-sm font-medium ${
@@ -219,7 +219,7 @@ export function MarketIndexChart({
                 stroke="rgb(var(--muted-foreground))"
                 fontSize={12}
                 tickLine={false}
-                tickFormatter={(value) => value.toFixed(0)}
+                tickFormatter={(value) => safeToFixed(value, 0)}
                 domain={['auto', 'auto']}
               />
               <Tooltip
@@ -232,7 +232,7 @@ export function MarketIndexChart({
                 formatter={(value: number, name: string, props: any) => {
                   const change = props.payload.change;
                   const changeText = change !== null ? ` (${formatPercent(change)})` : '';
-                  return [`${value.toFixed(2)}${changeText}`, 'Index Value'];
+                  return [`${safeToFixed(value, 2)}${changeText}`, 'Index Value'];
                 }}
                 labelFormatter={(label) => `Date: ${label}`}
               />

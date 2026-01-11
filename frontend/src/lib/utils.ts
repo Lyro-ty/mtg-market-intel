@@ -19,7 +19,7 @@ export function formatCurrency(
   value: number | undefined | null,
   currency: string = 'USD'
 ): string {
-  if (value === undefined || value === null) return '-';
+  if (value === undefined || value === null || isNaN(value)) return '-';
 
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -30,15 +30,31 @@ export function formatCurrency(
 }
 
 /**
- * Format a percentage value
+ * Safely format a number with toFixed, returning fallback for null/undefined/NaN.
+ */
+export function safeToFixed(
+  value: number | null | undefined,
+  decimals: number = 2,
+  fallback: string = '-'
+): string {
+  if (value === null || value === undefined || isNaN(value)) {
+    return fallback;
+  }
+  return value.toFixed(decimals);
+}
+
+/**
+ * Format a percentage value safely.
+ * @param includeSign - If true, always include +/- sign. If false, no sign prefix.
  */
 export function formatPercent(
   value: number | undefined | null,
-  decimals: number = 1
+  decimals: number = 1,
+  includeSign: boolean = true
 ): string {
-  if (value === undefined || value === null) return '-';
+  if (value === undefined || value === null || isNaN(value)) return '-';
 
-  const sign = value > 0 ? '+' : '';
+  const sign = includeSign && value > 0 ? '+' : '';
   return `${sign}${value.toFixed(decimals)}%`;
 }
 
@@ -49,7 +65,7 @@ export function formatNumber(
   value: number | undefined | null,
   decimals: number = 0
 ): string {
-  if (value === undefined || value === null) return '-';
+  if (value === undefined || value === null || isNaN(value)) return '-';
 
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: decimals,

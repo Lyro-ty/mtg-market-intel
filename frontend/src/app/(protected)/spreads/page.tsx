@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageHeader } from '@/components/ornate/page-header';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 import {
   getBuylistOpportunities,
   getSellingOpportunities,
@@ -91,7 +91,7 @@ function BuylistOpportunityCard({ opportunity }: { opportunity: BuylistOpportuni
                     : 'bg-[rgb(var(--destructive))]/20 text-[rgb(var(--destructive))]'
                 )}
               >
-                {opportunity.spread_pct.toFixed(1)}% spread
+                {formatPercent(opportunity.spread_pct, 1, false)} spread
               </Badge>
             </div>
 
@@ -120,7 +120,7 @@ function BuylistOpportunityCard({ opportunity }: { opportunity: BuylistOpportuni
               <div className="mt-2 text-sm text-muted-foreground">
                 Store Credit: {formatCurrency(opportunity.credit_price)}
                 {opportunity.credit_spread_pct && (
-                  <span className="ml-2">({opportunity.credit_spread_pct.toFixed(1)}% spread)</span>
+                  <span className="ml-2">({formatPercent(opportunity.credit_spread_pct, 1, false)} spread)</span>
                 )}
               </div>
             )}
@@ -163,7 +163,7 @@ function ArbitrageOpportunityCard({ opportunity }: { opportunity: ArbitrageOppor
                 <p className="text-sm text-muted-foreground">{opportunity.set_code}</p>
               </div>
               <Badge className="shrink-0 bg-[rgb(var(--success))]/20 text-[rgb(var(--success))]">
-                +{opportunity.profit_pct.toFixed(1)}%
+                {formatPercent(opportunity.profit_pct, 1)}
               </Badge>
             </div>
 
@@ -258,8 +258,8 @@ export default function SpreadsPage() {
                   <Skeleton className="h-7 w-16" />
                 ) : (
                   <p className="text-2xl font-bold text-foreground">
-                    {summary?.average_spread_pct
-                      ? `${summary.average_spread_pct.toFixed(1)}%`
+                    {summary?.average_spread_pct != null
+                      ? formatPercent(summary.average_spread_pct, 1, false)
                       : 'N/A'}
                   </p>
                 )}

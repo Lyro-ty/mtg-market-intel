@@ -27,6 +27,7 @@ import {
   type TradingPostPublic,
   type TradingPostEvent,
 } from '@/lib/api/trading-posts';
+import { safeToFixed } from '@/lib/utils';
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   tournament: 'bg-[rgb(var(--accent))]/20 text-[rgb(var(--accent))] border-[rgb(var(--accent))]/30',
@@ -89,7 +90,7 @@ function EventCard({ event }: { event: TradingPostEvent }) {
               {event.entry_fee !== null && event.entry_fee !== undefined && (
                 <span className="flex items-center gap-1">
                   <DollarSign className="w-4 h-4" />
-                  ${event.entry_fee.toFixed(2)}
+                  ${safeToFixed(event.entry_fee, 2)}
                 </span>
               )}
               {event.max_players && (

@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ornate/page-header';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, safeToFixed } from '@/lib/utils';
 import {
   getMyTradingPost,
   getStoreSubmissions,
@@ -139,7 +139,7 @@ function StoreDashboard({ store, submissions, events, onRefresh }: StoreDashboar
           <CardContent className="p-4 text-center">
             <TrendingUp className="w-6 h-6 mx-auto text-[rgb(var(--accent))] mb-2" />
             <p className="text-3xl font-bold text-foreground">
-              {(store.buylist_margin * 100).toFixed(0)}%
+              {safeToFixed(store.buylist_margin * 100, 0)}%
             </p>
             <p className="text-sm text-muted-foreground">Buylist Rate</p>
           </CardContent>

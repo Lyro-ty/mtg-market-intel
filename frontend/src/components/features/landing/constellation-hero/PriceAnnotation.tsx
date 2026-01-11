@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, safeToFixed } from '@/lib/utils';
 
 interface PriceAnnotationProps {
   price: number;
@@ -14,9 +14,9 @@ interface PriceAnnotationProps {
 export function PriceAnnotation({ price, priceChange, delay, className }: PriceAnnotationProps) {
   const isPositive = priceChange >= 0;
   const formattedPrice = price >= 1000
-    ? `$${(price / 1000).toFixed(0)}K`
-    : `$${price.toFixed(0)}`;
-  const formattedChange = `${isPositive ? '+' : ''}${priceChange.toFixed(1)}%`;
+    ? `$${safeToFixed(price / 1000, 0)}K`
+    : `$${safeToFixed(price, 0)}`;
+  const formattedChange = `${isPositive ? '+' : ''}${safeToFixed(priceChange, 1)}%`;
 
   return (
     <motion.div

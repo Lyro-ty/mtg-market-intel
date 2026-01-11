@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { formatPercent } from '@/lib/utils';
+import { formatPercent, safeToFixed } from '@/lib/utils';
 import type { ColorDistribution } from '@/types';
 
 interface ColorDistributionChartProps {
@@ -96,7 +96,7 @@ export function ColorDistributionChart({
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: 'rgb(var(--foreground))' }}
-                formatter={(value: number) => [`${value.toFixed(2)}%`, 'Percentage']}
+                formatter={(value: number) => [`${safeToFixed(value, 2)}%`, 'Percentage']}
               />
               <Bar dataKey="value" radius={[8, 8, 0, 0]}>
                 {chartData.map((entry, index) => (

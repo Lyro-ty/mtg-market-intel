@@ -1,6 +1,6 @@
 // frontend/src/components/ornate/price-change.tsx
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, safeToFixed } from '@/lib/utils';
 
 interface PriceChangeProps {
   value: number | null | undefined;
@@ -40,8 +40,8 @@ export function PriceChange({
 
   const formatted =
     format === 'percent'
-      ? `${isPositive ? '+' : ''}${value.toFixed(1)}%`
-      : `${isPositive ? '+' : ''}$${Math.abs(value).toFixed(2)}`;
+      ? `${isPositive ? '+' : ''}${safeToFixed(value, 1)}%`
+      : `${isPositive ? '+' : ''}$${safeToFixed(Math.abs(value), 2)}`;
 
   return (
     <span

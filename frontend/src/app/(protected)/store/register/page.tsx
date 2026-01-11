@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/ornate/page-header';
 import { registerTradingPost, ApiError } from '@/lib/api';
+import { safeToFixed } from '@/lib/utils';
 
 const US_STATES = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -302,7 +303,7 @@ export default function RegisterStorePage() {
                 <strong>Example:</strong> At {buylistMargin}%, a quote with
                 $100 market value would show as{' '}
                 <span className="text-[rgb(var(--success))] font-medium">
-                  ${(100 * (parseFloat(buylistMargin) / 100 || 0)).toFixed(2)}
+                  ${safeToFixed(100 * (parseFloat(buylistMargin) / 100 || 0), 2)}
                 </span>{' '}
                 offer to customers.
               </p>

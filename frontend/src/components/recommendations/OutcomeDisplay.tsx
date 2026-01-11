@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { formatRelativeTime } from '@/lib/utils';
+import { formatRelativeTime, safeToFixed } from '@/lib/utils';
 import type { Recommendation } from '@/types';
 
 interface OutcomeDisplayProps {
@@ -60,17 +60,17 @@ function getAccuracyLabel(accuracy: number | null | undefined): string {
  * Format a percentage value with sign
  */
 function formatProfitPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '-';
+  if (value === null || value === undefined || isNaN(value)) return '-';
   const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(1)}%`;
+  return `${sign}${safeToFixed(value, 1)}%`;
 }
 
 /**
  * Format a price value
  */
 function formatPrice(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '-';
-  return `$${value.toFixed(2)}`;
+  if (value === null || value === undefined || isNaN(value)) return '-';
+  return `$${safeToFixed(value, 2)}`;
 }
 
 /**
@@ -132,13 +132,13 @@ export function OutcomeDisplay({ recommendation }: OutcomeDisplayProps) {
       <div className="flex justify-between text-sm">
         <span className={accuracyColorEnd}>
           Accuracy: {recommendation.accuracy_score_end !== null && recommendation.accuracy_score_end !== undefined
-            ? `${(recommendation.accuracy_score_end * 100).toFixed(0)}%`
+            ? `${safeToFixed(recommendation.accuracy_score_end * 100, 0)}%`
             : '-'}
           {accuracyIconEnd}
         </span>
         <span className={accuracyColorPeak}>
           Peak: {recommendation.accuracy_score_peak !== null && recommendation.accuracy_score_peak !== undefined
-            ? `${(recommendation.accuracy_score_peak * 100).toFixed(0)}%`
+            ? `${safeToFixed(recommendation.accuracy_score_peak * 100, 0)}%`
             : '-'}
           {accuracyIconPeak}
         </span>

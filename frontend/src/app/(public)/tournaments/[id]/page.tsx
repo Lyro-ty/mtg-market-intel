@@ -10,6 +10,7 @@ import { LoadingPage } from '@/components/ui/Loading';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { useQueryClient } from '@tanstack/react-query';
 import { getTournament } from '@/lib/api';
+import { safeToFixed } from '@/lib/utils';
 
 export default function TournamentDetailPage() {
   const params = useParams();
@@ -31,8 +32,9 @@ export default function TournamentDetailPage() {
     });
   };
 
-  const formatWinRate = (winRate: number) => {
-    return `${(winRate * 100).toFixed(1)}%`;
+  const formatWinRate = (winRate: number | null | undefined) => {
+    if (winRate === null || winRate === undefined || isNaN(winRate)) return '-';
+    return `${safeToFixed(winRate * 100, 1)}%`;
   };
 
   const getRankBadge = (rank: number) => {

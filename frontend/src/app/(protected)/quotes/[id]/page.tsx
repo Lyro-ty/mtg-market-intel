@@ -40,7 +40,7 @@ import {
 } from '@/components/ui/table';
 import { PageHeader } from '@/components/ornate/page-header';
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, safeToFixed } from '@/lib/utils';
 import {
   getQuote,
   updateQuote,
@@ -379,7 +379,7 @@ function OfferCard({ offer, isSelected, onToggle, disabled }: OfferCardProps) {
               </p>
             )}
             <p className="text-sm text-muted-foreground mt-1">
-              Buylist: {(offer.buylist_margin * 100).toFixed(0)}% of market
+              Buylist: {safeToFixed(offer.buylist_margin * 100, 0)}% of market
             </p>
           </div>
           <div className="text-right">

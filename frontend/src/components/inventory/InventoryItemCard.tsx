@@ -6,7 +6,7 @@ import { Sparkles, TrendingUp, TrendingDown, Package, Trash2, Edit2 } from 'luci
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, formatRelativeTime } from '@/lib/utils';
+import { formatCurrency, formatRelativeTime, formatPercent } from '@/lib/utils';
 import type { InventoryItem } from '@/types';
 
 interface InventoryItemCardProps {
@@ -138,7 +138,7 @@ export function InventoryItemCard({ item, onClick, onDelete, onToggleFoil, onEdi
                     variant={isProfit ? 'success' : 'danger'}
                     size="sm"
                   >
-                    {isProfit ? '+' : ''}{profitLossPct.toFixed(1)}%
+                    {formatPercent(profitLossPct, 1)}
                   </Badge>
                 )}
               </div>

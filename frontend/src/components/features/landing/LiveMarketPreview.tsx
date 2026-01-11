@@ -189,7 +189,8 @@ export function LiveMarketPreview() {
     fetchData();
   }, []);
 
-  const formatNumber = (num: number) => {
+  const formatNumber = (num: number | null | undefined) => {
+    if (num === null || num === undefined || isNaN(num)) return '-';
     if (num >= 1000000) {
       return `${(num / 1000000).toFixed(1)}M`;
     }
@@ -199,7 +200,8 @@ export function LiveMarketPreview() {
     return num.toLocaleString();
   };
 
-  const formatCurrency = (num: number) => {
+  const formatCurrency = (num: number | null | undefined) => {
+    if (num === null || num === undefined || isNaN(num)) return '-';
     if (num >= 1000000) {
       return `$${(num / 1000000).toFixed(1)}M`;
     }

@@ -62,7 +62,8 @@ export function useCurrency() {
   }, [currency]);
 
   // Format a price change percentage
-  const formatChange = useCallback((change: number) => {
+  const formatChange = useCallback((change: number | null | undefined) => {
+    if (change === null || change === undefined || isNaN(change)) return '-';
     const sign = change >= 0 ? '+' : '';
     return `${sign}${change.toFixed(2)}%`;
   }, []);

@@ -55,7 +55,8 @@ const STATUS_CONFIGS: Record<string, { icon: React.ReactNode; label: string; col
   cancelled: { icon: <XCircle className="h-4 w-4" />, label: 'Cancelled', color: 'bg-gray-500' },
 };
 
-function formatFileSize(bytes: number): string {
+function formatFileSize(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || isNaN(bytes)) return '-';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
