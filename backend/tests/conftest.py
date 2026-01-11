@@ -19,9 +19,16 @@ import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from app.main import app
+from app.main import app as fastapi_app
 from app.db.base import Base
 from app.db.session import get_db
+
+# Import all models to register them with SQLAlchemy before create_all
+# This ensures all relationships can be resolved
+import app.models  # noqa: F401
+
+# Alias for clarity (avoid shadowing by 'import app.models')
+app = fastapi_app
 
 # Use SQLite for testing
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"

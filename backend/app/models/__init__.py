@@ -9,8 +9,11 @@ The Listing model is kept for backward compatibility during migration.
 """
 import warnings
 
-# Import Listing first since Card has a relationship to it
-from app.models.listing import Listing as _Listing
+# Import Listing model BEFORE Card since Card has a relationship to it.
+# The Listing class must be imported and registered in SQLAlchemy's registry
+# before Card's mapper is configured, otherwise the "Listing" string reference
+# in Card.listings relationship cannot be resolved.
+from app.models.listing import Listing as _ListingModel  # noqa: F401 - registers Listing
 from app.models.card import Card
 from app.models.marketplace import Marketplace
 from app.models.price_snapshot import PriceSnapshot
