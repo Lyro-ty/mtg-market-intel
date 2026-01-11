@@ -75,9 +75,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Too many requests. Please try again later."},
                     headers={"Retry-After": "60"},
                 )
-        except redis.RedisError:
-            # If Redis is down, allow the request (fail open)
-            pass
+        except redis.RedisError as e:
+            # SECURITY: Fail closed - deny request if rate limiting unavailable
+            # This prevents attackers from bypassing rate limits by taking down Redis
+            import structlog
+            logger = structlog.get_logger()
+            logger.error("Rate limiting unavailable - denying request", error=str(e))
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Service temporarily unavailable. Please try again later."},
+                headers={"Retry-After": "30"},
+            )
 
         response = await call_next(request)
         return response
