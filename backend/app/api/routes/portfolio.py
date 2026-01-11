@@ -1,4 +1,5 @@
 """API routes for portfolio history."""
+import json
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -265,10 +266,9 @@ async def get_portfolio_intelligence(
         value = (item.current_value or 0) * item.quantity
         legalities = card.legalities if hasattr(card, 'legalities') and card.legalities else {}
         if isinstance(legalities, str):
-            import json
             try:
                 legalities = json.loads(legalities)
-            except:
+            except json.JSONDecodeError:
                 legalities = {}
 
         if legalities.get("commander") == "legal":
