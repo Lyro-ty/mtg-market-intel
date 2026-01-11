@@ -18,13 +18,13 @@ from fastapi.responses import Response
 from sqlalchemy import select, func, and_, or_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import MAX_SEARCH_LENGTH
+from app.core.constants import MAX_SEARCH_LENGTH, MAX_IDS_PER_REQUEST
 
 from app.api.deps import CurrentUser
 from app.db.session import get_db
 from app.models import Card, InventoryItem, InventoryRecommendation, MetricsCardsDaily, PriceSnapshot, Marketplace
 from app.api.utils import is_database_connection_error, interpolate_missing_points
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.schemas.inventory import (
     InventoryImportRequest,
     InventoryImportResponse,
@@ -63,7 +63,7 @@ def map_condition_to_cardtrader(condition: str) -> str:
 
 
 class RunRecommendationsRequest(BaseModel):
-    item_ids: Optional[list[int]] = None
+    item_ids: Optional[list[int]] = Field(default=None, max_length=MAX_IDS_PER_REQUEST)
 
 router = APIRouter()
 logger = structlog.get_logger()
