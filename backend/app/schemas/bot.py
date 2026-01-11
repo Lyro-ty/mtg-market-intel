@@ -121,7 +121,11 @@ class PendingAlert(BaseModel):
 class AlertDeliveryConfirm(BaseModel):
     """Confirmation of alert delivery."""
 
-    alert_ids: list[int] = Field(..., description="IDs of alerts successfully delivered")
+    alert_ids: list[int] = Field(
+        ...,
+        max_length=500,
+        description="IDs of alerts successfully delivered (max 500)"
+    )
 
 
 # =============================================================================

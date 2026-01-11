@@ -19,7 +19,8 @@ class ConnectionRequestCreate(BaseModel):
     )
     card_ids: Optional[list[int]] = Field(
         default=None,
-        description="Optional card IDs to reference in the request"
+        max_length=100,
+        description="Optional card IDs to reference in the request (max 100)"
     )
 
 

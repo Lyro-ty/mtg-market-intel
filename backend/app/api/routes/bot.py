@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import BotAuth, get_db
+from app.api.utils.validation import validate_id_list
 from app.models.user import User
 from app.models.inventory import InventoryItem
 from app.models.want_list import WantListItem
@@ -423,6 +424,9 @@ async def mark_alerts_delivered(
     """
     if not payload.alert_ids:
         return {"marked": 0}
+
+    # Validate ID list size to prevent DoS via large payloads
+    validate_id_list(payload.alert_ids, "alert_ids")
 
     now = datetime.now(timezone.utc)
 
