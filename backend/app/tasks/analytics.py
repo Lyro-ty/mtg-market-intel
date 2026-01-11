@@ -1,14 +1,18 @@
 """
 Analytics tasks for computing metrics and generating signals.
+
+Provides two separate analytics flows:
+- Market analytics: For global market data (market page)
+- Inventory analytics: For user-specific portfolio data (inventory page)
 """
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import structlog
 from celery import shared_task
 from sqlalchemy import select
 
-from app.models import Card
+from app.models import PriceSnapshot
 from app.services.agents.analytics import AnalyticsAgent
 from app.tasks.utils import create_task_session_maker, run_async
 
@@ -37,23 +41,107 @@ async def _run_analytics_async(
 ) -> dict[str, Any]:
     """Async implementation of analytics run."""
     logger.info("Starting analytics run", card_ids=card_ids, date=target_date)
-    
+
     session_maker, engine = create_task_session_maker()
     try:
         async with session_maker() as db:
             agent = AnalyticsAgent(db)
-            
+
             results = await agent.run_daily_analytics(
                 card_ids=card_ids,
                 target_date=target_date,
                 generate_insights=True,
             )
-            
+
             logger.info("Analytics run completed", results=results)
             return results
     finally:
         await engine.dispose()
 
+
+# =============================================================================
+# Market Analytics (for market page - independent of user inventories)
+# =============================================================================
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+def run_market_analytics(self, batch_size: int = 2000, target_date: str | None = None) -> dict[str, Any]:
+    """
+    Run analytics for MARKET cards only.
+
+    This is separate from inventory analytics to ensure the market page
+    has global data. Processes cards with recent price snapshots,
+    NOT filtered by user inventories.
+
+    Args:
+        batch_size: Maximum cards to process (default 2000)
+        target_date: Date string (YYYY-MM-DD). None = today.
+
+    Returns:
+        Analytics results summary.
+    """
+    parsed_date = date.fromisoformat(target_date) if target_date else None
+    return run_async(_run_market_analytics_async(batch_size, parsed_date))
+
+
+async def _run_market_analytics_async(
+    batch_size: int,
+    target_date: date | None,
+) -> dict[str, Any]:
+    """Async implementation of market analytics run."""
+    logger.info("Starting MARKET analytics run", batch_size=batch_size, date=target_date)
+
+    session_maker, engine = create_task_session_maker()
+    try:
+        async with session_maker() as db:
+            # Get cards with recent price snapshots (market-relevant cards)
+            # This mirrors the selection logic in _get_market_card_ids()
+            now = datetime.now(timezone.utc)
+            recent_threshold = now - timedelta(days=2)  # Cards with data in last 2 days
+
+            market_cards_query = (
+                select(PriceSnapshot.card_id)
+                .where(
+                    PriceSnapshot.time >= recent_threshold,
+                    PriceSnapshot.currency == "USD",  # Focus on USD for metrics
+                )
+                .distinct()
+                .limit(batch_size)
+            )
+            result = await db.execute(market_cards_query)
+            card_ids = list(result.scalars().all())
+
+            if not card_ids:
+                logger.info("No market cards to process")
+                return {
+                    "analytics_type": "market",
+                    "date": str(target_date or date.today()),
+                    "cards_processed": 0,
+                    "errors": 0,
+                    "total_cards": 0,
+                }
+
+            logger.info(f"Processing {len(card_ids)} market cards for analytics")
+
+            # Run analytics for these cards
+            agent = AnalyticsAgent(db)
+
+            results = await agent.run_daily_analytics(
+                card_ids=card_ids,
+                target_date=target_date,
+                generate_insights=False,  # Skip LLM for hourly runs (cost saving)
+            )
+
+            results["analytics_type"] = "market"
+            logger.info("Market analytics run completed", results=results)
+            return results
+
+    finally:
+        await engine.dispose()
+
+
+# =============================================================================
+# Single Card Analytics
+# =============================================================================
 
 @shared_task(bind=True)
 def compute_card_metrics(self, card_id: int, target_date: str | None = None) -> dict[str, Any]:

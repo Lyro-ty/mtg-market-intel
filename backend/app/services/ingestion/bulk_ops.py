@@ -397,3 +397,137 @@ async def get_cards_needing_update(
 
     # Cards without recent snapshots definitely need updates
     return [cid for cid in card_ids if cid not in recent]
+
+
+async def ensure_card_exists(
+    db: AsyncSession,
+    card_data: dict,
+) -> int | None:
+    """
+    Ensure a card exists in the database before importing prices.
+
+    If the card doesn't exist, creates it from the provided data.
+    This prevents FK violations when importing prices for new cards.
+
+    Args:
+        db: Database session
+        card_data: Dictionary with card data (Scryfall format)
+            Required: id (scryfall_id), name, set
+            Optional: collector_number, rarity, type_line, etc.
+
+    Returns:
+        Card ID if found or created, None if insufficient data
+    """
+    import json
+    from app.models import Card
+
+    scryfall_id = card_data.get("id") or card_data.get("scryfall_id")
+    if not scryfall_id:
+        logger.warning("Cannot ensure card exists: no scryfall_id provided")
+        return None
+
+    # Check if card exists
+    result = await db.execute(
+        select(Card.id).where(Card.scryfall_id == scryfall_id)
+    )
+    card_id = result.scalar_one_or_none()
+
+    if card_id:
+        return card_id
+
+    # Card doesn't exist - create it
+    name = card_data.get("name")
+    set_code = card_data.get("set") or card_data.get("set_code")
+
+    if not name or not set_code:
+        logger.warning(
+            "Cannot create card: missing required fields",
+            scryfall_id=scryfall_id,
+            name=name,
+            set_code=set_code,
+        )
+        return None
+
+    try:
+        # Extract image URIs
+        image_uris = card_data.get("image_uris", {})
+        if isinstance(image_uris, str):
+            image_uris = json.loads(image_uris)
+
+        # Extract legalities
+        legalities = card_data.get("legalities", {})
+        if isinstance(legalities, str):
+            legalities = json.loads(legalities)
+
+        # Extract color identity
+        color_identity = card_data.get("color_identity", [])
+        if isinstance(color_identity, str):
+            color_identity = json.loads(color_identity)
+
+        # Create the card
+        card = Card(
+            scryfall_id=scryfall_id,
+            name=name,
+            set_code=set_code,
+            collector_number=card_data.get("collector_number"),
+            rarity=card_data.get("rarity"),
+            type_line=card_data.get("type_line"),
+            oracle_text=card_data.get("oracle_text"),
+            mana_cost=card_data.get("mana_cost"),
+            cmc=card_data.get("cmc"),
+            color_identity=json.dumps(color_identity) if color_identity else None,
+            legalities=json.dumps(legalities) if legalities else None,
+            image_uris=json.dumps(image_uris) if image_uris else None,
+            image_uri=image_uris.get("normal") or image_uris.get("large"),
+        )
+        db.add(card)
+        await db.flush()
+
+        logger.info(
+            "Created new card during price import",
+            card_id=card.id,
+            name=name,
+            set_code=set_code,
+        )
+
+        return card.id
+
+    except Exception as e:
+        logger.error(
+            "Failed to create card during import",
+            scryfall_id=scryfall_id,
+            error=str(e),
+        )
+        await db.rollback()
+        return None
+
+
+async def batch_ensure_cards_exist(
+    db: AsyncSession,
+    cards_data: list[dict],
+) -> dict[str, int]:
+    """
+    Batch version of ensure_card_exists for efficiency.
+
+    Args:
+        db: Database session
+        cards_data: List of card data dictionaries
+
+    Returns:
+        Dictionary mapping scryfall_id to card_id
+    """
+    if not cards_data:
+        return {}
+
+    result = {}
+
+    for card_data in cards_data:
+        scryfall_id = card_data.get("id") or card_data.get("scryfall_id")
+        if not scryfall_id:
+            continue
+
+        card_id = await ensure_card_exists(db, card_data)
+        if card_id:
+            result[scryfall_id] = card_id
+
+    return result
