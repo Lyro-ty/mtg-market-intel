@@ -17,6 +17,8 @@ import httpx
 import structlog
 from bs4 import BeautifulSoup
 
+from app.core.config import settings
+
 logger = structlog.get_logger()
 
 
@@ -62,7 +64,7 @@ class CardKingdomBuylistAdapter:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(30.0),
+                timeout=httpx.Timeout(float(settings.external_api_timeout)),
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",

@@ -13,6 +13,7 @@ from celery import shared_task
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.core.config import settings
 from app.models.mtg_set import MTGSet
 from app.tasks.utils import create_task_session_maker, run_async
 
@@ -57,8 +58,8 @@ async def _sync_mtg_sets_async() -> dict[str, Any]:
     session_maker, engine = create_task_session_maker()
 
     try:
-        # Fetch sets from Scryfall API
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        # Fetch sets from Scryfall API (uses external_api_timeout with some buffer for large response)
+        async with httpx.AsyncClient(timeout=float(settings.external_api_timeout * 2)) as client:
             logger.info("Fetching sets from Scryfall API", url=SCRYFALL_SETS_URL)
             response = await client.get(SCRYFALL_SETS_URL)
             response.raise_for_status()

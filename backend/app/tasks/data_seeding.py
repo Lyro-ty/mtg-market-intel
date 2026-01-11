@@ -83,7 +83,7 @@ async def _download_scryfall_bulk_data_async() -> dict[str, Any]:
     session_maker, engine = create_task_session_maker()
     
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=float(settings.celery_task_timeout)) as client:
             # Get manifest
             logger.info("Fetching Scryfall bulk data manifest")
             response = await client.get(BULK_DATA_URL)

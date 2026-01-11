@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.config import settings
 from app.core.constants import (
     CardCondition,
     CardLanguage,
@@ -28,7 +29,7 @@ class AdapterConfig:
     rate_limit_seconds: float = 1.0
     max_retries: int = 3
     backoff_factor: float = 2.0
-    timeout_seconds: float = 30.0
+    timeout_seconds: float = float(settings.external_api_timeout)  # From centralized config
     user_agent: str = "MTGMarketIntel/1.0"
     extra: dict[str, Any] = field(default_factory=dict)
 

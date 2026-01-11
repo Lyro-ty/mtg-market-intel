@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 
 from app.api.deps import Cache
-from app.core.config import get_settings
+from app.core.config import get_settings, settings
 from app.db.session import get_db
 from app.models import (
     Card,
@@ -34,8 +34,8 @@ from app.api.utils import (
 router = APIRouter()
 logger = structlog.get_logger()
 
-# Query timeout in seconds
-QUERY_TIMEOUT = 25  # Slightly less than DB timeout to provide better error messages
+# Query timeout in seconds (from centralized config)
+QUERY_TIMEOUT = settings.db_query_timeout
 
 
 @router.get("/diagnostics")

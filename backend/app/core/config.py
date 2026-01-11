@@ -105,6 +105,24 @@ class Settings(BaseSettings):
     # Data older than 24 hours is considered stale
     analytics_interval_hours: int = 1
     recommendations_interval_hours: int = 6
+
+    # Timeouts (in seconds)
+    # Database query timeout - used for asyncio.wait_for on DB operations
+    db_query_timeout: int = 25
+    # Database pool timeout - how long to wait for a connection from the pool
+    db_pool_timeout: int = 20
+    # Redis socket timeout - for cache operations
+    redis_socket_timeout: int = 5
+    # Redis connect timeout - initial connection to Redis
+    redis_connect_timeout: int = 2
+    # External API timeout - for HTTP requests to external services
+    external_api_timeout: int = 30
+    # Bulk operation timeout - for large data transfers (imports, syncs)
+    bulk_operation_timeout: int = 600
+    # Celery worker task timeout - for long-running Celery tasks
+    celery_task_timeout: int = 300
+    # Celery worker pool timeout - for DB connections in workers
+    celery_pool_timeout: int = 30
     
     @field_validator("cors_origins", mode="before")
     @classmethod

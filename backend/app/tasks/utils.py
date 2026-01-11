@@ -66,6 +66,8 @@ def create_task_session_maker():
         Tuple of (async_sessionmaker, engine). The engine should be disposed
         after use to free resources.
     """
+    # Celery workers have longer timeouts than API servers since they run batch operations
+    worker_timeout = settings.celery_task_timeout  # Default 300s (5 min)
     engine = create_async_engine(
         settings.database_url_computed,
         echo=settings.api_debug,
@@ -73,14 +75,14 @@ def create_task_session_maker():
         pool_size=10,  # Increased from 5 for better concurrency
         max_overflow=20,  # Increased from 10 for burst capacity
         pool_recycle=1800,  # Recycle connections after 30 minutes
-        pool_timeout=30,  # Wait up to 30 seconds for a connection
+        pool_timeout=settings.celery_pool_timeout,  # Wait for a connection from pool
         connect_args={
             "server_settings": {
-                "statement_timeout": "120000",  # 2 min query timeout (increased from 60s)
+                "statement_timeout": f"{worker_timeout * 1000}",  # Query timeout (in milliseconds)
                 "idle_in_transaction_session_timeout": "300000",  # 5 min - auto-terminate idle transactions
                 "application_name": "mtg_market_intel_worker",
             },
-            "command_timeout": 120,  # asyncpg command timeout (increased from 60s)
+            "command_timeout": worker_timeout,  # asyncpg command timeout (in seconds)
         },
     )
     return async_sessionmaker(

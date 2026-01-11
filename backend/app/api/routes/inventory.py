@@ -19,6 +19,7 @@ from sqlalchemy import select, func, and_, or_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import MAX_SEARCH_LENGTH, MAX_IDS_PER_REQUEST
+from app.core.config import settings
 
 from app.api.deps import CurrentUser
 from app.db.session import get_db
@@ -944,10 +945,10 @@ async def get_inventory_market_index(
         
         result = await asyncio.wait_for(
             db.execute(query),
-            timeout=25
+            timeout=settings.db_query_timeout
         )
         rows = result.all()
-        
+
         # Log diagnostic info
         logger.info(
             "Inventory market index query results",
@@ -1201,7 +1202,7 @@ async def _get_inventory_currency_index(
     try:
         result = await asyncio.wait_for(
             db.execute(query),
-            timeout=25
+            timeout=settings.db_query_timeout
         )
         rows = result.all()
     except Exception as e:

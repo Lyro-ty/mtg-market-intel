@@ -77,7 +77,7 @@ class TopDeckClient:
 
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
-                timeout=httpx.Timeout(30.0),
+                timeout=httpx.Timeout(float(settings.external_api_timeout)),
                 headers=headers,
                 follow_redirects=True,
             )

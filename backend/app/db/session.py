@@ -36,14 +36,14 @@ engine = create_async_engine(
     pool_size=20,  # Increased from 10 to handle more concurrent requests
     max_overflow=30,  # Increased from 20 to allow more overflow connections
     pool_recycle=1800,  # Recycle connections after 30 minutes (reduced from 1 hour)
-    pool_timeout=20,  # Wait up to 20 seconds for a connection from the pool (reduced from 30)
+    pool_timeout=settings.db_pool_timeout,  # Wait for a connection from the pool
     connect_args={
         "server_settings": {
-            "statement_timeout": "25000",  # 25 second query timeout (in milliseconds)
+            "statement_timeout": f"{settings.db_query_timeout * 1000}",  # Query timeout (in milliseconds)
             "idle_in_transaction_session_timeout": "300000",  # 5 min - auto-terminate idle transactions
             "application_name": "mtg_market_intel_api",
         },
-        "command_timeout": 25,  # asyncpg command timeout (in seconds)
+        "command_timeout": settings.db_query_timeout,  # asyncpg command timeout (in seconds)
     },
 )
 # Note: statement_timeout is set via connect_args.server_settings above

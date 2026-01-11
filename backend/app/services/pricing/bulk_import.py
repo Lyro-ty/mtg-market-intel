@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.models.card import Card
 from app.models.price_snapshot import PriceSnapshot
 from app.models.marketplace import Marketplace
+from app.core.config import settings
 from app.core.constants import CardCondition, CardLanguage
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ class BulkPriceImporter:
 
     async def download_bulk_file(self, url: str, dest_path: Path) -> None:
         """Download bulk data file with streaming."""
-        async with httpx.AsyncClient(headers=self.headers, timeout=600.0) as client:
+        async with httpx.AsyncClient(headers=self.headers, timeout=float(settings.bulk_operation_timeout)) as client:
             async with client.stream("GET", url) as response:
                 response.raise_for_status()
                 with open(dest_path, "wb") as f:
