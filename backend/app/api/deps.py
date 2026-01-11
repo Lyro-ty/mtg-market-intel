@@ -1,12 +1,13 @@
 """
 API dependencies for authentication and authorization.
 """
+import asyncio
 from datetime import timedelta
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from redis.asyncio import Redis
+from redis.asyncio import ConnectionPool, Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -117,19 +118,48 @@ get_optional_current_user = get_current_user_optional
 
 
 # Redis and cache dependencies
+_redis_pool: ConnectionPool | None = None
 _redis_client: Redis | None = None
+_redis_lock = asyncio.Lock()
 
 
 async def get_redis() -> Redis:
     """
-    Get the async Redis client.
+    Get the async Redis client with connection pooling.
 
-    Creates a single client instance that is reused across requests.
+    Thread-safe initialization using asyncio.Lock with double-checked locking
+    to prevent race conditions where multiple concurrent requests could create
+    multiple Redis connections simultaneously.
     """
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+    global _redis_pool, _redis_client
+
+    if _redis_client is not None:
+        return _redis_client
+
+    async with _redis_lock:
+        # Double-check after acquiring lock
+        if _redis_client is not None:
+            return _redis_client
+
+        _redis_pool = ConnectionPool.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            max_connections=20,
+        )
+        _redis_client = Redis(connection_pool=_redis_pool)
+
     return _redis_client
+
+
+async def close_redis() -> None:
+    """Close Redis connections on shutdown."""
+    global _redis_pool, _redis_client
+    if _redis_client:
+        await _redis_client.close()
+        _redis_client = None
+    if _redis_pool:
+        await _redis_pool.disconnect()
+        _redis_pool = None
 
 
 async def get_cache(

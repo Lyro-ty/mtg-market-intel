@@ -151,6 +151,11 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down MTG Market Intel API")
 
+    # Close Redis connections
+    from app.api.deps import close_redis
+    await close_redis()
+    logger.info("Redis connections closed")
+
     # Disable caching and clean up adapters
     enable_adapter_caching(False)
 
