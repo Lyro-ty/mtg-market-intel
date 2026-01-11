@@ -200,21 +200,25 @@ async def get_want_list_item(
     """
     Get a specific want list item by ID.
 
-    Returns 404 if not found, 403 if not owned by current user.
+    Returns 404 if not found or not owned by current user.
     """
+    # Filter by both id and user_id to prevent IDOR
     query = (
         select(WantListItem)
         .options(selectinload(WantListItem.card))
-        .where(WantListItem.id == item_id)
+        .where(
+            and_(
+                WantListItem.id == item_id,
+                WantListItem.user_id == current_user.id,
+            )
+        )
     )
     result = await db.execute(query)
     item = result.scalar_one_or_none()
 
     if not item:
+        # Return 404 for both "not found" and "not owned" to prevent IDOR
         raise HTTPException(status_code=404, detail="Want list item not found")
-
-    if item.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this item")
 
     current_price = await _get_current_price(db, item.card_id)
 
@@ -231,21 +235,25 @@ async def update_want_list_item(
     """
     Update a want list item.
 
-    Returns 404 if not found, 403 if not owned by current user.
+    Returns 404 if not found or not owned by current user.
     """
+    # Filter by both id and user_id to prevent IDOR
     query = (
         select(WantListItem)
         .options(selectinload(WantListItem.card))
-        .where(WantListItem.id == item_id)
+        .where(
+            and_(
+                WantListItem.id == item_id,
+                WantListItem.user_id == current_user.id,
+            )
+        )
     )
     result = await db.execute(query)
     item = result.scalar_one_or_none()
 
     if not item:
+        # Return 404 for both "not found" and "not owned" to prevent IDOR
         raise HTTPException(status_code=404, detail="Want list item not found")
-
-    if item.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to update this item")
 
     # Apply updates
     update_data = updates.model_dump(exclude_unset=True)
@@ -279,17 +287,21 @@ async def delete_want_list_item(
     """
     Remove an item from the want list.
 
-    Returns 404 if not found, 403 if not owned by current user.
+    Returns 404 if not found or not owned by current user.
     """
-    query = select(WantListItem).where(WantListItem.id == item_id)
+    # Filter by both id and user_id to prevent IDOR
+    query = select(WantListItem).where(
+        and_(
+            WantListItem.id == item_id,
+            WantListItem.user_id == current_user.id,
+        )
+    )
     result = await db.execute(query)
     item = result.scalar_one_or_none()
 
     if not item:
+        # Return 404 for both "not found" and "not owned" to prevent IDOR
         raise HTTPException(status_code=404, detail="Want list item not found")
-
-    if item.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this item")
 
     await db.delete(item)
     await db.commit()

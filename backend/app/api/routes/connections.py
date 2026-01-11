@@ -349,12 +349,21 @@ async def remove_connection(
     """
     Remove an existing connection.
     """
-    connection = await db.get(ConnectionRequest, connection_id)
-    if not connection:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    # Query with ownership check to prevent IDOR
+    result = await db.execute(
+        select(ConnectionRequest).where(
+            ConnectionRequest.id == connection_id,
+            or_(
+                ConnectionRequest.requester_id == current_user.id,
+                ConnectionRequest.recipient_id == current_user.id,
+            ),
+        )
+    )
+    connection = result.scalar_one_or_none()
 
-    if connection.requester_id != current_user.id and connection.recipient_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your connection")
+    if not connection:
+        # Return 404 for both "not found" and "not owned" to prevent IDOR
+        raise HTTPException(status_code=404, detail="Connection not found")
 
     if connection.status != "accepted":
         raise HTTPException(status_code=400, detail="Not an active connection")
