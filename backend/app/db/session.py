@@ -62,50 +62,39 @@ async_session_maker = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency that provides an async database session.
-    
-    Ensures proper connection cleanup and error handling.
-    
+
+    IMPORTANT: This does NOT auto-commit. Routes must explicitly commit.
+    On exception, the session is rolled back.
+
     Usage:
         @app.get("/items")
         async def get_items(db: AsyncSession = Depends(get_db)):
             ...
+            await db.commit()  # Explicit commit required for writes
     """
-    session = None
-    try:
-        async with async_session_maker() as session:
+    import structlog
+    logger = structlog.get_logger()
+
+    async with async_session_maker() as session:
+        try:
+            yield session
+            # NOTE: No auto-commit - routes must explicitly call await db.commit()
+        except Exception as e:
+            await session.rollback()
             try:
-                yield session
-                await session.commit()
-            except Exception as e:
-                await session.rollback()
-                # Log the error for debugging
-                import structlog
-                logger = structlog.get_logger()
-                try:
-                    pool_info = {
-                        "pool_size": engine.pool.size(),
-                        "pool_checked_in": engine.pool.checkedin(),
-                        "pool_checked_out": engine.pool.checkedout(),
-                        "pool_overflow": engine.pool.overflow(),
-                    }
-                except Exception:
-                    pool_info = {"pool_info": "unavailable"}
-                logger.error(
-                    "Database session error",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    **pool_info
-                )
-                raise
-            finally:
-                # Explicitly close the session to release the connection
-                await session.close()
-    except Exception as e:
-        # Ensure session is closed even if there's an error creating it
-        if session:
-            try:
-                await session.close()
-            except Exception as close_error:
-                logger.debug("Failed to close session during error cleanup", error=str(close_error))
-        raise
+                pool_info = {
+                    "pool_size": engine.pool.size(),
+                    "pool_checked_in": engine.pool.checkedin(),
+                    "pool_checked_out": engine.pool.checkedout(),
+                    "pool_overflow": engine.pool.overflow(),
+                }
+            except Exception:
+                pool_info = {"pool_info": "unavailable"}
+            logger.error(
+                "Database session error - rolled back",
+                error=str(e),
+                error_type=type(e).__name__,
+                **pool_info
+            )
+            raise
 
