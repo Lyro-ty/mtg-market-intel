@@ -9,6 +9,20 @@ from enum import Enum
 from typing import Optional
 
 
+# =============================================================================
+# Input Validation Limits
+# =============================================================================
+
+# Maximum characters for search queries (prevents DoS via megabyte-long strings)
+MAX_SEARCH_LENGTH = 200
+
+# Maximum IDs in .in_() queries (prevents memory exhaustion)
+MAX_IDS_PER_REQUEST = 500
+
+# Maximum items per page for paginated endpoints
+MAX_PAGE_SIZE = 100
+
+
 class CardCondition(str, Enum):
     """
     Standardized card condition grades.

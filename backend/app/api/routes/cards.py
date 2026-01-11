@@ -7,10 +7,12 @@ from datetime import datetime, timedelta, time, timezone
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+from app.core.constants import MAX_SEARCH_LENGTH
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -58,11 +60,21 @@ async def search_cards(
 ):
     """
     Search for cards by name.
-    
+
     Supports partial matching and optional set filtering.
     """
+    # Validate search length
+    if len(q) > MAX_SEARCH_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Search query too long. Maximum {MAX_SEARCH_LENGTH} characters.",
+        )
+
+    # Escape SQL wildcard characters in user input to prevent wildcard abuse
+    q_escaped = q.replace("%", r"\%").replace("_", r"\_")
+
     # Build query
-    query = select(Card).where(Card.name.ilike(f"%{q}%"))
+    query = select(Card).where(Card.name.ilike(f"%{q_escaped}%", escape="\\"))
     
     if set_code:
         query = query.where(Card.set_code == set_code.upper())
@@ -1866,4 +1878,113 @@ async def get_card_legality_history(
         has_been_banned=has_been_banned,
         currently_banned_in=currently_banned_in,
     )
+
+
+# =============================================================================
+# Debug Endpoints
+# =============================================================================
+
+@router.get("/{card_id}/debug-prices")
+async def debug_card_prices(
+    card_id: int,
+    limit: int = Query(50, ge=1, le=200, description="Maximum snapshots to return"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Debug endpoint to see raw price data for a card.
+
+    Returns detailed information about price snapshots including:
+    - Snapshot timestamps and ages
+    - Price and currency information
+    - Marketplace sources
+    - Foil status
+
+    Useful for diagnosing chart data issues.
+    """
+    from app.core.marketplace_constants import get_marketplace_display_name
+
+    # Check card exists
+    card = await db.get(Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Query raw price snapshots
+    query = (
+        select(
+            PriceSnapshot.time,
+            PriceSnapshot.price,
+            PriceSnapshot.currency,
+            PriceSnapshot.is_foil,
+            PriceSnapshot.condition,
+            PriceSnapshot.source,
+            PriceSnapshot.num_listings,
+            Marketplace.slug,
+            Marketplace.name.label("marketplace_name"),
+        )
+        .join(Marketplace, PriceSnapshot.marketplace_id == Marketplace.id)
+        .where(PriceSnapshot.card_id == card_id)
+        .order_by(PriceSnapshot.time.desc())
+        .limit(limit)
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # Group by marketplace for summary
+    marketplace_counts: dict[str, int] = {}
+    currency_counts: dict[str, int] = {}
+    oldest_snapshot = None
+    newest_snapshot = None
+
+    for r in rows:
+        # Count by marketplace + currency
+        key = f"{get_marketplace_display_name(r.slug, r.currency)} ({r.currency})"
+        marketplace_counts[key] = marketplace_counts.get(key, 0) + 1
+
+        # Count by currency
+        currency_counts[r.currency] = currency_counts.get(r.currency, 0) + 1
+
+        # Track date range
+        if oldest_snapshot is None or r.time < oldest_snapshot:
+            oldest_snapshot = r.time
+        if newest_snapshot is None or r.time > newest_snapshot:
+            newest_snapshot = r.time
+
+    # Format snapshots for response
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
+    snapshots = []
+    for r in rows:
+        age_minutes = int((now - r.time).total_seconds() / 60) if r.time else None
+        snapshots.append({
+            "time": r.time.isoformat() if r.time else None,
+            "age_minutes": age_minutes,
+            "price": float(r.price) if r.price else None,
+            "currency": r.currency,
+            "is_foil": r.is_foil,
+            "condition": r.condition,
+            "source": r.source,
+            "num_listings": r.num_listings,
+            "marketplace_slug": r.slug,
+            "marketplace_display": get_marketplace_display_name(r.slug, r.currency),
+        })
+
+    return {
+        "card_id": card_id,
+        "card_name": card.name,
+        "set_code": card.set_code,
+        "total_snapshots_returned": len(rows),
+
+        # Summary stats
+        "by_marketplace": marketplace_counts,
+        "by_currency": currency_counts,
+        "date_range": {
+            "oldest": oldest_snapshot.isoformat() if oldest_snapshot else None,
+            "newest": newest_snapshot.isoformat() if newest_snapshot else None,
+        },
+
+        # Raw data
+        "snapshots": snapshots,
+    }
 

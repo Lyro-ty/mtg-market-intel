@@ -6,9 +6,10 @@ Provides semantic search, autocomplete, and similar cards functionality.
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.constants import MAX_SEARCH_LENGTH
 from app.db.session import get_db
 from app.models import Card
 from app.schemas.search import (
@@ -121,7 +122,17 @@ async def search_cards(
         from sqlalchemy import select, func
         from app.services.search.filters import build_filter_query
 
-        query = select(Card).where(Card.name.ilike(f"%{q}%"))
+        # Validate search length
+        if len(q) > MAX_SEARCH_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Search query too long. Maximum {MAX_SEARCH_LENGTH} characters.",
+            )
+
+        # Escape SQL wildcard characters in user input to prevent wildcard abuse
+        q_escaped = q.replace("%", r"\%").replace("_", r"\_")
+
+        query = select(Card).where(Card.name.ilike(f"%{q_escaped}%", escape="\\"))
         query = build_filter_query(query, filters)
 
         # Get total count

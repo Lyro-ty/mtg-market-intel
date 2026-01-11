@@ -13,10 +13,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy import select, func, and_, or_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.constants import MAX_SEARCH_LENGTH
 
 from app.api.deps import CurrentUser
 from app.db.session import get_db
@@ -405,7 +407,14 @@ async def get_inventory(
     
     # Apply filters
     if search:
-        query = query.where(Card.name.ilike(f"%{search}%"))
+        if len(search) > MAX_SEARCH_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Search query too long. Maximum {MAX_SEARCH_LENGTH} characters.",
+            )
+        # Escape SQL wildcard characters in user input to prevent wildcard abuse
+        search_escaped = search.replace("%", r"\%").replace("_", r"\_")
+        query = query.where(Card.name.ilike(f"%{search_escaped}%", escape="\\"))
     
     if set_code:
         query = query.where(Card.set_code == set_code.upper())
