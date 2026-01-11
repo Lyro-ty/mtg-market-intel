@@ -9,6 +9,8 @@ import httpx
 import structlog
 from selectolax.parser import HTMLParser
 
+from app.core.config import settings
+
 logger = structlog.get_logger()
 
 
@@ -108,14 +110,18 @@ async def fetch_page(
     client: httpx.AsyncClient,
     url: str,
     headers: dict[str, str] | None = None,
-    timeout: float = 30.0,
+    timeout: float | None = None,
 ) -> HTMLParser | None:
     """
     Fetch and parse an HTML page.
-    
+
     Returns:
         HTMLParser instance or None if failed.
     """
+    # Use centralized timeout setting if not explicitly provided
+    if timeout is None:
+        timeout = float(settings.external_api_timeout)
+
     default_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -124,10 +130,10 @@ async def fetch_page(
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
     }
-    
+
     if headers:
         default_headers.update(headers)
-    
+
     try:
         response = await client.get(url, headers=default_headers, timeout=timeout, follow_redirects=True)
         response.raise_for_status()

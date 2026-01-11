@@ -531,7 +531,7 @@ async def _collect_cardtrader_async(card_ids: list[int]) -> dict[str, Any]:
                 api_url="https://api.cardtrader.com/api/v2",
                 api_key=settings.cardtrader_api_token,
                 rate_limit_seconds=0.05,
-                timeout_seconds=30.0,
+                timeout_seconds=settings.external_api_timeout,
             )
             adapter = CardTraderAdapter(config)
 
@@ -660,7 +660,7 @@ async def _collect_tcgplayer_async(card_ids: list[int]) -> dict[str, Any]:
                 api_key=settings.tcgplayer_api_key,
                 api_secret=settings.tcgplayer_api_secret,
                 rate_limit_seconds=0.6,  # 100 requests/min
-                timeout_seconds=30.0,
+                timeout_seconds=settings.external_api_timeout,
             )
             adapter = TCGPlayerAdapter(config)
 
@@ -762,13 +762,13 @@ async def _collect_manapool_async() -> dict[str, Any]:
             if not manapool_id:
                 return {**stats, "error": "Manapool marketplace not found"}
 
-            # Initialize adapter
+            # Initialize adapter (larger timeout for bulk fetch)
             config = AdapterConfig(
                 base_url="https://api.manapool.com",
                 api_url="https://api.manapool.com",
                 api_key=settings.manapool_api_token,
                 rate_limit_seconds=1.0,
-                timeout_seconds=60.0,
+                timeout_seconds=settings.external_api_timeout * 2,  # Double timeout for bulk operations
             )
             adapter = ManapoolAdapter(config)
 

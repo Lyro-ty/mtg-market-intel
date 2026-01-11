@@ -403,7 +403,7 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                 api_url="https://api.cardtrader.com/api/v2",
                 api_key=settings.cardtrader_api_token,
                 rate_limit_seconds=0.05,  # 200 requests per 10 seconds (per CardTrader API docs)
-                timeout_seconds=30.0,
+                timeout_seconds=settings.external_api_timeout,
             )
             cardtrader = CardTraderAdapter(cardtrader_config)
             
@@ -651,7 +651,7 @@ async def _collect_price_data_async(batch_size: int = 500) -> dict[str, Any]:
                         api_key=settings.tcgplayer_api_key,
                         api_secret=settings.tcgplayer_api_secret,
                         rate_limit_seconds=0.6,  # 100 requests per minute
-                        timeout_seconds=30.0,
+                        timeout_seconds=settings.external_api_timeout,
                     )
                     tcgplayer = TCGPlayerAdapter(tcgplayer_config)
                     tcgplayer_mp = await _get_or_create_tcgplayer_marketplace(db)
@@ -1049,7 +1049,7 @@ async def _collect_inventory_prices_async() -> dict[str, Any]:
                     api_url="https://api.cardtrader.com/api/v2",
                     api_key=settings.cardtrader_api_token,
                     rate_limit_seconds=0.05,  # 200 requests per 10 seconds (per CardTrader API docs)
-                    timeout_seconds=30.0,
+                    timeout_seconds=settings.external_api_timeout,
                 )
                 cardtrader = CardTraderAdapter(cardtrader_config)
                 cardtrader_mp = await _get_or_create_cardtrader_marketplace(db)

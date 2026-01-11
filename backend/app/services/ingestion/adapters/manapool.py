@@ -46,7 +46,7 @@ class ManapoolAdapter(MarketplaceAdapter):
                 api_url=self.BASE_URL,
                 api_key=api_token,
                 rate_limit_seconds=self.RATE_LIMIT_WINDOW / self.RATE_LIMIT_REQUESTS,
-                timeout_seconds=30.0,
+                # timeout_seconds uses the default from AdapterConfig (settings.external_api_timeout)
             )
         super().__init__(config)
 
