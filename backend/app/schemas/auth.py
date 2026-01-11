@@ -86,10 +86,10 @@ class UserUpdate(BaseModel):
     
 class PasswordChange(BaseModel):
     """Schema for changing password."""
-    
+
     current_password: str
     new_password: str = Field(..., min_length=8, max_length=100)
-    
+
     @field_validator("new_password")
     @classmethod
     def validate_password(cls, v: str) -> str:
@@ -101,6 +101,19 @@ class PasswordChange(BaseModel):
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
         return v
+
+
+class RefreshTokenRequest(BaseModel):
+    """Request to refresh access token."""
+    refresh_token: str
+
+
+class TokenResponse(BaseModel):
+    """Response containing both access and refresh tokens."""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int  # seconds until access token expires
 
 
 

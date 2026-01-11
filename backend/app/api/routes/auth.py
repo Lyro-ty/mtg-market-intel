@@ -11,7 +11,9 @@ from app.api.deps import CurrentUser
 from app.db.session import get_db
 from app.schemas.auth import (
     PasswordChange,
+    RefreshTokenRequest,
     Token,
+    TokenResponse,
     UserLogin,
     UserRegister,
     UserResponse,
@@ -22,8 +24,11 @@ from app.services.auth import (
     authenticate_user,
     blacklist_token,
     create_access_token,
+    create_token_pair,
     create_user,
+    decode_refresh_token,
     get_user_by_email,
+    get_user_by_id,
     get_user_by_username,
     update_password,
     verify_password,
@@ -82,32 +87,71 @@ async def register(
     return user
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=TokenResponse)
 async def login(
     credentials: UserLogin,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Login with email and password to receive an access token.
-    
-    The token should be included in the Authorization header as:
+    Login with email and password to receive access and refresh tokens.
+
+    The access token should be included in the Authorization header as:
     `Authorization: Bearer <token>`
+
+    Use the refresh token with the /refresh endpoint to get new tokens
+    when the access token expires.
     """
     user = await authenticate_user(db, credentials.email, credentials.password)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    access_token = create_access_token(user.id)
-    
-    return Token(
+
+    access_token, refresh_token, expires_in = create_token_pair(user.id)
+
+    return TokenResponse(
         access_token=access_token,
-        token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        refresh_token=refresh_token,
+        expires_in=expires_in,
+    )
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_access_token(
+    request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Exchange a refresh token for a new access/refresh token pair."""
+    token_data = decode_refresh_token(request.refresh_token)
+
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    user_id = int(token_data.sub)
+    user = await get_user_by_id(db, user_id)
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    # Blacklist the old refresh token (rotation)
+    blacklist_token(request.refresh_token)
+
+    # Create new token pair
+    access_token, refresh_token, expires_in = create_token_pair(user.id)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=expires_in,
     )
 
 

@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     
     # JWT Settings
     jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = 60 * 24  # 24 hours
+    jwt_access_token_expire_minutes: int = 15  # Short-lived access tokens
+    jwt_refresh_token_expire_days: int = 7  # Longer-lived refresh tokens
 
     # OAuth settings
     GOOGLE_CLIENT_ID: str = ""

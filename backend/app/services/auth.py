@@ -37,7 +37,7 @@ pwd_context = CryptContext(
 
 # JWT settings
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.jwt_access_token_expire_minutes
 
 
 def normalize_email(email: str) -> str:
@@ -150,6 +150,58 @@ def blacklist_token(token: str) -> bool:
     except JWTError as e:
         logger.warning("Failed to blacklist token", error=str(e))
         return False
+
+
+def create_refresh_token(user_id: int) -> str:
+    """Create a refresh token for token rotation."""
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=settings.jwt_refresh_token_expire_days)
+    jti = str(uuid.uuid4())
+
+    payload = {
+        "sub": str(user_id),
+        "exp": expire,
+        "iat": now,
+        "jti": jti,
+        "type": "refresh",
+    }
+
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def decode_refresh_token(token: str) -> Optional[TokenPayload]:
+    """Decode and validate a refresh token."""
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        token_data = TokenPayload(**payload)
+
+        if token_data.type != "refresh":
+            logger.warning("Token is not a refresh token", token_type=token_data.type)
+            return None
+
+        # Check blacklist
+        if token_data.jti:
+            blacklist = get_token_blacklist()
+            if blacklist.is_blacklisted(token_data.jti):
+                logger.warning("Refresh token is blacklisted", jti=token_data.jti)
+                return None
+
+        return token_data
+    except JWTError as e:
+        logger.warning("Refresh token decode error", error=str(e))
+        return None
+
+
+def create_token_pair(user_id: int) -> tuple[str, str, int]:
+    """Create an access/refresh token pair."""
+    access_token = create_access_token(
+        user_id,
+        expires_delta=timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    )
+    refresh_token = create_refresh_token(user_id)
+    expires_in = settings.jwt_access_token_expire_minutes * 60
+
+    return access_token, refresh_token, expires_in
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
