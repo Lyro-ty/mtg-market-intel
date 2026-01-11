@@ -365,7 +365,7 @@ class TestGetWantListItem:
         auth_headers: dict,
         test_card: Card,
     ):
-        """GET returns 403 for item owned by another user."""
+        """GET returns 404 for item owned by another user (prevents ID enumeration)."""
         # Create another user and their want list item
         other_user = User(
             email="other@example.com",
@@ -390,8 +390,8 @@ class TestGetWantListItem:
             headers=auth_headers,
         )
 
-        assert response.status_code == 403
-        assert "Not authorized" in response.json()["detail"]
+        # Returns 404 (not 403) to prevent attackers from enumerating valid IDs
+        assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -469,7 +469,7 @@ class TestUpdateWantListItem:
         auth_headers: dict,
         test_card: Card,
     ):
-        """PATCH returns 403 for item owned by another user."""
+        """PATCH returns 404 for item owned by another user (prevents ID enumeration)."""
         other_user = User(
             email="other2@example.com",
             username="otheruser2",
@@ -494,7 +494,8 @@ class TestUpdateWantListItem:
             json={"target_price": 100.00},
         )
 
-        assert response.status_code == 403
+        # Returns 404 (not 403) to prevent attackers from enumerating valid IDs
+        assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -542,7 +543,7 @@ class TestDeleteWantListItem:
         auth_headers: dict,
         test_card: Card,
     ):
-        """DELETE returns 403 for item owned by another user."""
+        """DELETE returns 404 for item owned by another user (prevents ID enumeration)."""
         other_user = User(
             email="other3@example.com",
             username="otheruser3",
@@ -566,7 +567,8 @@ class TestDeleteWantListItem:
             headers=auth_headers,
         )
 
-        assert response.status_code == 403
+        # Returns 404 (not 403) to prevent attackers from enumerating valid IDs
+        assert response.status_code == 404
 
 
 @pytest.mark.asyncio
