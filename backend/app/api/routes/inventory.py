@@ -1140,17 +1140,23 @@ async def get_inventory_market_index(
             "latest_snapshot_time": latest_snapshot_time.isoformat() if latest_snapshot_time else None,
         }
         
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, DBAPIError) as e:
+        logger.warning(
+            "Database error fetching inventory market index",
+            error=str(e),
+            error_type=type(e).__name__,
+            range=range,
+        )
+        # Return empty data on database errors (handled gracefully)
+        return {
+            "range": range,
+            "currency": "USD",
+            "points": [],
+            "isMockData": False,
+        }
     except Exception as e:
-        logger.error("Error fetching inventory market index", error=str(e), error_type=type(e).__name__, range=range)
-        # Return empty data on error (connection errors handled gracefully)
-        if is_database_connection_error(e):
-            return {
-                "range": range,
-                "currency": "USD",
-                "points": [],
-                "isMockData": False,
-            }
-        # For other errors, re-raise to get proper HTTP error response
+        logger.error("Unexpected error fetching inventory market index", error=str(e), error_type=type(e).__name__, range=range)
+        # For unexpected errors, re-raise to get proper HTTP error response
         raise HTTPException(status_code=500, detail="Failed to fetch inventory market index")
 
 
@@ -1430,16 +1436,23 @@ async def get_inventory_top_movers(
         else:
             freshness_hours = 999
 
+    except (asyncio.TimeoutError, OperationalError, SQLTimeoutError, DBAPIError) as e:
+        logger.warning(
+            "Database error fetching inventory top movers",
+            error=str(e),
+            error_type=type(e).__name__,
+            window=window,
+        )
+        # Return empty data on database errors (handled gracefully)
+        return {
+            "window": window,
+            "gainers": [],
+            "losers": [],
+            "data_freshness_hours": 0,
+        }
     except Exception as e:
-        logger.error("Error fetching inventory top movers", error=str(e), error_type=type(e).__name__, window=window)
-        # Return empty data on connection errors, raise for other errors
-        if is_database_connection_error(e):
-            return {
-                "window": window,
-                "gainers": [],
-                "losers": [],
-                "data_freshness_hours": 0,
-            }
+        logger.error("Unexpected error fetching inventory top movers", error=str(e), error_type=type(e).__name__, window=window)
+        # For unexpected errors, re-raise to get proper HTTP error response
         raise HTTPException(status_code=500, detail="Failed to fetch inventory top movers")
 
     return {
