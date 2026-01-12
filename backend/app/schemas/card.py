@@ -73,12 +73,35 @@ class CardResponse(CardBase):
 
 
 class CardSearchResponse(BaseModel):
-    """Card search results schema."""
+    """Card search results schema (offset-based pagination)."""
     cards: list[CardResponse]
     total: int
     page: int = 1
     page_size: int = 20
     has_more: bool = False
+
+
+class CardCursorSearchResponse(BaseModel):
+    """Card search results with cursor-based pagination.
+
+    Cursor pagination is more efficient for large datasets:
+    - O(1) performance vs O(n) for offset pagination
+    - Use next_cursor to fetch the next page
+    - Stable results even with concurrent inserts/deletes
+    """
+    cards: list[CardResponse]
+    next_cursor: Optional[str] = Field(
+        default=None,
+        description="Cursor for the next page. Pass this as 'cursor' to get next results."
+    )
+    has_more: bool = Field(
+        default=False,
+        description="True if there are more results after this page"
+    )
+    total_count: Optional[int] = Field(
+        default=None,
+        description="Total matching count. Only included if include_count=true (adds query overhead)"
+    )
 
 
 class PricePoint(BaseModel):

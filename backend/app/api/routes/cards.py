@@ -19,6 +19,7 @@ from app.core.hashids import decode_card_id
 from app.schemas.card import (
     CardResponse,
     CardSearchResponse,
+    CardCursorSearchResponse,
     CardDetailResponse,
     CardPriceResponse,
     CardHistoryResponse,
@@ -29,6 +30,10 @@ from app.schemas.card import (
     RecommendationSummary,
     CardPublicResponse,
     CardPublicPriceResponse,
+)
+from app.api.utils.pagination import (
+    apply_cursor_pagination,
+    build_cursor_response,
 )
 from app.schemas.signal import SignalResponse, SignalListResponse
 from app.schemas.news import CardNewsResponse, CardNewsItem
@@ -91,6 +96,81 @@ async def search_cards(
         page=page,
         page_size=page_size,
         has_more=(page * page_size) < (total or 0),
+    )
+
+
+@router.get("/search/cursor", response_model=CardCursorSearchResponse)
+async def search_cards_cursor(
+    q: str = Query(..., min_length=1, description="Search query"),
+    set_code: Optional[str] = Query(None, description="Filter by set code"),
+    cursor: Optional[str] = Query(None, description="Cursor from previous page"),
+    limit: int = Query(20, ge=1, le=100, description="Number of results per page"),
+    include_count: bool = Query(False, description="Include total count (adds overhead)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Search for cards by name using cursor-based pagination.
+
+    Cursor pagination is more efficient for large datasets:
+    - O(1) performance vs O(n) for offset pagination
+    - Use next_cursor to fetch the next page
+    - Stable results even with concurrent inserts/deletes
+
+    Example workflow:
+    1. First request: GET /cards/search/cursor?q=lightning&limit=20
+    2. Response includes next_cursor if more results exist
+    3. Next request: GET /cards/search/cursor?q=lightning&limit=20&cursor=<next_cursor>
+    4. Repeat until has_more=false
+    """
+    # Validate search length
+    if len(q) > MAX_SEARCH_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Search query too long. Maximum {MAX_SEARCH_LENGTH} characters.",
+        )
+
+    # Escape SQL wildcard characters in user input to prevent wildcard abuse
+    q_escaped = q.replace("%", r"\%").replace("_", r"\_")
+
+    # Build base query
+    query = select(Card).where(Card.name.ilike(f"%{q_escaped}%", escape="\\"))
+
+    if set_code:
+        query = query.where(Card.set_code == set_code.upper())
+
+    # Optional: Get total count (adds query overhead)
+    total_count = None
+    if include_count:
+        count_query = select(func.count()).select_from(query.subquery())
+        total_count = await db.scalar(count_query)
+
+    # Apply cursor-based pagination
+    # Order by name (ASC) with id as tiebreaker for stable ordering
+    query = apply_cursor_pagination(
+        query=query,
+        cursor=cursor,
+        limit=limit,
+        order_column=Card.name,
+        id_column=Card.id,
+        descending=False,  # Alphabetical order (ASC)
+    )
+
+    result = await db.execute(query)
+    cards = result.scalars().all()
+
+    # Build cursor response
+    items, next_cursor, has_more = build_cursor_response(
+        items=list(cards),
+        limit=limit,
+        order_attr="name",
+        id_attr="id",
+    )
+
+    return CardCursorSearchResponse(
+        cards=[CardResponse.model_validate(c) for c in items],
+        next_cursor=next_cursor,
+        has_more=has_more,
+        total_count=total_count,
     )
 
 
