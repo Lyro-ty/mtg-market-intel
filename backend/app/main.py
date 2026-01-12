@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from app.api import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.tracing import setup_tracing
 from app.middleware.enumeration_protection import EnumerationProtectionMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_id import RequestIdMiddleware
@@ -172,6 +173,9 @@ app = FastAPI(
     openapi_url="/openapi.json",
     lifespan=lifespan,
 )
+
+# Setup tracing (no-op if OTLP_ENDPOINT not configured)
+setup_tracing(app)
 
 # Configure CORS
 app.add_middleware(

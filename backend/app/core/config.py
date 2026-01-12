@@ -22,7 +22,10 @@ class Settings(BaseSettings):
 
     # Error Tracking
     sentry_dsn: str = ""  # Sentry DSN - set via SENTRY_DSN env var
-    
+
+    # Tracing
+    otlp_endpoint: str | None = None  # e.g., "http://jaeger:4317"
+
     # JWT Settings
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 15  # Short-lived access tokens
