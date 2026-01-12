@@ -118,48 +118,61 @@ get_optional_current_user = get_current_user_optional
 
 
 # Redis and cache dependencies
-_redis_pool: ConnectionPool | None = None
 _redis_client: Redis | None = None
 _redis_lock = asyncio.Lock()
 
 
+def _reset_redis_client() -> None:
+    """Reset Redis client for testing. Do not use in production."""
+    global _redis_client
+    _redis_client = None
+
+
+async def _create_redis_client() -> Redis:
+    """Create and configure Redis client."""
+    pool = ConnectionPool.from_url(
+        settings.redis_url,
+        max_connections=20,
+        decode_responses=True,
+    )
+    return Redis(connection_pool=pool)
+
+
 async def get_redis() -> Redis:
     """
-    Get the async Redis client with connection pooling.
+    Get Redis client singleton.
 
-    Thread-safe initialization using asyncio.Lock with double-checked locking
-    to prevent race conditions where multiple concurrent requests could create
-    multiple Redis connections simultaneously.
+    Thread-safe initialization using asyncio.Lock.
+    All concurrent callers wait for the same initialization.
+
+    Returns:
+        Configured Redis client
     """
-    global _redis_pool, _redis_client
+    global _redis_client
 
+    # Fast path: already initialized
     if _redis_client is not None:
         return _redis_client
 
+    # Slow path: need to initialize
     async with _redis_lock:
-        # Double-check after acquiring lock
+        # Check again after acquiring lock (another task may have initialized)
         if _redis_client is not None:
             return _redis_client
 
-        _redis_pool = ConnectionPool.from_url(
-            settings.redis_url,
-            decode_responses=True,
-            max_connections=20,
-        )
-        _redis_client = Redis(connection_pool=_redis_pool)
-
-    return _redis_client
+        # We're the first - create the client
+        _redis_client = await _create_redis_client()
+        return _redis_client
 
 
 async def close_redis() -> None:
-    """Close Redis connections on shutdown."""
-    global _redis_pool, _redis_client
-    if _redis_client:
-        await _redis_client.close()
-        _redis_client = None
-    if _redis_pool:
-        await _redis_pool.disconnect()
-        _redis_pool = None
+    """Close Redis connection pool. Call on application shutdown."""
+    global _redis_client
+
+    async with _redis_lock:
+        if _redis_client is not None:
+            await _redis_client.close()
+            _redis_client = None
 
 
 async def get_cache(
