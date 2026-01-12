@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.api.utils.file_validation import validate_import_file
 from app.models.import_job import ImportPlatform, ImportStatus
 from app.models.user import User
 from app.services.imports import ImportService
@@ -117,31 +118,23 @@ async def upload_import_file(
     # Read file content
     content = await file.read()
 
-    # Check first 1KB for non-printable characters (UTF-8 validation)
-    sample = content[:1024]
-    try:
-        sample.decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File contains invalid characters. Must be UTF-8 text.",
-        )
-
-    # Decode full content
-    try:
-        content_str = content.decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be UTF-8 encoded",
-        )
-
-    # Limit file size (10MB)
+    # Check file size first (10MB limit)
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File too large. Maximum size is 10MB",
         )
+
+    # Full content validation (magic bytes + UTF-8 + CSV structure)
+    is_valid, error = validate_import_file(content)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file: {error}",
+        )
+
+    # Decode content for processing
+    content_str = content.decode("utf-8")
 
     service = ImportService(db)
     job = await service.create_import_job(

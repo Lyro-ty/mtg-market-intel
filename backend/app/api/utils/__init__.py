@@ -17,6 +17,11 @@ from app.api.utils.ownership import (
     check_ownership,
     require_ownership,
 )
+from app.api.utils.file_validation import (
+    detect_dangerous_content,
+    validate_csv_structure,
+    validate_import_file,
+)
 
 __all__ = [
     "interpolate_missing_points",
@@ -31,4 +36,7 @@ __all__ = [
     "verify_ownership_optional",
     "check_ownership",
     "require_ownership",
+    "detect_dangerous_content",
+    "validate_csv_structure",
+    "validate_import_file",
 ]
