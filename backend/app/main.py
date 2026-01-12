@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from app.api import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.middleware.enumeration_protection import EnumerationProtectionMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_id import RequestIdMiddleware
 from app.services.ingestion import enable_adapter_caching
@@ -202,6 +203,10 @@ app.add_middleware(
 # Add request ID middleware for distributed tracing
 # Runs before other middleware to ensure request_id is available early
 app.add_middleware(RequestIdMiddleware)
+
+# Add enumeration protection middleware
+# Detects and blocks ID enumeration attacks by tracking 404 patterns
+app.add_middleware(EnumerationProtectionMiddleware)
 
 
 # Global exception handler
