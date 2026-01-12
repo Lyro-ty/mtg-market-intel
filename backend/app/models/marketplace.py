@@ -9,7 +9,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.listing import Listing
     from app.models.price_snapshot import PriceSnapshot
     from app.models.recommendation import Recommendation
 
@@ -42,9 +41,6 @@ class Marketplace(Base):
     rate_limit_seconds: Mapped[float] = mapped_column(default=1.0, nullable=False)
     
     # Relationships
-    listings: Mapped[list["Listing"]] = relationship(
-        "Listing", back_populates="marketplace", cascade="all, delete-orphan"
-    )
     price_snapshots: Mapped[list["PriceSnapshot"]] = relationship(
         "PriceSnapshot", back_populates="marketplace", cascade="all, delete-orphan"
     )
