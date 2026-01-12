@@ -849,20 +849,38 @@ async def get_market_index(
     }
 
 
+# Maximum allowed limit for top movers to prevent expensive queries
+MAX_TOP_MOVERS_LIMIT = 50
+# Maximum candidate pool size to prevent full table scans
+MAX_CANDIDATE_POOL = 10000
+
+
 @router.get("/top-movers")
 async def get_top_movers(
     window: str = Query("24h", regex="^(24h|7d)$"),
+    limit: int = Query(10, ge=1, le=MAX_TOP_MOVERS_LIMIT, description="Number of results per category (max 50)"),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get top gaining and losing cards.
+
+    Returns the top N gainers and losers based on price change percentage.
+    The query is optimized to only consider cards with recent activity
+    to prevent full table scans.
+
+    Args:
+        window: Time window for price change (24h or 7d)
+        limit: Number of results per category (1-50, default 10)
     """
+    # Enforce hard limit to prevent expensive queries
+    effective_limit = min(limit, MAX_TOP_MOVERS_LIMIT)
+
     # Determine time window
     if window == "24h":
         change_field = MetricsCardsDaily.price_change_pct_1d
     else:  # 7d
         change_field = MetricsCardsDaily.price_change_pct_7d
-    
+
     try:
         # Get the latest date that actually has price change data
         # This handles cases where the most recent date exists but hasn't had
@@ -893,48 +911,59 @@ async def get_top_movers(
         logger.debug(
             "Using date with price change data for top movers",
             query_date=query_date.isoformat(),
-            window=window
+            window=window,
+            effective_limit=effective_limit
         )
-        
+
         # Minimum thresholds to filter out noise
         # Require at least 1% change and minimum volume of 1 listing
         # Note: total_listings reflects marketplace sources, not individual listings
         min_change_pct = 1.0  # At least 1% change
         min_volume = 1  # At least 1 marketplace source
-        
-        # Get top gainers
+
+        # Subquery to get only card IDs with valid metrics on the target date
+        # This caps the candidate pool to prevent full table scans on the join
+        # The subquery uses the composite index on (date, avg_price, total_listings)
+        candidate_cards = (
+            select(MetricsCardsDaily.card_id)
+            .where(
+                MetricsCardsDaily.date == query_date,
+                MetricsCardsDaily.avg_price.isnot(None),
+                MetricsCardsDaily.avg_price > 0,
+                MetricsCardsDaily.total_listings >= min_volume,
+                change_field.isnot(None),
+            )
+            .limit(MAX_CANDIDATE_POOL)
+            .subquery()
+        )
+
+        # Get top gainers - only from candidate pool
         gainers_query = select(MetricsCardsDaily, Card).join(
             Card, MetricsCardsDaily.card_id == Card.id
         ).where(
             MetricsCardsDaily.date == query_date,
-            change_field.isnot(None),
+            MetricsCardsDaily.card_id.in_(select(candidate_cards.c.card_id)),
             change_field >= min_change_pct,  # At least 1% gain
-            MetricsCardsDaily.total_listings >= min_volume,  # Minimum volume
-            MetricsCardsDaily.avg_price.isnot(None),
-            MetricsCardsDaily.avg_price > 0,  # Valid price
         ).order_by(
             desc(change_field)
-        ).limit(10)
-        
+        ).limit(effective_limit)
+
         gainers_result = await asyncio.wait_for(
             db.execute(gainers_query),
             timeout=QUERY_TIMEOUT
         )
         gainers_rows = gainers_result.all()
-        
-        # Get top losers
+
+        # Get top losers - only from candidate pool
         losers_query = select(MetricsCardsDaily, Card).join(
             Card, MetricsCardsDaily.card_id == Card.id
         ).where(
             MetricsCardsDaily.date == query_date,
-            change_field.isnot(None),
+            MetricsCardsDaily.card_id.in_(select(candidate_cards.c.card_id)),
             change_field <= -min_change_pct,  # At least 1% loss
-            MetricsCardsDaily.total_listings >= min_volume,  # Minimum volume
-            MetricsCardsDaily.avg_price.isnot(None),
-            MetricsCardsDaily.avg_price > 0,  # Valid price
         ).order_by(
             change_field.asc()  # Most negative first
-        ).limit(10)
+        ).limit(effective_limit)
         
         losers_result = await asyncio.wait_for(
             db.execute(losers_query),

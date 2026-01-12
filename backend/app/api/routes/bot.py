@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import BotAuth, get_db
+from app.db.session import get_replica_db
 from app.api.utils.validation import validate_id_list
 from app.models.user import User
 from app.models.inventory import InventoryItem
@@ -42,7 +43,7 @@ logger = structlog.get_logger(__name__)
 async def get_user_by_discord_id(
     discord_id: str,
     _: BotAuth,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_replica_db),
 ):
     """
     Look up a user by their Discord ID.
@@ -69,7 +70,7 @@ async def get_user_by_discord_id(
 async def get_user_portfolio(
     user_id: int,
     _: BotAuth,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_replica_db),
 ):
     """
     Get a user's portfolio summary for bot display.
@@ -137,7 +138,7 @@ async def get_user_wantlist(
     user_id: int,
     _: BotAuth,
     limit: int = Query(default=10, le=25),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_replica_db),
 ):
     """
     Get a user's want list summary for bot display.
@@ -203,7 +204,7 @@ async def get_user_trades(
     user_id: int,
     _: BotAuth,
     limit: int = Query(default=20, le=50),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_replica_db),
 ):
     """
     Get a user's cards available for trade.
@@ -253,7 +254,7 @@ async def find_trade_matches(
     user_id: int,
     _: BotAuth,
     limit: int = Query(default=10, le=25),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_replica_db),
 ):
     """
     Find potential trade matches for a user.
@@ -366,7 +367,7 @@ async def find_trade_matches(
 async def get_pending_alerts(
     _: BotAuth,
     limit: int = Query(default=50, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_replica_db),
 ):
     """
     Get pending Discord alerts for delivery.

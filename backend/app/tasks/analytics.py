@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.models import PriceSnapshot
 from app.services.agents.analytics import AnalyticsAgent
-from app.tasks.utils import create_task_session_maker, run_async
+from app.tasks.utils import create_task_session_maker, run_async, single_instance
 
 logger = structlog.get_logger()
 
@@ -64,6 +64,7 @@ async def _run_analytics_async(
 # =============================================================================
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
+@single_instance("market_analytics", timeout=1800)
 def run_market_analytics(self, batch_size: int = 2000, target_date: str | None = None) -> dict[str, Any]:
     """
     Run analytics for MARKET cards only.

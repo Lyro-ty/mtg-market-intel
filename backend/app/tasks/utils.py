@@ -483,3 +483,92 @@ def log_pool_status(engine, context: str = ""):
     except Exception as e:
         log.debug("Could not get pool status", error=str(e))
 
+
+# =============================================================================
+# Backpressure Utilities
+# =============================================================================
+# These utilities prevent task queue buildup by checking if previous
+# instance is still running before accepting new work.
+
+
+# Lock timeout should be > max expected task duration
+DEFAULT_LOCK_TIMEOUT = 3600  # 1 hour
+
+
+def single_instance(
+    lock_name: str,
+    timeout: int = DEFAULT_LOCK_TIMEOUT,
+    redis_url: str = None,
+):
+    """
+    Decorator to ensure only one instance of a task runs at a time.
+
+    Usage:
+        @shared_task
+        @single_instance("analytics_lock")
+        def run_analytics():
+            ...
+
+    Args:
+        lock_name: Unique name for the lock
+        timeout: Lock auto-expire time (prevents deadlock)
+        redis_url: Redis URL (uses settings if not provided)
+    """
+    import functools
+    from redis import Redis
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            redis = Redis.from_url(redis_url or settings.redis_url)
+            lock_key = f"celery_lock:{lock_name}"
+
+            # Try to acquire lock
+            acquired = redis.set(lock_key, "1", nx=True, ex=timeout)
+
+            if not acquired:
+                log = get_logger()
+                log.warning(
+                    "Task skipped - previous instance still running",
+                    task=func.__name__,
+                    lock=lock_name,
+                )
+                return {"status": "skipped", "reason": "previous_running"}
+
+            try:
+                return func(*args, **kwargs)
+            finally:
+                # Release lock
+                redis.delete(lock_key)
+
+        return wrapper
+    return decorator
+
+
+def check_queue_depth(queue_name: str, max_depth: int = 100) -> bool:
+    """
+    Check if queue has too many pending tasks.
+
+    Args:
+        queue_name: Celery queue name
+        max_depth: Maximum allowed pending tasks
+
+    Returns:
+        True if queue depth is acceptable
+    """
+    from redis import Redis
+
+    log = get_logger()
+    redis = Redis.from_url(settings.redis_url)
+    depth = redis.llen(queue_name)
+
+    if depth > max_depth:
+        log.warning(
+            "Queue depth exceeded",
+            queue=queue_name,
+            depth=depth,
+            max=max_depth,
+        )
+        return False
+    return True
+

@@ -57,6 +57,36 @@ async_session_maker = async_sessionmaker(
     autoflush=False,
 )
 
+# Read replica (if configured) - used for heavy read queries (e.g., Discord bot)
+replica_engine = None
+replica_session_maker = None
+
+if settings.database_replica_url:
+    replica_engine = create_async_engine(
+        settings.database_replica_url,
+        echo=False,
+        pool_pre_ping=True,
+        pool_size=10,  # Smaller pool for replica
+        max_overflow=15,
+        pool_recycle=1800,
+        pool_timeout=settings.db_pool_timeout,
+        connect_args={
+            "server_settings": {
+                "statement_timeout": f"{settings.db_query_timeout * 1000}",
+                "idle_in_transaction_session_timeout": "300000",
+                "application_name": "mtg_market_intel_replica",
+            },
+            "command_timeout": settings.db_query_timeout,
+        },
+    )
+    replica_session_maker = async_sessionmaker(
+        replica_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
@@ -91,6 +121,47 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
                 pool_info = {"pool_info": "unavailable"}
             logger.error(
                 "Database session error - rolled back",
+                error=str(e),
+                error_type=type(e).__name__,
+                **pool_info
+            )
+            raise
+
+
+async def get_replica_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Dependency that provides a read replica database session.
+
+    Falls back to primary if no replica is configured.
+    Use this for read-only operations that can tolerate slight replication lag
+    (e.g., Discord bot queries, analytics dashboards).
+
+    IMPORTANT: This should only be used for READ operations.
+    """
+    import structlog
+    logger = structlog.get_logger()
+
+    # Use replica if configured, otherwise fall back to primary
+    session_maker = replica_session_maker if replica_session_maker else async_session_maker
+    target_engine = replica_engine if replica_engine else engine
+
+    async with session_maker() as session:
+        try:
+            yield session
+        except Exception as e:
+            await session.rollback()
+            try:
+                pool_info = {
+                    "pool_size": target_engine.pool.size(),
+                    "pool_checked_in": target_engine.pool.checkedin(),
+                    "pool_checked_out": target_engine.pool.checkedout(),
+                    "pool_overflow": target_engine.pool.overflow(),
+                    "using_replica": replica_session_maker is not None,
+                }
+            except Exception:
+                pool_info = {"pool_info": "unavailable"}
+            logger.error(
+                "Replica database session error - rolled back",
                 error=str(e),
                 error_type=type(e).__name__,
                 **pool_info

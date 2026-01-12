@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     postgres_password: str = ""  # Required - set via POSTGRES_PASSWORD env var
     postgres_db: str = "mtg_market_intel"
     database_url: str | None = None
+    database_replica_url: str | None = None  # Read replica for Discord bot (optional)
     
     # Redis
     redis_host: str = "redis"
