@@ -16,6 +16,7 @@ import structlog
 
 from app.models.price_snapshot import PriceSnapshot
 from app.core.constants import CardCondition, CardLanguage
+from app.db.transaction import savepoint
 
 logger = structlog.get_logger()
 
@@ -448,49 +449,48 @@ async def ensure_card_exists(
         )
         return None
 
+    # Extract data outside savepoint to catch parsing errors early
+    image_uris = card_data.get("image_uris", {})
+    if isinstance(image_uris, str):
+        image_uris = json.loads(image_uris)
+
+    legalities = card_data.get("legalities", {})
+    if isinstance(legalities, str):
+        legalities = json.loads(legalities)
+
+    color_identity = card_data.get("color_identity", [])
+    if isinstance(color_identity, str):
+        color_identity = json.loads(color_identity)
+
+    # Use savepoint for card creation to prevent partial data on failure
     try:
-        # Extract image URIs
-        image_uris = card_data.get("image_uris", {})
-        if isinstance(image_uris, str):
-            image_uris = json.loads(image_uris)
+        async with savepoint(db, f"create_card_{scryfall_id}"):
+            card = Card(
+                scryfall_id=scryfall_id,
+                name=name,
+                set_code=set_code,
+                collector_number=card_data.get("collector_number"),
+                rarity=card_data.get("rarity"),
+                type_line=card_data.get("type_line"),
+                oracle_text=card_data.get("oracle_text"),
+                mana_cost=card_data.get("mana_cost"),
+                cmc=card_data.get("cmc"),
+                color_identity=json.dumps(color_identity) if color_identity else None,
+                legalities=json.dumps(legalities) if legalities else None,
+                image_uris=json.dumps(image_uris) if image_uris else None,
+                image_uri=image_uris.get("normal") or image_uris.get("large"),
+            )
+            db.add(card)
+            await db.flush()
 
-        # Extract legalities
-        legalities = card_data.get("legalities", {})
-        if isinstance(legalities, str):
-            legalities = json.loads(legalities)
+            logger.info(
+                "Created new card during price import",
+                card_id=card.id,
+                name=name,
+                set_code=set_code,
+            )
 
-        # Extract color identity
-        color_identity = card_data.get("color_identity", [])
-        if isinstance(color_identity, str):
-            color_identity = json.loads(color_identity)
-
-        # Create the card
-        card = Card(
-            scryfall_id=scryfall_id,
-            name=name,
-            set_code=set_code,
-            collector_number=card_data.get("collector_number"),
-            rarity=card_data.get("rarity"),
-            type_line=card_data.get("type_line"),
-            oracle_text=card_data.get("oracle_text"),
-            mana_cost=card_data.get("mana_cost"),
-            cmc=card_data.get("cmc"),
-            color_identity=json.dumps(color_identity) if color_identity else None,
-            legalities=json.dumps(legalities) if legalities else None,
-            image_uris=json.dumps(image_uris) if image_uris else None,
-            image_uri=image_uris.get("normal") or image_uris.get("large"),
-        )
-        db.add(card)
-        await db.flush()
-
-        logger.info(
-            "Created new card during price import",
-            card_id=card.id,
-            name=name,
-            set_code=set_code,
-        )
-
-        return card.id
+            return card.id
 
     except Exception as e:
         logger.error(
@@ -498,7 +498,6 @@ async def ensure_card_exists(
             scryfall_id=scryfall_id,
             error=str(e),
         )
-        await db.rollback()
         return None
 
 
