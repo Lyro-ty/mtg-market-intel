@@ -265,12 +265,13 @@ class TestWantListQueryCount:
         want_list_items_for_perf: List[WantListItem],
     ):
         """
-        GET /api/want-list should execute at most 3 queries regardless of item count.
+        GET /api/want-list should execute at most 4 queries regardless of item count.
 
         Expected queries:
         1. Count query for pagination
-        2. Main items query (with eager loaded cards)
-        3. Price lookups (batched)
+        2. Main items query
+        3. Cards query (selectinload)
+        4. Batched price lookups (single query)
         """
         async with QueryCounter(test_engine) as counter:
             response = await client.get(
@@ -290,13 +291,14 @@ class TestWantListQueryCount:
             assert item["card"]["name"] is not None
 
         # Check query count
-        # With batched price lookups:
+        # With selectinload for cards and batched price lookups:
         # 1. Count query for pagination
-        # 2. Main items query (with eager loaded cards)
-        # 3. Batched price lookups (single query)
-        if counter.count > 3:
+        # 2. Main items query
+        # 3. Cards via selectinload (separate batch query)
+        # 4. Batched price lookups (single query)
+        if counter.count > 4:
             counter.print_queries()
-        assert counter.count <= 3, f"Expected max 3 queries, got {counter.count}"
+        assert counter.count <= 4, f"Expected max 4 queries, got {counter.count}"
 
 
 @pytest.mark.asyncio

@@ -25,7 +25,7 @@ def topdeck_client():
 
 @pytest.fixture
 def mock_tournament_response():
-    """Mock tournament data from TopDeck.gg API."""
+    """Mock tournament data from TopDeck.gg API (single tournament GET format)."""
     return {
         "id": "tour-123",
         "name": "Weekly Modern Tournament",
@@ -39,6 +39,31 @@ def mock_tournament_response():
             "country": "USA"
         },
         "url": "https://topdeck.gg/event/tour-123"
+    }
+
+
+@pytest.fixture
+def mock_tournament_list_response():
+    """Mock tournament data from TopDeck.gg API v2 format (list POST format)."""
+    return {
+        "TID": "tour-123",
+        "tournamentName": "Weekly Modern Tournament",
+        "format": "modern",
+        "startDate": 1734717600,  # Unix timestamp for 2024-12-20T18:00:00Z
+        "swissNum": 5,
+        "topCut": 8,
+        "eventData": {
+            "location": "LGS Store",
+            "city": "Seattle",
+            "state": "WA",
+            "country": "USA",
+            "lat": 47.6062,
+            "lng": -122.3321
+        },
+        "standings": [
+            {"wins": 4, "losses": 0, "draws": 1},
+            {"wins": 3, "losses": 1, "draws": 1},
+        ] * 16  # 32 players total
     }
 
 
@@ -127,12 +152,12 @@ class TestTopDeckClientGetRecentTournaments:
     """Test get_recent_tournaments method."""
 
     @pytest.mark.asyncio
-    async def test_get_recent_tournaments_success(self, topdeck_client, mock_tournament_response):
+    async def test_get_recent_tournaments_success(self, topdeck_client, mock_tournament_list_response):
         """Test fetching recent tournaments successfully."""
         # Use MagicMock for response since httpx's json() is synchronous
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [mock_tournament_response]  # v2 API returns list directly
+        mock_response.json.return_value = [mock_tournament_list_response]  # v2 API returns list directly
 
         with patch.object(topdeck_client, "_make_request", return_value=mock_response):
             tournaments = await topdeck_client.get_recent_tournaments(format="modern", days=30)

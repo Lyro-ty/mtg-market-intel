@@ -60,7 +60,28 @@ async def sample_cards(db_session):
 
 @pytest.fixture
 def sample_tournament_data():
-    """Sample tournament data from TopDeck API."""
+    """Sample normalized tournament data from TopDeck API (as returned by get_recent_tournaments)."""
+    return {
+        "id": "test-tournament-123",
+        "name": "Test Modern Tournament",
+        "format": "modern",
+        "date": datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc),
+        "player_count": 64,
+        "swiss_rounds": 6,
+        "top_cut_size": 8,
+        "city": "Seattle",
+        "venue": "Local Game Store",
+        "url": "https://topdeck.gg/event/test-tournament-123",
+        "standings": [
+            {"rank": 1, "wins": 6, "losses": 0, "draws": 0, "decklist": None, "deck_obj": None},
+            {"rank": 2, "wins": 5, "losses": 1, "draws": 0, "decklist": None, "deck_obj": None},
+        ],
+    }
+
+
+@pytest.fixture
+def sample_tournament_data_raw():
+    """Sample raw tournament data from TopDeck API (as returned by get_tournament)."""
     return {
         "id": "test-tournament-123",
         "name": "Test Modern Tournament",
@@ -131,23 +152,12 @@ class TestTournamentIngestionService:
         db_session,
         mock_topdeck_client,
         sample_tournament_data,
-        sample_standings_data,
-        sample_decklist_data,
-        sample_cards,
     ):
         """Test ingesting recent tournaments."""
         # Setup mock client responses
+        # get_recent_tournaments now returns normalized data with standings included
         mock_topdeck_client.get_recent_tournaments = AsyncMock(
-            return_value=[{"id": "test-tournament-123"}]
-        )
-        mock_topdeck_client.get_tournament = AsyncMock(
-            return_value=sample_tournament_data
-        )
-        mock_topdeck_client.get_tournament_standings = AsyncMock(
-            return_value=sample_standings_data
-        )
-        mock_topdeck_client.get_decklist = AsyncMock(
-            return_value=sample_decklist_data
+            return_value=[sample_tournament_data]
         )
 
         # Create service and ingest
@@ -169,7 +179,7 @@ class TestTournamentIngestionService:
         assert tournament.format == "modern"
         assert tournament.player_count == 64
 
-        # Verify standings were created
+        # Verify standings were created (2 from sample_tournament_data)
         standings = await db_session.execute(
             select(TournamentStanding).where(
                 TournamentStanding.tournament_id == tournament.id
@@ -177,7 +187,7 @@ class TestTournamentIngestionService:
         )
         standings_list = list(standings.scalars())
         assert len(standings_list) == 2
-        assert standings_list[0].player_name == "Alice"
+        assert standings_list[0].rank == 1
         assert standings_list[0].wins == 6
         assert standings_list[0].win_rate == 1.0
 
@@ -185,13 +195,13 @@ class TestTournamentIngestionService:
         self,
         db_session,
         mock_topdeck_client,
-        sample_tournament_data,
+        sample_tournament_data_raw,
         sample_standings_data,
     ):
         """Test ingesting a new tournament."""
         # Setup mock client
         mock_topdeck_client.get_tournament = AsyncMock(
-            return_value=sample_tournament_data
+            return_value=sample_tournament_data_raw
         )
         mock_topdeck_client.get_tournament_standings = AsyncMock(
             return_value=sample_standings_data
@@ -220,7 +230,7 @@ class TestTournamentIngestionService:
         self,
         db_session,
         mock_topdeck_client,
-        sample_tournament_data,
+        sample_tournament_data_raw,
         sample_standings_data,
     ):
         """Test updating an existing tournament."""
@@ -238,7 +248,7 @@ class TestTournamentIngestionService:
 
         # Setup mock client
         mock_topdeck_client.get_tournament = AsyncMock(
-            return_value=sample_tournament_data
+            return_value=sample_tournament_data_raw
         )
         mock_topdeck_client.get_tournament_standings = AsyncMock(
             return_value=sample_standings_data
