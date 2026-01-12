@@ -2,10 +2,11 @@
 Card-related Pydantic schemas.
 """
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 import json
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class CardBase(BaseModel):
@@ -96,14 +97,19 @@ class PricePoint(BaseModel):
 
 
 class CardPriceResponse(BaseModel):
-    """Current prices across marketplaces."""
+    """Current prices across marketplaces.
+
+    Price fields default to 0.0 instead of null for frontend compatibility.
+    Check `has_price_data` to determine if prices are real or defaults.
+    """
     card_id: int
     card_name: str
     prices: list["MarketplacePriceDetail"]
-    lowest_price: Optional[float] = None
-    highest_price: Optional[float] = None
-    spread_pct: Optional[float] = None
+    lowest_price: float = Field(default=0.0, description="Lowest price across marketplaces (0.0 if no data)")
+    highest_price: float = Field(default=0.0, description="Highest price across marketplaces (0.0 if no data)")
+    spread_pct: float = Field(default=0.0, description="Price spread percentage (0.0 if no data)")
     updated_at: datetime
+    has_price_data: bool = Field(default=False, description="True if real price data is available")
 
 
 class MarketplacePriceDetail(BaseModel):
@@ -132,23 +138,32 @@ class CardHistoryResponse(BaseModel):
 
 
 class CardMetricsResponse(BaseModel):
-    """Card metrics response."""
+    """Card metrics response.
+
+    Price/metric fields default to 0.0 instead of null for frontend compatibility.
+    Check `has_metrics_data` to determine if metrics are real or defaults.
+    """
     card_id: int
-    date: str
-    avg_price: Optional[float] = None
-    min_price: Optional[float] = None
-    max_price: Optional[float] = None
-    spread_pct: Optional[float] = None
-    price_change_7d: Optional[float] = None
-    price_change_30d: Optional[float] = None
-    volatility_7d: Optional[float] = None
-    ma_7d: Optional[float] = None
-    ma_30d: Optional[float] = None
-    total_listings: Optional[int] = None
+    date: Optional[str] = Field(default=None, description="Metrics date (None if no data)")
+    avg_price: float = Field(default=0.0, description="Average price (0.0 if no data)")
+    min_price: float = Field(default=0.0, description="Minimum price (0.0 if no data)")
+    max_price: float = Field(default=0.0, description="Maximum price (0.0 if no data)")
+    spread_pct: float = Field(default=0.0, description="Price spread percentage (0.0 if no data)")
+    price_change_7d: float = Field(default=0.0, description="7-day price change percentage (0.0 if no data)")
+    price_change_30d: float = Field(default=0.0, description="30-day price change percentage (0.0 if no data)")
+    volatility_7d: float = Field(default=0.0, description="7-day volatility (0.0 if no data)")
+    ma_7d: float = Field(default=0.0, description="7-day moving average (0.0 if no data)")
+    ma_30d: float = Field(default=0.0, description="30-day moving average (0.0 if no data)")
+    total_listings: int = Field(default=0, description="Total number of listings (0 if no data)")
+    has_metrics_data: bool = Field(default=False, description="True if real metrics data is available")
 
 
 class CardDetailResponse(BaseModel):
-    """Detailed card response with all data."""
+    """Detailed card response with all data.
+
+    Use `has_price_data` to check if current_prices contains real data.
+    When no price data exists, current_prices will be empty and has_price_data=False.
+    """
     card: CardResponse
     metrics: Optional[CardMetricsResponse] = None
     current_prices: list[MarketplacePriceDetail] = []
@@ -156,6 +171,7 @@ class CardDetailResponse(BaseModel):
     active_recommendations: list["RecommendationSummary"] = []
     refresh_requested: bool = False
     refresh_reason: Optional[str] = None
+    has_price_data: bool = Field(default=False, description="True if current_prices contains real price data")
 
 
 class SignalSummary(BaseModel):

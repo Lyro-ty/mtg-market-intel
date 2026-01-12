@@ -31,6 +31,23 @@ export function formatCurrency(
 
 /**
  * Safely format a number with toFixed, returning fallback for null/undefined/NaN.
+ *
+ * @deprecated For API price/metrics values, use `has_price_data` or `has_metrics_data`
+ * checks instead. API now guarantees non-null numeric values (0.0 when no data).
+ *
+ * Example:
+ * ```tsx
+ * // Old pattern (needs safeToFixed):
+ * <span>{safeToFixed(price.lowest_price, 2)}</span>
+ *
+ * // New pattern (API guarantees non-null):
+ * <span>{price.has_price_data ? price.lowest_price.toFixed(2) : 'N/A'}</span>
+ * ```
+ *
+ * Only use this function for:
+ * - Computed values that might be null (e.g., results of calculations)
+ * - Third-party data not from our API
+ * - Legacy code that hasn't been updated yet
  */
 export function safeToFixed(
   value: number | null | undefined,

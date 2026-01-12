@@ -28,10 +28,59 @@ export type RegisterData = components['schemas']['UserRegister'];
 // Card types
 export type Card = components['schemas']['CardResponse'];
 export type CardSearchResult = components['schemas']['CardSearchResponse'];
-export type CardDetail = components['schemas']['CardDetailResponse'];
-export type CardPrices = components['schemas']['CardPriceResponse'];
 export type CardHistory = components['schemas']['CardHistoryResponse'];
-export type CardMetrics = components['schemas']['CardMetricsResponse'];
+
+/**
+ * Card price response with guaranteed non-null numeric values.
+ * Check `has_price_data` to determine if real price data is available.
+ * When has_price_data is false, numeric fields will be 0.
+ */
+export interface CardPrices {
+  card_id: number;
+  card_name: string;
+  prices: MarketplacePrice[];
+  lowest_price: number; // Always a number, defaults to 0 if no data
+  highest_price: number; // Always a number, defaults to 0 if no data
+  spread_pct: number; // Always a number, defaults to 0 if no data
+  updated_at: string;
+  has_price_data: boolean; // Check this before displaying prices
+}
+
+/**
+ * Card metrics response with guaranteed non-null numeric values.
+ * Check `has_metrics_data` to determine if real metrics are available.
+ * When has_metrics_data is false, numeric fields will be 0.
+ */
+export interface CardMetrics {
+  card_id: number;
+  date: string | null; // Null if no metrics data
+  avg_price: number; // Always a number, defaults to 0
+  min_price: number; // Always a number, defaults to 0
+  max_price: number; // Always a number, defaults to 0
+  spread_pct: number; // Always a number, defaults to 0
+  price_change_7d: number; // Always a number, defaults to 0
+  price_change_30d: number; // Always a number, defaults to 0
+  volatility_7d: number; // Always a number, defaults to 0
+  ma_7d: number; // Always a number, defaults to 0
+  ma_30d: number; // Always a number, defaults to 0
+  total_listings: number; // Always a number, defaults to 0
+  has_metrics_data: boolean; // Check this before displaying metrics
+}
+
+/**
+ * Detailed card response with all data.
+ * Check `has_price_data` to determine if current_prices contains real data.
+ */
+export interface CardDetail {
+  card: Card;
+  metrics: CardMetrics | null;
+  current_prices: MarketplacePrice[];
+  recent_signals: SignalSummary[];
+  active_recommendations: RecommendationSummary[];
+  refresh_requested: boolean;
+  refresh_reason: string | null;
+  has_price_data: boolean; // Check this before displaying prices
+}
 
 // Price types
 export type MarketplacePrice = components['schemas']['MarketplacePriceDetail'];

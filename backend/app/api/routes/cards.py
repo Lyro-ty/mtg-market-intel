@@ -246,22 +246,26 @@ async def get_card(
     if refresh_if_stale:
         refresh_requested, refresh_reason = await _maybe_trigger_refresh(db, card_id, metrics)
     
+    # Build metrics response with defaults (never null values)
+    metrics_response = CardMetricsResponse(
+        card_id=card_id,
+        date=str(metrics.date) if metrics else None,
+        avg_price=float(metrics.avg_price) if metrics and metrics.avg_price else 0.0,
+        min_price=float(metrics.min_price) if metrics and metrics.min_price else 0.0,
+        max_price=float(metrics.max_price) if metrics and metrics.max_price else 0.0,
+        spread_pct=float(metrics.spread_pct) if metrics and metrics.spread_pct else 0.0,
+        price_change_7d=float(metrics.price_change_pct_7d) if metrics and metrics.price_change_pct_7d else 0.0,
+        price_change_30d=float(metrics.price_change_pct_30d) if metrics and metrics.price_change_pct_30d else 0.0,
+        volatility_7d=float(metrics.volatility_7d) if metrics and metrics.volatility_7d else 0.0,
+        ma_7d=float(metrics.ma_7d) if metrics and metrics.ma_7d else 0.0,
+        ma_30d=float(metrics.ma_30d) if metrics and metrics.ma_30d else 0.0,
+        total_listings=metrics.total_listings if metrics else 0,
+        has_metrics_data=metrics is not None,
+    )
+
     return CardDetailResponse(
         card=CardResponse.model_validate(card),
-        metrics=CardMetricsResponse(
-            card_id=card_id,
-            date=str(metrics.date) if metrics else None,
-            avg_price=float(metrics.avg_price) if metrics and metrics.avg_price else None,
-            min_price=float(metrics.min_price) if metrics and metrics.min_price else None,
-            max_price=float(metrics.max_price) if metrics and metrics.max_price else None,
-            spread_pct=float(metrics.spread_pct) if metrics and metrics.spread_pct else None,
-            price_change_7d=float(metrics.price_change_pct_7d) if metrics and metrics.price_change_pct_7d else None,
-            price_change_30d=float(metrics.price_change_pct_30d) if metrics and metrics.price_change_pct_30d else None,
-            volatility_7d=float(metrics.volatility_7d) if metrics and metrics.volatility_7d else None,
-            ma_7d=float(metrics.ma_7d) if metrics and metrics.ma_7d else None,
-            ma_30d=float(metrics.ma_30d) if metrics and metrics.ma_30d else None,
-            total_listings=metrics.total_listings if metrics else None,
-        ) if metrics else None,
+        metrics=metrics_response,
         current_prices=current_prices,
         recent_signals=[
             SignalSummary(
@@ -285,6 +289,7 @@ async def get_card(
         ],
         refresh_requested=refresh_requested,
         refresh_reason=refresh_reason,
+        has_price_data=len(current_prices) > 0,
     )
 
 
@@ -295,17 +300,22 @@ async def get_card_prices(
 ):
     """
     Get current prices for a card across all marketplaces.
+
+    Price fields always return numeric values (0.0 if no data).
+    Check `has_price_data` to determine if real price data is available.
     """
     card = await db.get(Card, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
-    
+
     prices = await _get_current_prices(db, card_id)
-    
-    lowest = min((p.price for p in prices), default=None)
-    highest = max((p.price for p in prices), default=None)
-    spread_pct = ((highest - lowest) / lowest * 100) if lowest and highest and lowest > 0 else None
-    
+    has_price_data = len(prices) > 0
+
+    # Calculate price metrics with defaults
+    lowest = min((p.price for p in prices), default=0.0)
+    highest = max((p.price for p in prices), default=0.0)
+    spread_pct = ((highest - lowest) / lowest * 100) if lowest > 0 and highest > 0 else 0.0
+
     return CardPriceResponse(
         card_id=card_id,
         card_name=card.name,
@@ -314,6 +324,7 @@ async def get_card_prices(
         highest_price=highest,
         spread_pct=spread_pct,
         updated_at=datetime.now(timezone.utc),
+        has_price_data=has_price_data,
     )
 
 
@@ -948,22 +959,26 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
             result = await db.execute(recs_query)
             active_recs = result.scalars().all()
             
+            # Build metrics response with defaults
+            metrics_resp = CardMetricsResponse(
+                card_id=card_id,
+                date=str(latest_metrics.date) if latest_metrics else None,
+                avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else 0.0,
+                min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else 0.0,
+                max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else 0.0,
+                spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else 0.0,
+                price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else 0.0,
+                price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else 0.0,
+                volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else 0.0,
+                ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else 0.0,
+                ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else 0.0,
+                total_listings=latest_metrics.total_listings if latest_metrics else 0,
+                has_metrics_data=latest_metrics is not None,
+            )
+
             return CardDetailResponse(
                 card=CardResponse.model_validate(refreshed_card),
-                metrics=CardMetricsResponse(
-                    card_id=card_id,
-                    date=str(latest_metrics.date) if latest_metrics else None,
-                    avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else None,
-                    min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else None,
-                    max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else None,
-                    spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else None,
-                    price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else None,
-                    price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else None,
-                    volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else None,
-                    ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else None,
-                    ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else None,
-                    total_listings=latest_metrics.total_listings if latest_metrics else None,
-                ) if latest_metrics else None,
+                metrics=metrics_resp,
                 current_prices=current_prices,
                 recent_signals=[
                     SignalSummary(
@@ -987,8 +1002,9 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
                 ],
                 refresh_requested=False,
                 refresh_reason=None,
+                has_price_data=len(current_prices) > 0,
             )
-    
+
     logger.info("Sync refresh starting", card_id=card_id, card_name=card_name, fast_mode=fast_mode)
     
     # 1. Fetch prices from Scryfall broken down by marketplace
@@ -1367,22 +1383,26 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         result = await db.execute(recs_query)
         active_recs = result.scalars().all()
         
+        # Build metrics response with defaults
+        fast_metrics_resp = CardMetricsResponse(
+            card_id=card_id,
+            date=str(latest_metrics.date) if latest_metrics else None,
+            avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else 0.0,
+            min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else 0.0,
+            max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else 0.0,
+            spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else 0.0,
+            price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else 0.0,
+            price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else 0.0,
+            volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else 0.0,
+            ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else 0.0,
+            ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else 0.0,
+            total_listings=latest_metrics.total_listings if latest_metrics else 0,
+            has_metrics_data=latest_metrics is not None,
+        )
+
         return CardDetailResponse(
             card=CardResponse.model_validate(refreshed_card),
-            metrics=CardMetricsResponse(
-                card_id=card_id,
-                date=str(latest_metrics.date) if latest_metrics else None,
-                avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else None,
-                min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else None,
-                max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else None,
-                spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else None,
-                price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else None,
-                price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else None,
-                volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else None,
-                ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else None,
-                ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else None,
-                total_listings=latest_metrics.total_listings if latest_metrics else None,
-            ) if latest_metrics else None,
+            metrics=fast_metrics_resp,
             current_prices=current_prices,
             recent_signals=[
                 SignalSummary(
@@ -1406,8 +1426,9 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
             ],
             refresh_requested=False,
             refresh_reason=None,
+            has_price_data=len(current_prices) > 0,
         )
-    
+
     # Full mode: Continue with heavy operations (vectorization, metrics, signals, recommendations)
     # 2.5. Vectorize card for ML training
     # Store card attributes before vectorization to avoid lazy loading issues
@@ -1532,22 +1553,26 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
     result = await db.execute(recs_query)
     active_recs = result.scalars().all()
     
+    # Build metrics response with defaults (full mode)
+    full_metrics_resp = CardMetricsResponse(
+        card_id=card_id,
+        date=str(latest_metrics.date) if latest_metrics else None,
+        avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else 0.0,
+        min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else 0.0,
+        max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else 0.0,
+        spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else 0.0,
+        price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else 0.0,
+        price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else 0.0,
+        volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else 0.0,
+        ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else 0.0,
+        ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else 0.0,
+        total_listings=latest_metrics.total_listings if latest_metrics else 0,
+        has_metrics_data=latest_metrics is not None,
+    )
+
     return CardDetailResponse(
         card=CardResponse.model_validate(refreshed_card),
-        metrics=CardMetricsResponse(
-            card_id=card_id,
-            date=str(latest_metrics.date) if latest_metrics else None,
-            avg_price=float(latest_metrics.avg_price) if latest_metrics and latest_metrics.avg_price else None,
-            min_price=float(latest_metrics.min_price) if latest_metrics and latest_metrics.min_price else None,
-            max_price=float(latest_metrics.max_price) if latest_metrics and latest_metrics.max_price else None,
-            spread_pct=float(latest_metrics.spread_pct) if latest_metrics and latest_metrics.spread_pct else None,
-            price_change_7d=float(latest_metrics.price_change_pct_7d) if latest_metrics and latest_metrics.price_change_pct_7d else None,
-            price_change_30d=float(latest_metrics.price_change_pct_30d) if latest_metrics and latest_metrics.price_change_pct_30d else None,
-            volatility_7d=float(latest_metrics.volatility_7d) if latest_metrics and latest_metrics.volatility_7d else None,
-            ma_7d=float(latest_metrics.ma_7d) if latest_metrics and latest_metrics.ma_7d else None,
-            ma_30d=float(latest_metrics.ma_30d) if latest_metrics and latest_metrics.ma_30d else None,
-            total_listings=latest_metrics.total_listings if latest_metrics else None,
-        ) if latest_metrics else None,
+        metrics=full_metrics_resp,
         current_prices=current_prices,
         recent_signals=[
             SignalSummary(
@@ -1571,6 +1596,7 @@ async def _sync_refresh_card(db: AsyncSession, card: Card, fast_mode: bool = Tru
         ],
         refresh_requested=False,
         refresh_reason=None,
+        has_price_data=len(current_prices) > 0,
     )
 
 
