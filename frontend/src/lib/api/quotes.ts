@@ -225,3 +225,48 @@ export async function declineCounterOffer(submissionId: number): Promise<{ statu
     method: 'POST',
   }, true);
 }
+
+// ============ CSV Export ============
+
+export async function exportQuoteCSV(
+  quoteId: number,
+  percentages: number[] = [50, 60, 70, 80]
+): Promise<void> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+
+  const pctParam = percentages.join(',');
+  const response = await fetch(`/api/quotes/${quoteId}/export?percentages=${pctParam}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Export failed' }));
+    throw new Error(error.detail || 'Export failed');
+  }
+
+  // Get filename from Content-Disposition header or use default
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let filename = `trade_quote_${quoteId}.csv`;
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename=([^;]+)/);
+    if (filenameMatch) {
+      filename = filenameMatch[1].replace(/"/g, '');
+    }
+  }
+
+  // Create blob and trigger download
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+}

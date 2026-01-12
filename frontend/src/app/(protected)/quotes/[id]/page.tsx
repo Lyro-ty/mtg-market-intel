@@ -17,6 +17,8 @@ import {
   Check,
   MapPin,
   DollarSign,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,6 +51,7 @@ import {
   deleteQuoteItem,
   getQuoteOffers,
   submitQuote,
+  exportQuoteCSV,
   ApiError,
 } from '@/lib/api';
 import type { Quote, QuoteItem, StoreOffer, QuoteOffersPreview } from '@/lib/api/quotes';
@@ -521,6 +524,162 @@ function SubmitDialog({
   );
 }
 
+interface ExportDialogProps {
+  quoteId: number;
+  itemCount: number;
+  totalValue: number | null;
+}
+
+function ExportDialog({ quoteId, itemCount, totalValue }: ExportDialogProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [percentages, setPercentages] = useState([50, 60, 70, 80]);
+
+  const togglePercentage = (pct: number) => {
+    setPercentages((prev) =>
+      prev.includes(pct)
+        ? prev.filter((p) => p !== pct)
+        : [...prev, pct].sort((a, b) => a - b)
+    );
+  };
+
+  const handleExport = async () => {
+    if (percentages.length === 0) {
+      setError('Select at least one percentage');
+      return;
+    }
+
+    setIsExporting(true);
+    setError(null);
+
+    try {
+      await exportQuoteCSV(quoteId, percentages);
+      setIsOpen(false);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Export failed');
+      }
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const availablePercentages = [40, 50, 60, 70, 80, 90];
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" disabled={itemCount === 0}>
+          <Download className="w-4 h-4 mr-1" />
+          Export CSV
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileSpreadsheet className="w-5 h-5" />
+            Export Quote for Print
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-4">
+          <div className="p-3 rounded-lg bg-secondary">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Cards:</span>
+              <span className="font-medium">{itemCount}</span>
+            </div>
+            <div className="flex justify-between text-sm mt-1">
+              <span className="text-muted-foreground">Market Value:</span>
+              <span className="font-medium">
+                {totalValue ? formatCurrency(totalValue) : '$0.00'}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Trade-In Percentages to Include
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Select which trade-in percentages to show in the export
+            </p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {availablePercentages.map((pct) => (
+                <Button
+                  key={pct}
+                  variant={percentages.includes(pct) ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => togglePercentage(pct)}
+                  className={
+                    percentages.includes(pct)
+                      ? 'bg-[rgb(var(--accent))] hover:bg-[rgb(var(--accent))]/90'
+                      : ''
+                  }
+                >
+                  {pct}%
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {percentages.length > 0 && totalValue && (
+            <div className="p-3 rounded-lg border border-border bg-card">
+              <h4 className="text-sm font-medium mb-2">Preview Totals:</h4>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {percentages.map((pct) => (
+                  <div key={pct} className="flex justify-between">
+                    <span className="text-muted-foreground">{pct}%:</span>
+                    <span className="font-medium text-[rgb(var(--success))]">
+                      {formatCurrency(totalValue * (pct / 100))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="p-3 rounded-lg bg-[rgb(var(--accent))]/10 border border-[rgb(var(--accent))]/20">
+            <p className="text-sm text-[rgb(var(--accent))]">
+              The exported CSV includes card details, market prices, and
+              calculated offers at each percentage. Print it out to bring to
+              your local game store.
+            </p>
+          </div>
+
+          {error && (
+            <p className="text-sm text-[rgb(var(--destructive))]">{error}</p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <DialogClose asChild>
+              <Button variant="secondary">Cancel</Button>
+            </DialogClose>
+            <Button
+              className="gradient-arcane text-white"
+              onClick={handleExport}
+              disabled={isExporting || percentages.length === 0}
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-1" />
+                  Download CSV
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function QuoteDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -674,9 +833,16 @@ export default function QuoteDetailPage() {
           title={quote.name || `Quote #${quote.id}`}
           subtitle={`${quote.item_count} cards - ${quote.total_market_value ? formatCurrency(quote.total_market_value) : '$0.00'} market value`}
         >
-          {isDraft && (
-            <AddCardDialog onAdd={handleAddCard} isAdding={isAdding} />
-          )}
+          <div className="flex items-center gap-2">
+            <ExportDialog
+              quoteId={quoteId}
+              itemCount={quote.item_count}
+              totalValue={quote.total_market_value}
+            />
+            {isDraft && (
+              <AddCardDialog onAdd={handleAddCard} isAdding={isAdding} />
+            )}
+          </div>
         </PageHeader>
       </div>
 

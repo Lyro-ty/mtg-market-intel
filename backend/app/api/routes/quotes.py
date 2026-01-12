@@ -5,12 +5,16 @@ Allows users to:
 - Create trade-in quotes with cards they want to sell
 - Get offer previews from nearby stores
 - Submit quotes to stores for review
+- Export quotes to CSV for store visits
 """
+import csv
+import io
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,6 +22,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.card import Card
+from app.models.price_snapshot import PriceSnapshot
 from app.models.trading_post import (
     TradingPost,
     TradeQuote,
@@ -44,6 +49,154 @@ from app.schemas.trading_post import (
 )
 
 router = APIRouter(prefix="/quotes", tags=["Quotes"])
+
+# Default trade-in percentages to show in export
+DEFAULT_TRADE_IN_PERCENTAGES = [50, 60, 70, 80]
+
+
+# ============ CSV Export ============
+
+@router.get("/{quote_id}/export")
+async def export_quote_csv(
+    quote_id: int,
+    percentages: Optional[str] = Query(
+        None,
+        description="Comma-separated trade-in percentages (e.g., '50,60,70,80')"
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Export a quote to CSV format for printing and taking to stores.
+
+    Includes market prices and calculated offers at various trade-in percentages.
+    """
+    # Get quote with items
+    result = await db.execute(
+        select(TradeQuote)
+        .where(TradeQuote.id == quote_id, TradeQuote.user_id == current_user.id)
+        .options(selectinload(TradeQuote.items).selectinload(TradeQuoteItem.card))
+    )
+    quote = result.scalar_one_or_none()
+
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found")
+
+    if not quote.items:
+        raise HTTPException(status_code=400, detail="Quote has no items to export")
+
+    # Parse trade-in percentages
+    if percentages:
+        try:
+            pct_list = [int(p.strip()) for p in percentages.split(",")]
+            pct_list = [p for p in pct_list if 1 <= p <= 100]
+        except ValueError:
+            pct_list = DEFAULT_TRADE_IN_PERCENTAGES
+    else:
+        pct_list = DEFAULT_TRADE_IN_PERCENTAGES
+
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header section with quote info
+    quote_name = quote.name or f"Quote #{quote.id}"
+    writer.writerow([f"Trade-In Quote: {quote_name}"])
+    writer.writerow([f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"])
+    writer.writerow([f"Total Cards: {sum(item.quantity for item in quote.items)}"])
+    writer.writerow([])  # Empty row
+
+    # Column headers
+    headers = ["Card Name", "Set", "Condition", "Qty", "Market Price", "Line Total"]
+    for pct in pct_list:
+        headers.append(f"{pct}% Offer")
+    writer.writerow(headers)
+
+    # Item rows
+    total_market = Decimal("0")
+    pct_totals = {pct: Decimal("0") for pct in pct_list}
+
+    for item in quote.items:
+        card = item.card
+        market_price = item.market_price or Decimal("0")
+        line_total = market_price * item.quantity
+        total_market += line_total
+
+        row = [
+            card.name if card else "Unknown Card",
+            card.set_code.upper() if card and card.set_code else "",
+            item.condition,
+            item.quantity,
+            f"${market_price:.2f}",
+            f"${line_total:.2f}",
+        ]
+
+        for pct in pct_list:
+            offer = line_total * Decimal(pct) / Decimal("100")
+            pct_totals[pct] += offer
+            row.append(f"${offer:.2f}")
+
+        writer.writerow(row)
+
+    # Summary section
+    writer.writerow([])  # Empty row
+    writer.writerow(["=" * 50])  # Separator
+
+    # Totals row
+    totals_row = ["TOTALS", "", "", sum(item.quantity for item in quote.items), "", f"${total_market:.2f}"]
+    for pct in pct_list:
+        totals_row.append(f"${pct_totals[pct]:.2f}")
+    writer.writerow(totals_row)
+
+    writer.writerow([])  # Empty row
+
+    # Summary table for quick reference
+    writer.writerow(["Quick Reference - Total Offers by Percentage:"])
+    writer.writerow([])
+    for pct in pct_list:
+        writer.writerow([f"{pct}% Trade-In Value:", f"${pct_totals[pct]:.2f}"])
+
+    writer.writerow([])
+    writer.writerow(["Notes:"])
+    writer.writerow(["- Market prices are snapshots from when cards were added"])
+    writer.writerow(["- Actual store offers may vary based on condition and demand"])
+    writer.writerow(["- Bring this printout when visiting your local game store"])
+
+    # Prepare response
+    output.seek(0)
+    filename = f"trade_quote_{quote_id}_{datetime.now().strftime('%Y%m%d')}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ============ Price Helper ============
+
+async def _get_card_market_price(db: AsyncSession, card_id: int) -> Decimal:
+    """
+    Get the latest market price for a card from price_snapshots.
+
+    Returns the most recent price_market (or price as fallback) in USD.
+    """
+    result = await db.execute(
+        select(PriceSnapshot.price_market, PriceSnapshot.price)
+        .where(
+            PriceSnapshot.card_id == card_id,
+            PriceSnapshot.currency == "USD",
+            PriceSnapshot.condition == "NEAR_MINT",
+            PriceSnapshot.is_foil == False,
+        )
+        .order_by(PriceSnapshot.time.desc())
+        .limit(1)
+    )
+    row = result.first()
+
+    if row:
+        return Decimal(str(row.price_market or row.price or 0))
+    return Decimal("0")
 
 
 # ============ Quote CRUD ============
@@ -253,8 +406,8 @@ async def add_quote_item(
         await db.refresh(existing)
         return _item_to_response(existing, card)
 
-    # Get market price (use tcg_market or tcg_low)
-    market_price = card.tcg_market or card.tcg_low or Decimal("0")
+    # Get market price from latest price snapshot
+    market_price = await _get_card_market_price(db, card.id)
 
     item = TradeQuoteItem(
         quote_id=quote_id,
@@ -412,8 +565,8 @@ async def bulk_import_cards(
                 func.lower(Card.set_code) == func.lower(import_item.set_code)
             )
 
-        # Order by price to get the most relevant printing
-        card_query = card_query.order_by(Card.tcg_market.desc().nullslast()).limit(1)
+        # Order by id (just get first match)
+        card_query = card_query.order_by(Card.id).limit(1)
 
         card_result = await db.execute(card_query)
         card = card_result.scalar_one_or_none()
@@ -437,7 +590,7 @@ async def bulk_import_cards(
             existing.quantity += import_item.quantity
             existing.updated_at = datetime.now(timezone.utc)
         else:
-            market_price = card.tcg_market or card.tcg_low or Decimal("0")
+            market_price = await _get_card_market_price(db, card.id)
             item = TradeQuoteItem(
                 quote_id=quote_id,
                 card_id=card.id,

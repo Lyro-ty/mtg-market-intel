@@ -6,7 +6,7 @@ Trading Posts are verified stores that can:
 - Set their buylist margin (% of market price they pay)
 - Create and promote events (tournaments, sales, releases)
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
@@ -143,6 +143,7 @@ class TradeQuote(Base):
         nullable=False,
         index=True
     )
+    name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20),
         default=QuoteStatus.DRAFT.value,
@@ -235,9 +236,18 @@ class TradeQuoteSubmission(Base):
         index=True
     )
     counter_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    counter_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    store_responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    user_responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Messages
+    user_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # User's note when submitting
+    store_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Store's response message
+
+    # Timestamps
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     quote: Mapped["TradeQuote"] = relationship("TradeQuote", back_populates="submissions")
