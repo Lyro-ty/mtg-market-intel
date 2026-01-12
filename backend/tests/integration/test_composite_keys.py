@@ -5,72 +5,29 @@ These tests verify the behavior of the composite primary key:
 (time, card_id, marketplace_id, condition, is_foil, language)
 
 To run these tests:
-    pytest tests/integration/test_composite_keys.py -v
+    pytest tests/integration/test_composite_keys.py -v -m integration
 
 Note: These tests require a running PostgreSQL/TimescaleDB instance.
-They will be skipped if the database is unavailable.
+Set INTEGRATION_DATABASE_URL environment variable or use run-integration-tests.sh.
 """
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select, and_, func
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.core.config import settings
 from app.core.constants import CardCondition, CardLanguage
 from app.models import Card, Marketplace, PriceSnapshot
 
 
-# Skip all tests if using SQLite (integration tests require PostgreSQL)
-pytestmark = pytest.mark.skipif(
-    "sqlite" in (settings.database_url or "sqlite").lower(),
-    reason="Composite key tests require PostgreSQL/TimescaleDB"
-)
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
 
 
-@pytest.fixture(scope="module")
-def event_loop_policy():
-    """Use default event loop policy for module-scoped async fixtures."""
-    import asyncio
-    return asyncio.DefaultEventLoopPolicy()
-
-
-@pytest.fixture(scope="module")
-async def pg_engine():
-    """Create PostgreSQL engine for integration tests."""
-    if not settings.database_url or "sqlite" in settings.database_url.lower():
-        pytest.skip("PostgreSQL required for integration tests")
-
-    engine = create_async_engine(
-        settings.database_url,
-        echo=False,
-        pool_pre_ping=True,
-    )
-    yield engine
-    await engine.dispose()
-
-
-@pytest.fixture(scope="function")
-async def pg_session(pg_engine) -> AsyncSession:
-    """Create isolated PostgreSQL session for each test."""
-    session_maker = async_sessionmaker(
-        pg_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autoflush=False,
-    )
-
-    async with session_maker() as session:
-        # Use a nested transaction (savepoint) for test isolation
-        # This allows tests to rollback their own work without affecting the connection
-        yield session
-        # Rollback any uncommitted changes after each test
-        await session.rollback()
-
-
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def test_card(pg_session: AsyncSession) -> Card:
     """Create a test card for use in tests."""
     # Use unique ID per test to avoid conflicts
@@ -91,7 +48,7 @@ async def test_card(pg_session: AsyncSession) -> Card:
     return card
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def test_marketplace(pg_session: AsyncSession) -> Marketplace:
     """Create a test marketplace for use in tests."""
     import uuid
