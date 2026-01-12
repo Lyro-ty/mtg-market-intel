@@ -72,6 +72,86 @@ async def _get_current_price(db: AsyncSession, card_id: int) -> Optional[float]:
     return float(price) if price else None
 
 
+async def _get_current_prices_batch(db: AsyncSession, card_ids: list[int]) -> dict[int, float]:
+    """
+    Get the most recent prices for multiple cards in a single query.
+
+    Returns a dict mapping card_id -> price for cards that have prices.
+    """
+    if not card_ids:
+        return {}
+
+    # Subquery to get the latest price time per card
+    price_subquery = (
+        select(
+            PriceSnapshot.card_id,
+            func.max(PriceSnapshot.time).label('latest_time')
+        )
+        .where(
+            and_(
+                PriceSnapshot.card_id.in_(card_ids),
+                PriceSnapshot.currency == "USD",
+                PriceSnapshot.price.isnot(None),
+            )
+        )
+        .group_by(PriceSnapshot.card_id)
+        .subquery()
+    )
+
+    # Join to get the actual prices
+    latest_prices_result = await db.execute(
+        select(PriceSnapshot.card_id, PriceSnapshot.price)
+        .join(price_subquery, and_(
+            PriceSnapshot.card_id == price_subquery.c.card_id,
+            PriceSnapshot.time == price_subquery.c.latest_time
+        ))
+    )
+
+    return {row.card_id: float(row.price) for row in latest_prices_result}
+
+
+async def _get_prices_7d_ago_batch(db: AsyncSession, card_ids: list[int]) -> dict[int, float]:
+    """
+    Get prices from approximately 7 days ago for multiple cards in a single query.
+
+    Returns a dict mapping card_id -> price for cards that have historical prices.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    if not card_ids:
+        return {}
+
+    target_time = datetime.now(timezone.utc) - timedelta(days=7)
+
+    # Subquery to get the latest price time before the target date per card
+    price_subquery = (
+        select(
+            PriceSnapshot.card_id,
+            func.max(PriceSnapshot.time).label('latest_time')
+        )
+        .where(
+            and_(
+                PriceSnapshot.card_id.in_(card_ids),
+                PriceSnapshot.currency == "USD",
+                PriceSnapshot.time <= target_time,
+            )
+        )
+        .group_by(PriceSnapshot.card_id)
+        .subquery()
+    )
+
+    # Join to get the actual prices
+    prices_result = await db.execute(
+        select(PriceSnapshot.card_id, PriceSnapshot.price)
+        .join(price_subquery, and_(
+            PriceSnapshot.card_id == price_subquery.c.card_id,
+            PriceSnapshot.time == price_subquery.c.latest_time
+        ))
+    )
+
+    return {row.card_id: float(row.price) for row in prices_result}
+
+
 @router.get("", response_model=WantListListResponse)
 async def list_want_list_items(
     current_user: CurrentUser,
@@ -120,11 +200,15 @@ async def list_want_list_items(
     result = await db.execute(query)
     items = result.scalars().all()
 
-    # Build response items with current prices
-    response_items = []
-    for item in items:
-        current_price = await _get_current_price(db, item.card_id)
-        response_items.append(_build_item_response(item, current_price))
+    # Batch fetch current prices for all items in ONE query
+    card_ids = [item.card_id for item in items]
+    price_map = await _get_current_prices_batch(db, card_ids)
+
+    # Build response items with prices from the batch lookup
+    response_items = [
+        _build_item_response(item, price_map.get(item.card_id))
+        for item in items
+    ]
 
     return WantListListResponse(
         items=response_items,
@@ -347,10 +431,13 @@ async def check_want_list_prices(
             "checked_count": 0,
         }
 
-    deals = []
+    # Batch fetch current prices for all items in ONE query
+    card_ids = [item.card_id for item in items]
+    price_map = await _get_current_prices_batch(db, card_ids)
 
+    deals = []
     for item in items:
-        current_price = await _get_current_price(db, item.card_id)
+        current_price = price_map.get(item.card_id)
 
         if current_price is not None and current_price <= float(item.target_price):
             deals.append({
@@ -507,14 +594,19 @@ async def get_want_list_with_intelligence(
     result = await db.execute(query)
     items = result.scalars().all()
 
+    # Batch fetch current prices and 7-day-ago prices in TWO queries total
+    card_ids = [item.card_id for item in items]
+    price_map = await _get_current_prices_batch(db, card_ids)
+    price_7d_map = await _get_prices_7d_ago_batch(db, card_ids)
+
     # Build response items with intelligence
     response_items = []
     buy_now_count = 0
     price_alerts_count = 0
 
     for item in items:
-        current_price = await _get_current_price(db, item.card_id)
-        price_7d_ago = await _get_price_7d_ago(db, item.card_id)
+        current_price = price_map.get(item.card_id)
+        price_7d_ago = price_7d_map.get(item.card_id)
 
         # Calculate price trend
         price_trend_7d = None

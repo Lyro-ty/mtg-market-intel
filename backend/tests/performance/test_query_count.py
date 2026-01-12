@@ -290,13 +290,13 @@ class TestWantListQueryCount:
             assert item["card"]["name"] is not None
 
         # Check query count
-        # Note: This test expects N+1 for prices currently (one query per item)
-        # After optimization, should be <= 3 for core data plus price lookups
-        # For now, we accept up to 13 (1 count + 1 main + 1 price per item)
-        # TODO: Batch price lookups to reduce further
-        if counter.count > 13:
+        # With batched price lookups:
+        # 1. Count query for pagination
+        # 2. Main items query (with eager loaded cards)
+        # 3. Batched price lookups (single query)
+        if counter.count > 3:
             counter.print_queries()
-        assert counter.count <= 13, f"Expected max 13 queries, got {counter.count}"
+        assert counter.count <= 3, f"Expected max 3 queries, got {counter.count}"
 
 
 @pytest.mark.asyncio
