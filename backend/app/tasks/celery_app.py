@@ -11,6 +11,7 @@ from celery import Celery
 from celery.schedules import crontab
 
 from app.core.config import settings
+from app.tasks.error_handlers import TaskWithDLQ
 
 celery_app = Celery(
     "mtg_market_intel",
@@ -45,6 +46,10 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+
+    # Use TaskWithDLQ as base class for all tasks
+    # Failed tasks are sent to Redis dead letter queue for investigation/retry
+    task_cls=TaskWithDLQ,
 
     # Task execution settings
     task_acks_late=True,
