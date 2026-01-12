@@ -16,6 +16,7 @@ import httpx
 import structlog
 
 from app.core.config import settings
+from app.core.circuit_breaker import CircuitOpenError, get_circuit_breaker
 
 logger = structlog.get_logger()
 
@@ -27,6 +28,11 @@ class TopDeckAPIError(Exception):
 
 class TopDeckRateLimitError(TopDeckAPIError):
     """Exception raised when rate limit is exceeded."""
+    pass
+
+
+class TopDeckCircuitOpenError(TopDeckAPIError):
+    """Exception raised when circuit breaker is open."""
     pass
 
 
@@ -57,6 +63,14 @@ class TopDeckClient:
         self._client: Optional[httpx.AsyncClient] = None
         self._request_count = 0
         self._window_start = datetime.now(timezone.utc)
+
+        # Circuit breaker for external API resilience
+        self._circuit = get_circuit_breaker(
+            "topdeck",
+            failure_threshold=5,
+            recovery_timeout=60.0,  # 1 minute before retry
+            half_open_requests=2,
+        )
 
         if not self.api_key:
             logger.warning(
@@ -117,7 +131,7 @@ class TopDeckClient:
         """
         Make an HTTP request to TopDeck.gg API.
 
-        Handles rate limiting and error responses.
+        Handles rate limiting, circuit breaker, and error responses.
 
         Args:
             endpoint: API endpoint path (without base URL)
@@ -128,45 +142,53 @@ class TopDeckClient:
             httpx.Response object
 
         Raises:
+            TopDeckCircuitOpenError: When circuit breaker is open
             TopDeckRateLimitError: When rate limit is exceeded
             TopDeckAPIError: For other API errors
         """
-        await self._rate_limit()
-        client = await self._get_client()
-
+        # Check circuit breaker before making request
         try:
-            response = await client.request(method, endpoint, **kwargs)
+            async with self._circuit:
+                await self._rate_limit()
+                client = await self._get_client()
 
-            # Handle rate limiting
-            if response.status_code == 429:
-                retry_after = response.headers.get("Retry-After", "60")
-                logger.warning(
-                    "TopDeck.gg rate limit exceeded",
-                    retry_after=retry_after
-                )
-                raise TopDeckRateLimitError(
-                    f"Rate limit exceeded. Retry after {retry_after} seconds."
-                )
+                try:
+                    response = await client.request(method, endpoint, **kwargs)
 
-            # Handle other HTTP errors (except 404 which is handled by callers)
-            if response.status_code >= 400 and response.status_code != 404:
-                error_msg = f"TopDeck.gg API error {response.status_code}: {response.text}"
-                logger.error(
-                    "TopDeck.gg API error",
-                    status_code=response.status_code,
-                    endpoint=endpoint,
-                    error=response.text[:200]
-                )
-                raise TopDeckAPIError(error_msg)
+                    # Handle rate limiting
+                    if response.status_code == 429:
+                        retry_after = response.headers.get("Retry-After", "60")
+                        logger.warning(
+                            "TopDeck.gg rate limit exceeded",
+                            retry_after=retry_after
+                        )
+                        raise TopDeckRateLimitError(
+                            f"Rate limit exceeded. Retry after {retry_after} seconds."
+                        )
 
-            return response
+                    # Handle other HTTP errors (except 404 which is handled by callers)
+                    if response.status_code >= 400 and response.status_code != 404:
+                        error_msg = f"TopDeck.gg API error {response.status_code}: {response.text}"
+                        logger.error(
+                            "TopDeck.gg API error",
+                            status_code=response.status_code,
+                            endpoint=endpoint,
+                            error=response.text[:200]
+                        )
+                        raise TopDeckAPIError(error_msg)
 
-        except httpx.NetworkError as e:
-            logger.error("TopDeck.gg network error", endpoint=endpoint, error=str(e))
-            raise TopDeckAPIError(f"Network error: {str(e)}") from e
-        except httpx.TimeoutException as e:
-            logger.error("TopDeck.gg timeout", endpoint=endpoint, error=str(e))
-            raise TopDeckAPIError(f"Request timeout: {str(e)}") from e
+                    return response
+
+                except httpx.NetworkError as e:
+                    logger.error("TopDeck.gg network error", endpoint=endpoint, error=str(e))
+                    raise TopDeckAPIError(f"Network error: {str(e)}") from e
+                except httpx.TimeoutException as e:
+                    logger.error("TopDeck.gg timeout", endpoint=endpoint, error=str(e))
+                    raise TopDeckAPIError(f"Request timeout: {str(e)}") from e
+
+        except CircuitOpenError as e:
+            logger.warning("TopDeck.gg circuit breaker open", error=str(e))
+            raise TopDeckCircuitOpenError(str(e)) from e
 
     def _to_snake_case(self, camel_str: str) -> str:
         """Convert camelCase to snake_case."""

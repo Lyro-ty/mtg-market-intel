@@ -13,6 +13,7 @@ import httpx
 import structlog
 
 from app.core.config import settings
+from app.core.circuit_breaker import CircuitOpenError, get_circuit_breaker
 from app.services.ingestion.base import (
     AdapterConfig,
     CardListing,
@@ -41,7 +42,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         # Get API credentials from settings
         api_key = settings.tcgplayer_api_key
         api_secret = settings.tcgplayer_api_secret
-        
+
         if config is None:
             config = AdapterConfig(
                 base_url=self.BASE_URL,
@@ -52,16 +53,24 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                 # timeout_seconds uses the default from AdapterConfig (settings.external_api_timeout)
             )
         super().__init__(config)
-        
+
         # Ensure credentials are set
         if not self.config.api_key or not self.config.api_secret:
             logger.warning("TCGPlayer API credentials not configured - adapter will not be able to fetch data")
-        
+
         self._client: httpx.AsyncClient | None = None
         self._auth_token: str | None = None
         self._token_expires_at: datetime | None = None
         self._request_count = 0
         self._window_start = datetime.now(timezone.utc)
+
+        # Circuit breaker for external API resilience
+        self._circuit = get_circuit_breaker(
+            "tcgplayer",
+            failure_threshold=5,
+            recovery_timeout=60.0,  # 1 minute before retry
+            half_open_requests=2,
+        )
     
     @property
     def marketplace_name(self) -> str:
@@ -183,73 +192,81 @@ class TCGPlayerAdapter(MarketplaceAdapter):
     ) -> httpx.Response:
         """
         Make an authenticated request to TCGPlayer API.
-        
-        Automatically handles token refresh and retries for transient failures.
+
+        Automatically handles token refresh, circuit breaker, and retries
+        for transient failures.
+
+        Raises:
+            CircuitOpenError: When circuit breaker is open
+            ValueError: When authentication fails
+            httpx.HTTPError: On request failures after retries
         """
-        token = await self._get_auth_token()
-        if not token:
-            raise ValueError("Failed to obtain TCGPlayer authentication token")
-        
-        await self._rate_limit()
-        client = await self._get_client()
-        
-        headers = kwargs.get("headers", {})
-        headers["Authorization"] = f"Bearer {token}"
-        kwargs["headers"] = headers
-        
-        last_exception = None
-        
-        for attempt in range(max_retries):
-            try:
-                response = await client.request(method, endpoint, **kwargs)
-                
-                # If token expired, refresh and retry once
-                if response.status_code == 401:
-                    logger.debug("TCGPlayer token expired, refreshing")
-                    self._auth_token = None
-                    self._token_expires_at = None
-                    token = await self._get_auth_token()
-                    if token:
-                        headers["Authorization"] = f"Bearer {token}"
-                        kwargs["headers"] = headers
-                        response = await client.request(method, endpoint, **kwargs)
-                
-                # Retry on 5xx errors (server errors)
-                if response.status_code >= 500 and attempt < max_retries - 1:
-                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
-                    logger.warning(
-                        "TCGPlayer server error, retrying",
-                        status=response.status_code,
-                        attempt=attempt + 1,
-                        wait_seconds=wait_time
-                    )
-                    await asyncio.sleep(wait_time)
-                    continue
-                
-                return response
-                
-            except (httpx.NetworkError, httpx.TimeoutException) as e:
-                # Retry on network errors
-                if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt
-                    logger.warning(
-                        "TCGPlayer network error, retrying",
-                        error=str(e),
-                        attempt=attempt + 1,
-                        wait_seconds=wait_time
-                    )
-                    await asyncio.sleep(wait_time)
-                    last_exception = e
-                    continue
-                else:
-                    raise
-        
-        # If we exhausted retries, raise the last exception
-        if last_exception:
-            raise last_exception
-        
-        # Should not reach here, but just in case
-        raise httpx.HTTPError("Failed to make request after retries")
+        # Check circuit breaker before making request
+        async with self._circuit:
+            token = await self._get_auth_token()
+            if not token:
+                raise ValueError("Failed to obtain TCGPlayer authentication token")
+
+            await self._rate_limit()
+            client = await self._get_client()
+
+            headers = kwargs.get("headers", {})
+            headers["Authorization"] = f"Bearer {token}"
+            kwargs["headers"] = headers
+
+            last_exception = None
+
+            for attempt in range(max_retries):
+                try:
+                    response = await client.request(method, endpoint, **kwargs)
+
+                    # If token expired, refresh and retry once
+                    if response.status_code == 401:
+                        logger.debug("TCGPlayer token expired, refreshing")
+                        self._auth_token = None
+                        self._token_expires_at = None
+                        token = await self._get_auth_token()
+                        if token:
+                            headers["Authorization"] = f"Bearer {token}"
+                            kwargs["headers"] = headers
+                            response = await client.request(method, endpoint, **kwargs)
+
+                    # Retry on 5xx errors (server errors)
+                    if response.status_code >= 500 and attempt < max_retries - 1:
+                        wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                        logger.warning(
+                            "TCGPlayer server error, retrying",
+                            status=response.status_code,
+                            attempt=attempt + 1,
+                            wait_seconds=wait_time
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+
+                    return response
+
+                except (httpx.NetworkError, httpx.TimeoutException) as e:
+                    # Retry on network errors
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt
+                        logger.warning(
+                            "TCGPlayer network error, retrying",
+                            error=str(e),
+                            attempt=attempt + 1,
+                            wait_seconds=wait_time
+                        )
+                        await asyncio.sleep(wait_time)
+                        last_exception = e
+                        continue
+                    else:
+                        raise
+
+            # If we exhausted retries, raise the last exception
+            if last_exception:
+                raise last_exception
+
+            # Should not reach here, but just in case
+            raise httpx.HTTPError("Failed to make request after retries")
     
     async def _find_product_id(
         self,
@@ -466,6 +483,10 @@ class TCGPlayerAdapter(MarketplaceAdapter):
             
             return listings
             
+        except CircuitOpenError:
+            # Circuit breaker is open - fail fast without logging error
+            # (already logged by circuit breaker)
+            return []
         except httpx.HTTPStatusError as e:
             logger.warning(
                 "TCGPlayer API error",
@@ -477,7 +498,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         except Exception as e:
             logger.error("TCGPlayer API error", card_name=card_name, error=str(e))
             return []
-    
+
     async def fetch_price(
         self,
         card_name: str,
@@ -552,6 +573,9 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                 snapshot_time=datetime.now(timezone.utc),
             )
             
+        except CircuitOpenError:
+            # Circuit breaker is open - fail fast without logging error
+            return None
         except httpx.HTTPStatusError as e:
             logger.warning(
                 "TCGPlayer API error",
@@ -563,7 +587,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
         except Exception as e:
             logger.error("TCGPlayer API error", card_name=card_name, error=str(e))
             return None
-    
+
     async def search_cards(
         self,
         query: str,
@@ -594,11 +618,14 @@ class TCGPlayerAdapter(MarketplaceAdapter):
             data = response.json()
             
             return data.get("results", [])[:limit]
-            
+
+        except CircuitOpenError:
+            # Circuit breaker is open - fail fast without logging error
+            return []
         except Exception as e:
             logger.error("TCGPlayer search error", query=query, error=str(e))
             return []
-    
+
     async def close(self) -> None:
         """Cleanup HTTP client."""
         if self._client and not self._client.is_closed:
