@@ -17,6 +17,7 @@ from fastapi.responses import Response
 from sqlalchemy import select, func, and_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError, DBAPIError
+from sqlalchemy.orm import selectinload
 
 from app.core.constants import MAX_SEARCH_LENGTH, MAX_IDS_PER_REQUEST
 from app.core.config import settings
