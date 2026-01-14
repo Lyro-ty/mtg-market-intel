@@ -52,6 +52,17 @@ from app.models.trading_post import (
     SubmissionStatus,
     EventType,
 )
+from app.models.reputation import (
+    UserReputation,
+    ReputationReview,
+    ReputationTier,
+)
+from app.models.trade import (
+    TradeProposal,
+    TradeProposalItem,
+    TradeStatus,
+    TradeSide,
+)
 
 
 __all__ = [
@@ -110,5 +121,14 @@ __all__ = [
     "QuoteStatus",
     "SubmissionStatus",
     "EventType",
+    # Reputation system
+    "UserReputation",
+    "ReputationReview",
+    "ReputationTier",
+    # Trade proposals
+    "TradeProposal",
+    "TradeProposalItem",
+    "TradeStatus",
+    "TradeSide",
 ]
 

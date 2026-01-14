@@ -129,7 +129,13 @@ class ConnectionManager:
             True if subscription successful
         """
         # Check if channel requires authentication
-        if channel.startswith("channel:inventory:") or channel.startswith("channel:user:"):
+        protected_prefixes = (
+            "channel:inventory:",
+            "channel:user:",
+            "channel:messages:",
+            "channel:notifications:",
+        )
+        if any(channel.startswith(p) for p in protected_prefixes):
             if websocket not in self.authenticated:
                 await self._send_error(websocket, "Authentication required for this channel")
                 return False
@@ -322,6 +328,8 @@ async def websocket_endpoint(
     - dashboard:{currency} - Dashboard notifications
     - inventory:user:{user_id} - Inventory updates (auth required)
     - recommendations - New recommendation alerts
+    - messages:user:{user_id} - Real-time message updates (auth required)
+    - notifications:user:{user_id} - User notifications (auth required)
 
     Authentication:
     Pass JWT token as query parameter: /ws?token=<jwt_token>
@@ -424,6 +432,16 @@ def _build_channel_name(
     elif channel_type == "recommendations":
         return "channel:recommendations"
 
+    elif channel_type == "messages":
+        if user:
+            return f"channel:messages:user:{user.id}"
+        return None  # Requires auth
+
+    elif channel_type == "notifications":
+        if user:
+            return f"channel:notifications:user:{user.id}"
+        return None  # Requires auth
+
     return None
 
 
@@ -505,6 +523,69 @@ async def publish_inventory_update(
         f"channel:inventory:user:{user_id}",
         json.dumps({
             "type": "inventory_update",
+            **data,
+        }),
+    )
+
+
+async def publish_message_update(
+    user_id: int,
+    data: dict[str, Any],
+) -> None:
+    """
+    Publish a new message notification to a user.
+
+    Called when a user receives a new message to push
+    real-time updates to their WebSocket connection.
+    """
+    redis = await manager.get_redis()
+    await redis.publish(
+        f"channel:messages:user:{user_id}",
+        json.dumps({
+            "type": "new_message",
+            **data,
+        }),
+    )
+
+
+async def publish_typing_indicator(
+    user_id: int,
+    sender_id: int,
+    is_typing: bool = True,
+) -> None:
+    """Publish a typing indicator to a user."""
+    redis = await manager.get_redis()
+    await redis.publish(
+        f"channel:messages:user:{user_id}",
+        json.dumps({
+            "type": "typing_indicator",
+            "sender_id": sender_id,
+            "is_typing": is_typing,
+        }),
+    )
+
+
+async def publish_notification(
+    user_id: int,
+    notification_type: str,
+    data: dict[str, Any],
+) -> None:
+    """
+    Publish a notification to a user.
+
+    Notification types:
+    - price_alert: Card price threshold crossed
+    - recommendation: New recommendation for owned card
+    - message: New message received
+    - connection: New connection request
+    - trade: Trade proposal update
+    """
+    redis = await manager.get_redis()
+    await redis.publish(
+        f"channel:notifications:user:{user_id}",
+        json.dumps({
+            "type": "notification",
+            "notification_type": notification_type,
             **data,
         }),
     )

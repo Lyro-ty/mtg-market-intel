@@ -43,6 +43,8 @@ class DualcasterBot(commands.Bot):
             "bot.cogs.wantlist",
             "bot.cogs.alerts",
             "bot.cogs.discovery",
+            "bot.cogs.dev",
+            "bot.cogs.admin",
         ]
 
         for cog in cogs:
@@ -69,6 +71,8 @@ class DualcasterBot(commands.Bot):
 
     async def on_ready(self):
         """Called when the bot is ready."""
+        from datetime import datetime
+        self.start_time = datetime.utcnow()
         logger.info(
             "Bot is ready",
             user=str(self.user),

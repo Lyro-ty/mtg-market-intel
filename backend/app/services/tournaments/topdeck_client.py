@@ -5,7 +5,7 @@ TopDeck.gg provides comprehensive tournament results, standings, and decklists
 for Magic: The Gathering events across multiple formats.
 
 API Documentation: https://topdeck.gg/api/docs
-Authentication: API key in X-API-Key header
+Authentication: API key in Authorization header (not Bearer format)
 Rate limit: ~200 requests/minute
 """
 import asyncio

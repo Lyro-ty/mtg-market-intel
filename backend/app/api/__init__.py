@@ -37,6 +37,8 @@ from app.api.routes import (
     bot,
     trading_posts,
     quotes,
+    reputation,
+    trades,
 )
 
 api_router = APIRouter()
@@ -93,4 +95,10 @@ api_router.include_router(trading_posts.events_router)
 
 # Trade Quotes
 api_router.include_router(quotes.router)
+
+# Reputation system
+api_router.include_router(reputation.router, prefix="/reputation", tags=["Reputation"])
+
+# Trade proposals
+api_router.include_router(trades.router, prefix="/trades", tags=["Trades"])
 

@@ -288,6 +288,14 @@ TOOL_DEFINITIONS = [
         "required": ["filename"],
     }),
     Tool(name="get_claude_md", description="Read CLAUDE.md project instructions", inputSchema={"type": "object", "properties": {}}),
+
+    # Implementation validation tools
+    Tool(name="get_implementation_status", description="Get overview of implementation status (routes, models, tests, gaps)", inputSchema={"type": "object", "properties": {}}),
+    Tool(name="list_missing_tests", description="Find routes, services, and tasks without test coverage", inputSchema={"type": "object", "properties": {}}),
+    Tool(name="get_schema_differences", description="Compare Pydantic schemas vs SQLAlchemy models to find mismatches", inputSchema={"type": "object", "properties": {}}),
+    Tool(name="analyze_dead_letter_queue", description="Analyze failed Celery tasks and error patterns", inputSchema={"type": "object", "properties": {}}),
+    Tool(name="get_signal_coverage", description="Get coverage of analytics signal types (which exist vs expected)", inputSchema={"type": "object", "properties": {}}),
+    Tool(name="get_empty_tables", description="Find database tables with zero rows (data gaps)", inputSchema={"type": "object", "properties": {}}),
 ]
 
 

@@ -119,7 +119,22 @@ class RecommendationAgent:
         volatility_rec = await self._check_volatility_opportunity(card, metrics, signals)
         if volatility_rec:
             recommendations.append(volatility_rec)
-        
+
+        # 5. Check for arbitrage opportunity (cross-marketplace)
+        arbitrage_rec = await self._check_arbitrage_opportunity(card, metrics, signals)
+        if arbitrage_rec:
+            recommendations.append(arbitrage_rec)
+
+        # 6. Check for meta-based opportunity (tournament data)
+        meta_rec = await self._check_meta_opportunity(card, metrics, signals)
+        if meta_rec:
+            recommendations.append(meta_rec)
+
+        # 7. Check for supply-based opportunity (scarcity)
+        supply_rec = await self._check_supply_opportunity(card, metrics, signals)
+        if supply_rec:
+            recommendations.append(supply_rec)
+
         # Filter by minimum confidence
         recommendations = [r for r in recommendations if r.confidence >= self.min_confidence]
         
@@ -366,7 +381,7 @@ class RecommendationAgent:
             return None
         
         confidence = float(latest_signal.confidence) if latest_signal.confidence else 0.6
-        
+
         return Recommendation(
             card_id=card.id,
             action=action,
@@ -378,7 +393,193 @@ class RecommendationAgent:
             valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
             is_active=True,
         )
-    
+
+    async def _check_arbitrage_opportunity(
+        self,
+        card: Card,
+        metrics: MetricsCardsDaily,
+        signals: list[Signal],
+    ) -> Recommendation | None:
+        """Check for cross-marketplace arbitrage opportunity."""
+        arb_signals = [s for s in signals if s.signal_type == "arbitrage"]
+
+        if not arb_signals:
+            return None
+
+        latest_signal = max(arb_signals, key=lambda s: s.date)
+
+        # Arbitrage signals indicate buy opportunity at lowest market
+        confidence = float(latest_signal.confidence) if latest_signal.confidence else 0.7
+        spread_value = float(latest_signal.value) if latest_signal.value else 0
+
+        if spread_value < self.min_roi:
+            return None
+
+        metrics_dict = {
+            "current_price": float(metrics.avg_price) if metrics.avg_price else 0,
+            "min_price": float(metrics.min_price) if metrics.min_price else 0,
+            "max_price": float(metrics.max_price) if metrics.max_price else 0,
+            "spread_pct": float(metrics.spread_pct) if metrics.spread_pct else 0,
+            "arbitrage_potential": spread_value * 100,
+            "momentum": "neutral",
+            "total_listings": metrics.total_listings,
+        }
+
+        try:
+            rationale = await self.llm.generate_recommendation_rationale(
+                card.name, "BUY", metrics_dict
+            )
+        except Exception:
+            rationale = (
+                f"Cross-marketplace arbitrage opportunity detected with {spread_value*100:.1f}% "
+                f"potential profit. Buy at lowest marketplace price of ${metrics.min_price:.2f} "
+                f"and sell at highest for ${metrics.max_price:.2f}."
+            )
+
+        # Cap potential_profit_pct
+        profit_pct = spread_value * 100
+        capped_profit_pct = min(profit_pct, 9999.99) if profit_pct else None
+
+        return Recommendation(
+            card_id=card.id,
+            action=ActionType.BUY.value,
+            confidence=confidence,
+            horizon_days=3,  # Shorter horizon for arbitrage
+            current_price=float(metrics.min_price) if metrics.min_price else None,
+            target_price=float(metrics.max_price) if metrics.max_price else None,
+            potential_profit_pct=capped_profit_pct,
+            rationale=rationale,
+            source_signals=json.dumps(["arbitrage"]),
+            valid_until=datetime.now(timezone.utc) + timedelta(days=3),
+            is_active=True,
+        )
+
+    async def _check_meta_opportunity(
+        self,
+        card: Card,
+        metrics: MetricsCardsDaily,
+        signals: list[Signal],
+    ) -> Recommendation | None:
+        """Check for meta-based opportunity from tournament data."""
+        meta_signals = [s for s in signals if s.signal_type in ("meta_spike", "meta_drop", "top8_spike")]
+
+        if not meta_signals:
+            return None
+
+        latest_signal = max(meta_signals, key=lambda s: s.date)
+
+        if latest_signal.signal_type in ("meta_spike", "top8_spike"):
+            # Card is seeing increased tournament play = BUY
+            action = ActionType.BUY.value
+            meta_direction = "increasing"
+        elif latest_signal.signal_type == "meta_drop":
+            # Card is seeing decreased tournament play = SELL
+            action = ActionType.SELL.value
+            meta_direction = "decreasing"
+        else:
+            return None
+
+        confidence = float(latest_signal.confidence) if latest_signal.confidence else 0.7
+        meta_change = float(latest_signal.value) if latest_signal.value else 0
+
+        metrics_dict = {
+            "current_price": float(metrics.avg_price) if metrics.avg_price else 0,
+            "price_change_pct_7d": float(metrics.price_change_pct_7d) if metrics.price_change_pct_7d else 0,
+            "meta_share_change": meta_change * 100,
+            "meta_direction": meta_direction,
+            "momentum": meta_direction,
+            "total_listings": metrics.total_listings,
+        }
+
+        try:
+            rationale = await self.llm.generate_recommendation_rationale(
+                card.name, action, metrics_dict
+            )
+        except Exception:
+            if action == ActionType.BUY.value:
+                rationale = (
+                    f"Tournament meta share {meta_direction} by {meta_change*100:.1f}%. "
+                    f"Increased competitive play typically precedes price appreciation. "
+                    f"Consider buying before the market adjusts."
+                )
+            else:
+                rationale = (
+                    f"Tournament meta share {meta_direction} by {abs(meta_change)*100:.1f}%. "
+                    f"Decreased competitive play often signals price decline. "
+                    f"Consider selling to avoid losses."
+                )
+
+        return Recommendation(
+            card_id=card.id,
+            action=action,
+            confidence=confidence,
+            horizon_days=14,  # Longer horizon for meta trends
+            current_price=float(metrics.avg_price) if metrics.avg_price else None,
+            rationale=rationale,
+            source_signals=json.dumps([latest_signal.signal_type]),
+            valid_until=datetime.now(timezone.utc) + timedelta(days=14),
+            is_active=True,
+        )
+
+    async def _check_supply_opportunity(
+        self,
+        card: Card,
+        metrics: MetricsCardsDaily,
+        signals: list[Signal],
+    ) -> Recommendation | None:
+        """Check for supply-based opportunity (scarcity signals)."""
+        supply_signals = [s for s in signals if s.signal_type in ("supply_low", "supply_velocity")]
+
+        if not supply_signals:
+            return None
+
+        latest_signal = max(supply_signals, key=lambda s: s.date)
+
+        # Low supply or high sell velocity = potential price increase
+        confidence = float(latest_signal.confidence) if latest_signal.confidence else 0.65
+        supply_value = float(latest_signal.value) if latest_signal.value else 0
+
+        # Low supply is a buy signal (scarcity drives prices up)
+        if latest_signal.signal_type == "supply_low":
+            action = ActionType.BUY.value
+            supply_note = f"Low supply detected with only {metrics.total_listings} listings"
+        elif latest_signal.signal_type == "supply_velocity" and supply_value > 0:
+            # High velocity (listings selling fast) = buy before shortage
+            action = ActionType.BUY.value
+            supply_note = f"High sales velocity of {supply_value*100:.1f}% inventory turnover"
+        else:
+            return None
+
+        metrics_dict = {
+            "current_price": float(metrics.avg_price) if metrics.avg_price else 0,
+            "total_listings": metrics.total_listings,
+            "supply_indicator": supply_value,
+            "supply_note": supply_note,
+            "momentum": "scarcity",
+        }
+
+        try:
+            rationale = await self.llm.generate_recommendation_rationale(
+                card.name, action, metrics_dict
+            )
+        except Exception:
+            rationale = (
+                f"{supply_note}. Scarcity typically drives price appreciation. "
+                f"Current price ${metrics.avg_price:.2f} may increase as supply diminishes."
+            )
+
+        return Recommendation(
+            card_id=card.id,
+            action=action,
+            confidence=confidence,
+            horizon_days=self.horizon_days,
+            current_price=float(metrics.avg_price) if metrics.avg_price else None,
+            rationale=rationale,
+            source_signals=json.dumps([latest_signal.signal_type]),
+            valid_until=datetime.now(timezone.utc) + timedelta(days=self.horizon_days),
+            is_active=True,
+        )
+
     async def run_recommendations(
         self,
         card_ids: list[int] | None = None,

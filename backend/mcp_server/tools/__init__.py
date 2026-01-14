@@ -93,6 +93,16 @@ from mcp_server.tools.docs import (
     get_claude_md,
 )
 
+# Implementation validation tools
+from mcp_server.tools.implementation import (
+    get_implementation_status,
+    list_missing_tests,
+    get_schema_differences,
+    analyze_dead_letter_queue,
+    get_signal_coverage,
+    get_empty_tables,
+)
+
 __all__ = [
     # Cards
     "get_card_by_id",
@@ -154,4 +164,11 @@ __all__ = [
     "get_design_docs",
     "read_design_doc",
     "get_claude_md",
+    # Implementation validation
+    "get_implementation_status",
+    "list_missing_tests",
+    "get_schema_differences",
+    "analyze_dead_letter_queue",
+    "get_signal_coverage",
+    "get_empty_tables",
 ]

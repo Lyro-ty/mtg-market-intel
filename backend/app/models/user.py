@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from app.models.trading_post import TradingPost, TradeQuote
     from app.models.user_milestone import UserMilestone
     from app.models.want_list import WantListItem
+    from app.models.reputation import UserReputation
+    from app.models.trade import TradeProposal
 
 
 class User(Base):
@@ -189,6 +191,26 @@ class User(Base):
     trade_quotes: Mapped[list["TradeQuote"]] = relationship(
         "TradeQuote",
         back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
+    # Reputation relationship
+    reputation: Mapped[Optional["UserReputation"]] = relationship(
+        "UserReputation",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+
+    # Trade proposal relationships
+    sent_trade_proposals: Mapped[list["TradeProposal"]] = relationship(
+        "TradeProposal",
+        foreign_keys="TradeProposal.proposer_id",
+        cascade="all, delete-orphan"
+    )
+    received_trade_proposals: Mapped[list["TradeProposal"]] = relationship(
+        "TradeProposal",
+        foreign_keys="TradeProposal.recipient_id",
         cascade="all, delete-orphan"
     )
 
