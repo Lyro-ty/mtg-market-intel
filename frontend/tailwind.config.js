@@ -102,9 +102,18 @@ module.exports = {
   		animation: {
   			'fade-in': 'fadeIn 0.3s ease-in-out',
   			'slide-up': 'slideUp 0.3s ease-out',
-  			'pulse-subtle': 'pulseSubtle 2s infinite'
+  			'pulse-subtle': 'pulseSubtle 2s infinite',
+  			'reputation-glow': 'reputationGlow 2s ease-in-out infinite'
   		},
   		keyframes: {
+  			reputationGlow: {
+  				'0%, 100%': {
+  					boxShadow: '0 0 8px rgba(245, 158, 11, 0.4)'
+  				},
+  				'50%': {
+  					boxShadow: '0 0 16px rgba(245, 158, 11, 0.6), 0 0 24px rgba(245, 158, 11, 0.3)'
+  				}
+  			},
   			fadeIn: {
   				'0%': {
   					opacity: '0'

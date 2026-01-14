@@ -14,6 +14,9 @@ import {
   Store,
   Calendar,
   Newspaper,
+  ArrowLeftRight,
+  Award,
+  MessageCircle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -44,6 +47,12 @@ export const collectionNavItems: NavItem[] = [
   { title: 'Collection', href: '/collection', icon: Package, requiresAuth: true },
   { title: 'Want List', href: '/want-list', icon: Star, requiresAuth: true },
   { title: 'Trade Quotes', href: '/quotes', icon: FileText, requiresAuth: true },
+];
+
+export const communityNavItems: NavItem[] = [
+  { title: 'Trades', href: '/trades', icon: ArrowLeftRight, requiresAuth: true },
+  { title: 'Reputation', href: '/reputation', icon: Award, requiresAuth: true },
+  { title: 'Messages', href: '/messages', icon: MessageCircle, requiresAuth: true },
 ];
 
 export const insightsNavItems: NavItem[] = [

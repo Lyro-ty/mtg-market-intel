@@ -270,6 +270,37 @@ export type {
   StoreSubmissionListResponse,
 } from './trading-posts';
 
+// Trades
+export {
+  getTrades,
+  getTrade,
+  createTrade,
+  acceptTrade,
+  declineTrade,
+  cancelTrade,
+  counterTrade,
+  confirmTrade,
+  getTradeStats,
+} from './trades';
+
+export type {
+  TradeItemRequest,
+  CreateTradeRequest,
+  CounterTradeRequest,
+  TradeListParams,
+} from './trades';
+
+// Reputation
+export {
+  getMyReputation,
+  getUserReputation,
+  getUserReviews,
+  createReview,
+  getReputationLeaderboard,
+} from './reputation';
+
+export type { CreateReviewRequest } from './reputation';
+
 // Types re-exports for backwards compatibility
 export type {
   ImportJob,

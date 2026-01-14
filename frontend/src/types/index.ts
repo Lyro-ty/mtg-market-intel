@@ -375,3 +375,116 @@ export interface ImportedItem {
   card_name?: string;
   error?: string;
 }
+
+// =============================================================================
+// Trade types
+// =============================================================================
+
+export type TradeStatus =
+  | 'pending'
+  | 'accepted'
+  | 'declined'
+  | 'countered'
+  | 'expired'
+  | 'completed'
+  | 'cancelled';
+
+export type TradeSide = 'proposer' | 'recipient';
+
+export interface TradeItem {
+  id: number;
+  side: TradeSide;
+  card_id: number;
+  card_name: string;
+  quantity: number;
+  condition: string | null;
+  price_at_proposal: number | null;
+}
+
+export interface UserBrief {
+  id: number;
+  username: string;
+  display_name: string | null;
+}
+
+export interface TradeProposal {
+  id: number;
+  proposer: UserBrief;
+  recipient: UserBrief;
+  status: TradeStatus;
+  message: string | null;
+  proposer_items: TradeItem[];
+  recipient_items: TradeItem[];
+  parent_proposal_id: number | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  proposer_confirmed: boolean;
+  recipient_confirmed: boolean;
+  completed_at: string | null;
+}
+
+export interface TradeListResponse {
+  proposals: TradeProposal[];
+  total: number;
+}
+
+export interface TradeStats {
+  total_trades: number;
+  completed_trades: number;
+  pending_trades: number;
+  total_value_traded: number;
+  average_trade_value: number;
+}
+
+// =============================================================================
+// Reputation types
+// =============================================================================
+
+export type ReputationTier = 'new' | 'established' | 'trusted' | 'elite';
+
+export interface Reputation {
+  user_id: number;
+  total_reviews: number;
+  average_rating: number;
+  tier: ReputationTier;
+  five_star_count: number;
+  four_star_count: number;
+  three_star_count: number;
+  two_star_count: number;
+  one_star_count: number;
+  last_calculated_at: string;
+}
+
+export interface ReviewerInfo {
+  id: number;
+  username: string;
+  display_name: string | null;
+}
+
+export interface Review {
+  id: number;
+  reviewer: ReviewerInfo;
+  rating: number;
+  comment: string | null;
+  trade_type: string | null;
+  created_at: string;
+}
+
+export interface ReviewListResponse {
+  reviews: Review[];
+  total: number;
+}
+
+export interface LeaderboardEntry {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  total_reviews: number;
+  average_rating: number;
+  tier: ReputationTier;
+}
+
+export interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+}

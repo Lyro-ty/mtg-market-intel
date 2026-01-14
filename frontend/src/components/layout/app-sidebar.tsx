@@ -15,6 +15,7 @@ import { NavUser } from './nav-user';
 import {
   mainNavItems,
   collectionNavItems,
+  communityNavItems,
   insightsNavItems,
   storeNavItems,
   bottomNavItems,
@@ -49,6 +50,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         {user && (
           <>
             <NavMain items={filterItems(collectionNavItems)} label="Collection" />
+            <NavMain items={filterItems(communityNavItems)} label="Community" />
             <NavMain items={filterItems(insightsNavItems)} label="Insights" />
             <NavMain items={filterItems(storeNavItems)} label="Store" />
           </>
