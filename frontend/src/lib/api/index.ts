@@ -301,6 +301,29 @@ export {
 
 export type { CreateReviewRequest } from './reputation';
 
+// Discovery
+export {
+  getUsersWithMyWants,
+  getUsersWhoWantMine,
+  getMutualMatches,
+  getTradeDetailsWithUser,
+  getMyTradeableCards,
+  getDiscoverySummary,
+} from './discovery';
+
+export type {
+  UserMatch,
+  MutualMatch,
+  DiscoveryResponse,
+  TradeCard,
+  TradeUser,
+  TradeSummary,
+  TradeDetailsResponse,
+  TradeableCard,
+  TradeableCardsResponse,
+  DiscoverySummary,
+} from './discovery';
+
 // Types re-exports for backwards compatibility
 export type {
   ImportJob,

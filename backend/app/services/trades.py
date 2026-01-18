@@ -22,6 +22,7 @@ from app.models.trade import (
     TradeSide,
 )
 from app.models.card import Card
+from app.models.metrics import MetricsCardsDaily
 from app.services.reputation import ReputationService
 
 logger = get_logger()
@@ -92,23 +93,32 @@ class TradeService:
     ) -> None:
         """Add items to a proposal."""
         for item_data in items:
-            # Get current price for reference
-            card = await self.db.get(Card, item_data["card_id"])
-            # Get latest price from metrics if available
-            price = None
-            if card:
-                # Could fetch from metrics here, leaving as None for now
-                pass
+            card_id = item_data["card_id"]
+
+            # Get latest price from metrics
+            price = await self._get_latest_price(card_id)
 
             item = TradeProposalItem(
                 proposal_id=proposal_id,
                 side=side,
-                card_id=item_data["card_id"],
+                card_id=card_id,
                 quantity=item_data.get("quantity", 1),
                 condition=item_data.get("condition"),
                 price_at_proposal=price,
             )
             self.db.add(item)
+
+    async def _get_latest_price(self, card_id: int) -> float | None:
+        """Get the latest average price for a card from daily metrics."""
+        query = (
+            select(MetricsCardsDaily.avg_price)
+            .where(MetricsCardsDaily.card_id == card_id)
+            .order_by(MetricsCardsDaily.date.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(query)
+        price = result.scalar_one_or_none()
+        return float(price) if price is not None else None
 
     async def get_proposal(self, proposal_id: int) -> TradeProposal | None:
         """Get a proposal by ID with all related data."""

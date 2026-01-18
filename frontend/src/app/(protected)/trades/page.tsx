@@ -16,14 +16,6 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from '@/components/ui/dialog';
 import { PageHeader } from '@/components/ornate/page-header';
 import { TradeProposalCard } from '@/components/trades/TradeProposalCard';
 import { getTrades, getTradeStats, ApiError } from '@/lib/api';
@@ -75,40 +67,17 @@ const tabs: TabConfig[] = [
   },
 ];
 
-function NewTradeDialog() {
-  const [isOpen, setIsOpen] = useState(false);
+function NewTradeButton() {
+  const router = useRouter();
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button className="gradient-arcane text-white glow-accent">
-          <Plus className="w-4 h-4 mr-1" />
-          New Trade
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Create Trade Proposal</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 pt-4">
-          <div className="text-center py-8">
-            <ArrowLeftRight className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              The trade creation wizard is coming soon.
-            </p>
-            <p className="text-sm text-muted-foreground mt-2">
-              You will be able to select cards from your inventory and browse
-              other users&apos; collections to propose trades.
-            </p>
-          </div>
-          <div className="flex justify-end">
-            <DialogClose asChild>
-              <Button variant="secondary">Close</Button>
-            </DialogClose>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <Button
+      className="gradient-arcane text-white glow-accent"
+      onClick={() => router.push('/trades/new')}
+    >
+      <Plus className="w-4 h-4 mr-1" />
+      New Trade
+    </Button>
   );
 }
 
@@ -151,7 +120,7 @@ function EmptyState({ tab }: { tab: TabValue }) {
       <CardContent className="py-12 text-center">
         <ArrowLeftRight className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
         <p className="text-muted-foreground mb-4">{messages[tab]}</p>
-        {tab === 'all' && <NewTradeDialog />}
+        {tab === 'all' && <NewTradeButton />}
       </CardContent>
     </Card>
   );
@@ -223,7 +192,7 @@ export default function TradesPage() {
         title="Trade Proposals"
         subtitle="Manage your card trades with other collectors"
       >
-        <NewTradeDialog />
+        <NewTradeButton />
       </PageHeader>
 
       {/* Error Alert */}

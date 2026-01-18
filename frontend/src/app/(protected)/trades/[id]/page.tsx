@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,10 +12,20 @@ import {
   Calendar,
   CheckCircle,
   MessageSquare,
+  Plus,
+  Minus,
+  X,
+  Package,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { TradeStatusBadge } from '@/components/trades/TradeStatusBadge';
 import { TradeItemCard } from '@/components/trades/TradeItemCard';
 import {
@@ -23,11 +34,14 @@ import {
   declineTrade,
   cancelTrade,
   confirmTrade,
+  counterTrade,
+  getMyTradeableCards,
   ApiError,
 } from '@/lib/api';
 import { formatCurrency, formatDate, formatRelativeTime } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import type { TradeProposal, TradeItem } from '@/types';
+import type { TradeableCard } from '@/lib/api/discovery';
 
 /**
  * Calculate total value of trade items
@@ -388,16 +402,114 @@ export default function TradeDetailPage() {
     onSuccess: handleMutationSuccess,
   });
 
+  // Counter proposal state
+  const [showCounterDialog, setShowCounterDialog] = useState(false);
+  const [counterOfferCards, setCounterOfferCards] = useState<
+    Array<{ card_id: number; name: string; quantity: number; max_quantity: number; condition?: string }>
+  >([]);
+  const [counterRequestCards, setCounterRequestCards] = useState<
+    Array<{ card_id: number; name: string; quantity: number; max_quantity: number; condition?: string }>
+  >([]);
+  const [counterMessage, setCounterMessage] = useState('');
+
+  // Fetch tradeable cards for counter proposal
+  const { data: myCardsData } = useQuery({
+    queryKey: ['discovery', 'my-tradeable-cards'],
+    queryFn: () => getMyTradeableCards(100),
+    enabled: showCounterDialog,
+  });
+
+  const counterMutation = useMutation({
+    mutationFn: () =>
+      counterTrade(tradeId, {
+        proposer_items: counterOfferCards.map((c) => ({
+          card_id: c.card_id,
+          quantity: c.quantity,
+          condition: c.condition,
+        })),
+        recipient_items: counterRequestCards.map((c) => ({
+          card_id: c.card_id,
+          quantity: c.quantity,
+          condition: c.condition,
+        })),
+        message: counterMessage.trim() || undefined,
+      }),
+    onSuccess: (data) => {
+      handleMutationSuccess();
+      setShowCounterDialog(false);
+      router.push(`/trades/${data.id}`);
+    },
+  });
+
   const isMutating =
     acceptMutation.isPending ||
     declineMutation.isPending ||
     cancelMutation.isPending ||
-    confirmMutation.isPending;
+    confirmMutation.isPending ||
+    counterMutation.isPending;
 
-  // Handle counter proposal (navigate to counter page - placeholder for now)
+  // Handle counter proposal - open dialog
   const handleCounter = () => {
-    // TODO: Navigate to counter proposal page or open modal
-    alert('Counter proposal feature coming soon!');
+    // Pre-populate with existing items (swapped sides)
+    if (trade) {
+      // Items they were offering become items we're requesting
+      setCounterRequestCards(
+        trade.proposer_items.map((item) => ({
+          card_id: item.card_id,
+          name: item.card_name ?? 'Unknown Card',
+          quantity: item.quantity,
+          max_quantity: item.quantity,
+          condition: item.condition ?? undefined,
+        }))
+      );
+      // Items they were requesting become items we're offering (if we have them)
+      setCounterOfferCards(
+        trade.recipient_items.map((item) => ({
+          card_id: item.card_id,
+          name: item.card_name ?? 'Unknown Card',
+          quantity: item.quantity,
+          max_quantity: item.quantity,
+          condition: item.condition ?? undefined,
+        }))
+      );
+    }
+    setShowCounterDialog(true);
+  };
+
+  // Add/remove cards from counter offer
+  const addToCounterOffer = (card: TradeableCard) => {
+    if (!counterOfferCards.find((c) => c.card_id === card.card_id)) {
+      setCounterOfferCards([
+        ...counterOfferCards,
+        {
+          card_id: card.card_id,
+          name: card.name,
+          quantity: 1,
+          max_quantity: card.quantity,
+          condition: card.condition,
+        },
+      ]);
+    }
+  };
+
+  const removeFromCounterOffer = (cardId: number) => {
+    setCounterOfferCards(counterOfferCards.filter((c) => c.card_id !== cardId));
+  };
+
+  const updateCounterOfferQty = (cardId: number, qty: number) => {
+    setCounterOfferCards(
+      counterOfferCards.map((c) => (c.card_id === cardId ? { ...c, quantity: qty } : c))
+    );
+  };
+
+  const removeFromCounterRequest = (cardId: number) => {
+    setCounterRequestCards(counterRequestCards.filter((c) => c.card_id !== cardId));
+  };
+
+  const updateCounterRequestQty = (cardId: number, qty: number) => {
+    setCounterRequestCards(
+      counterRequestCards.map((c) => (c.card_id === cardId ? { ...c, quantity: qty } : c))
+    );
   };
 
   // Loading state
@@ -580,7 +692,8 @@ export default function TradeDetailPage() {
       {(acceptMutation.error ||
         declineMutation.error ||
         cancelMutation.error ||
-        confirmMutation.error) && (
+        confirmMutation.error ||
+        counterMutation.error) && (
         <Card className="bg-[rgb(var(--destructive))]/10 border-[rgb(var(--destructive))]/20">
           <CardContent className="py-4">
             <div className="flex items-center gap-2 text-[rgb(var(--destructive))]">
@@ -589,12 +702,189 @@ export default function TradeDetailPage() {
                 {(acceptMutation.error ||
                   declineMutation.error ||
                   cancelMutation.error ||
-                  confirmMutation.error)?.message || 'An error occurred'}
+                  confirmMutation.error ||
+                  counterMutation.error)?.message || 'An error occurred'}
               </p>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Counter Proposal Dialog */}
+      <Dialog open={showCounterDialog} onOpenChange={setShowCounterDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowLeftRight className="w-5 h-5" />
+              Create Counter Proposal
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 pt-4">
+            {/* Your Offer */}
+            <div>
+              <h3 className="text-sm font-medium text-[rgb(var(--muted-foreground))] mb-3">
+                Your Offer ({counterOfferCards.length} cards)
+              </h3>
+              <div className="space-y-2">
+                {counterOfferCards.map((card) => (
+                  <div
+                    key={card.card_id}
+                    className="flex items-center justify-between p-2 rounded-lg bg-secondary"
+                  >
+                    <span className="font-medium">{card.name}</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => updateCounterOfferQty(card.card_id, Math.max(1, card.quantity - 1))}
+                        disabled={card.quantity <= 1}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </Button>
+                      <span className="w-6 text-center">{card.quantity}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => updateCounterOfferQty(card.card_id, Math.min(card.max_quantity, card.quantity + 1))}
+                        disabled={card.quantity >= card.max_quantity}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeFromCounterOffer(card.card_id)}
+                        className="text-[rgb(var(--destructive))]"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {counterOfferCards.length === 0 && (
+                  <p className="text-sm text-[rgb(var(--muted-foreground))] text-center py-4">
+                    No cards selected. Add cards from your tradeable inventory below.
+                  </p>
+                )}
+              </div>
+
+              {/* Add cards from inventory */}
+              {myCardsData?.cards && myCardsData.cards.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-[rgb(var(--muted-foreground))] mb-2">
+                    Add from your tradeable cards:
+                  </p>
+                  <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                    {myCardsData.cards
+                      .filter((c) => !counterOfferCards.find((o) => o.card_id === c.card_id))
+                      .slice(0, 20)
+                      .map((card) => (
+                        <button
+                          key={card.card_id}
+                          onClick={() => addToCounterOffer(card)}
+                          className="px-2 py-1 text-xs rounded bg-[rgb(var(--accent))]/10 text-[rgb(var(--accent))] hover:bg-[rgb(var(--accent))]/20 transition-colors"
+                        >
+                          + {card.name}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Your Request */}
+            <div>
+              <h3 className="text-sm font-medium text-[rgb(var(--muted-foreground))] mb-3">
+                Your Request ({counterRequestCards.length} cards)
+              </h3>
+              <div className="space-y-2">
+                {counterRequestCards.map((card) => (
+                  <div
+                    key={card.card_id}
+                    className="flex items-center justify-between p-2 rounded-lg bg-secondary"
+                  >
+                    <span className="font-medium">{card.name}</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => updateCounterRequestQty(card.card_id, Math.max(1, card.quantity - 1))}
+                        disabled={card.quantity <= 1}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </Button>
+                      <span className="w-6 text-center">{card.quantity}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => updateCounterRequestQty(card.card_id, Math.min(card.max_quantity, card.quantity + 1))}
+                        disabled={card.quantity >= card.max_quantity}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeFromCounterRequest(card.card_id)}
+                        className="text-[rgb(var(--destructive))]"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {counterRequestCards.length === 0 && (
+                  <p className="text-sm text-[rgb(var(--muted-foreground))] text-center py-4">
+                    No cards requested.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Message */}
+            <div>
+              <label className="text-sm font-medium text-[rgb(var(--foreground))] mb-2 block">
+                Message (Optional)
+              </label>
+              <textarea
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground min-h-[80px] resize-none focus:outline-none focus:ring-2 focus:ring-accent"
+                placeholder="Add a message to your counter proposal..."
+                value={counterMessage}
+                onChange={(e) => setCounterMessage(e.target.value)}
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-4 border-t border-border">
+              <Button variant="secondary" onClick={() => setShowCounterDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="gradient-arcane text-white glow-accent"
+                onClick={() => counterMutation.mutate()}
+                disabled={
+                  counterOfferCards.length === 0 ||
+                  counterRequestCards.length === 0 ||
+                  counterMutation.isPending
+                }
+              >
+                {counterMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <ArrowLeftRight className="w-4 h-4 mr-2" />
+                    Send Counter Proposal
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
