@@ -4,6 +4,7 @@ Profile API endpoints.
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from app.schemas.profile import (
     SignatureCardResponse,
 )
 from app.core.hashids import encode_id, decode_id
+from app.services.profile_card_generator import ProfileCardGenerator
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -182,6 +184,49 @@ async def update_my_profile(
     )
 
 
+@router.get("/me/card.png")
+async def get_my_profile_card(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate a PNG image of the user's profile card for sharing.
+
+    Returns the image directly with Content-Type: image/png.
+    The card displays user information in a trading card format.
+    """
+    # Get cards for trade count
+    trade_count = await _get_trade_count(db, current_user.id)
+
+    # Get signature card name if set
+    signature_card_name = None
+    if current_user.signature_card:
+        signature_card_name = current_user.signature_card.name
+
+    # Format member since date
+    member_since = current_user.created_at.strftime("%b %Y") if current_user.created_at else None
+
+    generator = ProfileCardGenerator()
+    png_bytes = await generator.generate(
+        display_name=current_user.display_name,
+        username=current_user.username,
+        frame_tier=current_user.active_frame_tier or "bronze",
+        tagline=current_user.tagline,
+        card_type=current_user.card_type,
+        cards_for_trade=trade_count,
+        signature_card_name=signature_card_name,
+        member_since=member_since,
+    )
+
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={
+            "Content-Disposition": f'inline; filename="{current_user.username}-card.png"'
+        },
+    )
+
+
 async def _get_trade_count(db: AsyncSession, user_id: int) -> int:
     """Count cards available for trade for a user."""
     result = await db.scalar(
@@ -222,6 +267,59 @@ def _build_public_profile_response(
         shipping_preference=user.shipping_preference,
         city=city,
         country=country,
+    )
+
+
+@router.get("/public/{hashid}/card.png")
+async def get_public_profile_card(
+    hashid: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate a PNG image of a user's public profile card.
+
+    Returns the image directly with Content-Type: image/png.
+    Anyone can access this endpoint with a valid hashid.
+    """
+    user_id = decode_id(hashid)
+    if user_id is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get cards for trade count
+    trade_count = await _get_trade_count(db, user.id)
+
+    # Get signature card name if set
+    signature_card_name = None
+    if user.signature_card:
+        signature_card_name = user.signature_card.name
+
+    # Format member since date
+    member_since = user.created_at.strftime("%b %Y") if user.created_at else None
+
+    generator = ProfileCardGenerator()
+    png_bytes = await generator.generate(
+        display_name=user.display_name,
+        username=user.username,
+        frame_tier=user.active_frame_tier or "bronze",
+        tagline=user.tagline,
+        card_type=user.card_type,
+        cards_for_trade=trade_count,
+        signature_card_name=signature_card_name,
+        member_since=member_since,
+    )
+
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={
+            "Content-Disposition": f'inline; filename="{user.username}-card.png"'
+        },
     )
 
 
