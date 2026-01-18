@@ -26,6 +26,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.card import Card
+    from app.models.trade_thread import TradeThread
     from app.models.user import User
 
 
@@ -144,6 +145,12 @@ class TradeProposal(Base):
     parent_proposal: Mapped[Optional["TradeProposal"]] = relationship(
         "TradeProposal",
         remote_side="TradeProposal.id",
+        lazy="joined",
+    )
+    thread: Mapped[Optional["TradeThread"]] = relationship(
+        "TradeThread",
+        back_populates="trade_proposal",
+        uselist=False,
         lazy="joined",
     )
 

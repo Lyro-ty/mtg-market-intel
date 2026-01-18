@@ -68,6 +68,11 @@ from app.models.achievement import (
     UserAchievement,
     UserFrame,
 )
+from app.models.trade_thread import (
+    TradeThread,
+    TradeThreadMessage,
+    TradeThreadAttachment,
+)
 
 
 __all__ = [
@@ -139,5 +144,9 @@ __all__ = [
     "AchievementDefinition",
     "UserAchievement",
     "UserFrame",
+    # Trade threads
+    "TradeThread",
+    "TradeThreadMessage",
+    "TradeThreadAttachment",
 ]
 
