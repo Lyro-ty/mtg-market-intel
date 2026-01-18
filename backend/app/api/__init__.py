@@ -30,6 +30,7 @@ from app.api.routes import (
     news,
     spreads,
     discovery,
+    directory,
     edhrec,
     connections,
     messages,
@@ -70,6 +71,7 @@ api_router.include_router(saved_searches.router, tags=["Saved Searches"])
 api_router.include_router(news.router, prefix="/news", tags=["News"])
 api_router.include_router(spreads.router, tags=["Spreads"])
 api_router.include_router(discovery.router, tags=["Discovery"])
+api_router.include_router(directory.router, tags=["Directory"])
 api_router.include_router(edhrec.router, tags=["EDHREC"])
 
 # Connection and messaging
