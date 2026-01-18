@@ -43,6 +43,7 @@ from app.api.routes import (
     reputation,
     trades,
     favorites,
+    format_specialties,
 )
 
 api_router = APIRouter()
@@ -112,3 +113,6 @@ api_router.include_router(achievements.router)
 
 # Favorites and private notes
 api_router.include_router(favorites.router)
+
+# Format specialties management
+api_router.include_router(format_specialties.router)
