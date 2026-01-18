@@ -4,6 +4,7 @@ API module for FastAPI routes.
 from fastapi import APIRouter
 
 from app.api.routes import (
+    achievements,
     auth,
     health,
     cards,
@@ -101,4 +102,7 @@ api_router.include_router(reputation.router, prefix="/reputation", tags=["Reputa
 
 # Trade proposals
 api_router.include_router(trades.router, prefix="/trades", tags=["Trades"])
+
+# Achievement system
+api_router.include_router(achievements.router)
 
