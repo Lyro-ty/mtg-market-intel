@@ -80,6 +80,12 @@ from app.models.social import (
     ProfileView,
     NotificationPreference,
 )
+from app.models.moderation_enhanced import (
+    ModerationAction,
+    ModerationNote,
+    Appeal,
+    TradeDispute,
+)
 
 
 __all__ = [
@@ -161,5 +167,10 @@ __all__ = [
     "UserFormatSpecialty",
     "ProfileView",
     "NotificationPreference",
+    # Enhanced moderation
+    "ModerationAction",
+    "ModerationNote",
+    "Appeal",
+    "TradeDispute",
 ]
 
