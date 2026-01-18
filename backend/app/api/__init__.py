@@ -1,6 +1,7 @@
 """
 API module for FastAPI routes.
 """
+
 from fastapi import APIRouter
 
 from app.api.routes import (
@@ -41,6 +42,7 @@ from app.api.routes import (
     quotes,
     reputation,
     trades,
+    favorites,
 )
 
 api_router = APIRouter()
@@ -108,3 +110,5 @@ api_router.include_router(trades.router, prefix="/trades", tags=["Trades"])
 # Achievement system
 api_router.include_router(achievements.router)
 
+# Favorites and private notes
+api_router.include_router(favorites.router)
