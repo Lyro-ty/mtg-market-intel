@@ -338,3 +338,27 @@ export type {
   SavedSearchCreate,
   SavedSearchUpdate,
 } from './types';
+
+// Directory
+export {
+  getDirectory,
+  quickSearchUsers,
+  getSuggestedUsers,
+  getRecentUsers,
+  getTradePreview,
+  getFavorites,
+  addFavorite,
+  removeFavorite,
+  updateFavorite,
+} from './directory';
+
+export type {
+  DirectoryUser,
+  DirectoryResponse,
+  DirectorySearchParams,
+  SuggestedUser,
+  QuickSearchUser,
+  TradePreview,
+  FavoriteUser,
+  FavoritesListResponse,
+} from './directory';
