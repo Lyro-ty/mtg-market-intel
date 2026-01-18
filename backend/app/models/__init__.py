@@ -73,6 +73,13 @@ from app.models.trade_thread import (
     TradeThreadMessage,
     TradeThreadAttachment,
 )
+from app.models.social import (
+    UserFavorite,
+    UserNote,
+    UserFormatSpecialty,
+    ProfileView,
+    NotificationPreference,
+)
 
 
 __all__ = [
@@ -148,5 +155,11 @@ __all__ = [
     "TradeThread",
     "TradeThreadMessage",
     "TradeThreadAttachment",
+    # Social features
+    "UserFavorite",
+    "UserNote",
+    "UserFormatSpecialty",
+    "ProfileView",
+    "NotificationPreference",
 ]
 
