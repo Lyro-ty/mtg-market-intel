@@ -4,12 +4,13 @@ User model for authentication.
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.card import Card
     from app.models.collection_stats import CollectionStats
     from app.models.connection import (
         ConnectionRequest,
@@ -23,6 +24,12 @@ if TYPE_CHECKING:
     from app.models.saved_search import SavedSearch
     from app.models.settings import AppSettings
     from app.models.session import UserSession
+    from app.models.social import (
+        NotificationPreference,
+        UserFavorite,
+        UserFormatSpecialty,
+        UserNote,
+    )
     from app.models.trading_post import TradingPost, TradeQuote
     from app.models.user_milestone import UserMilestone
     from app.models.want_list import WantListItem
@@ -67,6 +74,34 @@ class User(Base):
     discord_username: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     discord_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Profile card fields (social trading)
+    tagline: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    signature_card_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("cards.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    card_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # collector, trader, brewer, investor
+    card_type_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Extended location fields
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    shipping_preference: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # local, domestic, international
+
+    # Frame and discovery
+    active_frame_tier: Mapped[str] = mapped_column(String(20), default="bronze", nullable=False)
+    discovery_score: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+
+    # Privacy settings
+    show_in_directory: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    show_in_search: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    show_online_status: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    show_portfolio_tier: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Onboarding
+    onboarding_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
     # Account status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -225,6 +260,34 @@ class User(Base):
         "UserFrame",
         back_populates="user",
         cascade="all, delete-orphan"
+    )
+
+    # Social trading relationships
+    signature_card: Mapped[Optional["Card"]] = relationship(
+        "Card",
+        foreign_keys=[signature_card_id],
+        lazy="joined",
+    )
+    favorites: Mapped[list["UserFavorite"]] = relationship(
+        "UserFavorite",
+        foreign_keys="UserFavorite.user_id",
+        cascade="all, delete-orphan",
+    )
+    notes: Mapped[list["UserNote"]] = relationship(
+        "UserNote",
+        foreign_keys="UserNote.user_id",
+        cascade="all, delete-orphan",
+    )
+    format_specialties: Mapped[list["UserFormatSpecialty"]] = relationship(
+        "UserFormatSpecialty",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    notification_preferences: Mapped[Optional["NotificationPreference"]] = relationship(
+        "NotificationPreference",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
