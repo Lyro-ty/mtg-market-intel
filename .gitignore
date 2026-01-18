@@ -31,3 +31,6 @@ backend/.mcp-venv/
 # Claude Code settings (contains credentials)
 .claude/settings.json
 .mcp.json
+
+# Git worktrees for feature development
+.worktrees/
