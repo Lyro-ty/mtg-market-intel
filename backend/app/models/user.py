@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from app.models.want_list import WantListItem
     from app.models.reputation import UserReputation
     from app.models.trade import TradeProposal
+    from app.models.achievement import UserAchievement, UserFrame
 
 
 class User(Base):
@@ -211,6 +212,18 @@ class User(Base):
     received_trade_proposals: Mapped[list["TradeProposal"]] = relationship(
         "TradeProposal",
         foreign_keys="TradeProposal.recipient_id",
+        cascade="all, delete-orphan"
+    )
+
+    # Achievement relationships
+    achievements: Mapped[list["UserAchievement"]] = relationship(
+        "UserAchievement",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    frames: Mapped[list["UserFrame"]] = relationship(
+        "UserFrame",
+        back_populates="user",
         cascade="all, delete-orphan"
     )
 

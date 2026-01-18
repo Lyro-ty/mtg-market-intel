@@ -63,6 +63,11 @@ from app.models.trade import (
     TradeStatus,
     TradeSide,
 )
+from app.models.achievement import (
+    AchievementDefinition,
+    UserAchievement,
+    UserFrame,
+)
 
 
 __all__ = [
@@ -130,5 +135,9 @@ __all__ = [
     "TradeProposalItem",
     "TradeStatus",
     "TradeSide",
+    # Achievement system
+    "AchievementDefinition",
+    "UserAchievement",
+    "UserFrame",
 ]
 
