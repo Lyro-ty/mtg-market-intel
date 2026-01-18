@@ -362,3 +362,45 @@ export type {
   FavoriteUser,
   FavoritesListResponse,
 } from './directory';
+
+// Moderation (Admin)
+export {
+  getModerationQueue,
+  getModerationStats,
+  getCaseDetail,
+  takeAction,
+  getUserNotes,
+  addUserNote,
+  getAppeals,
+  getAppeal,
+  resolveAppeal,
+  getDisputes,
+  getDispute,
+  assignDispute,
+  resolveDispute,
+} from './moderation';
+
+export type {
+  FlagLevel,
+  FlagType,
+  ModerationQueueItem,
+  ModerationQueueResponse,
+  ModerationStats,
+  ReportInfo,
+  AutoFlagInfo,
+  PreviousActionInfo,
+  ModNoteInfo,
+  TradeStatsSummary,
+  RecentTradeInfo,
+  ReportedMessageInfo,
+  TargetUserInfo,
+  ModerationCaseDetail,
+  ModerationActionResponse,
+  AppealResponse,
+  TradeDisputeResponse,
+  TakeActionRequest,
+  ResolveAppealRequest,
+  ResolveDisputeRequest,
+  AddModNoteRequest,
+  ModerationQueueParams,
+} from './moderation';
