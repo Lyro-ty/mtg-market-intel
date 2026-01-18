@@ -44,6 +44,7 @@ from app.api.routes import (
     trades,
     favorites,
     format_specialties,
+    onboarding,
 )
 
 api_router = APIRouter()
@@ -116,3 +117,6 @@ api_router.include_router(favorites.router)
 
 # Format specialties management
 api_router.include_router(format_specialties.router)
+
+# Onboarding status
+api_router.include_router(onboarding.router)
