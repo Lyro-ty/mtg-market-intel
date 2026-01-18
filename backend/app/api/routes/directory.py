@@ -150,11 +150,13 @@ async def get_directory(
 
     # Search filter
     if q:
-        search_pattern = f"%{q}%"
+        # Escape SQL wildcards to prevent injection
+        q_escaped = q.replace("%", r"\%").replace("_", r"\_")
+        search_pattern = f"%{q_escaped}%"
         base_conditions.append(
             or_(
-                User.username.ilike(search_pattern),
-                User.display_name.ilike(search_pattern),
+                User.username.ilike(search_pattern, escape="\\"),
+                User.display_name.ilike(search_pattern, escape="\\"),
             )
         )
 
@@ -231,29 +233,18 @@ async def get_directory(
         # Default to discovery_score
         query = query.order_by(desc(User.discovery_score))
 
-    # Get total count
-    count_query = select(func.count()).select_from(
-        select(User.id).where(and_(*base_conditions)).subquery()
-    )
+    # Get total count - build count query with all filters
+    count_base_query = select(User.id).where(and_(*base_conditions))
 
     # Apply format filter to count if needed
     if format:
-        count_query = select(func.count()).select_from(
-            select(User.id)
-            .where(and_(*base_conditions))
-            .where(User.id.in_(format_subquery))
-            .subquery()
-        )
+        count_base_query = count_base_query.where(User.id.in_(format_subquery))
 
     # Apply reputation tier filter to count if needed
     if reputation_tier:
-        count_conditions = base_conditions.copy()
-        count_query = select(func.count()).select_from(
-            select(User.id)
-            .where(and_(*count_conditions))
-            .where(User.id.in_(rep_subquery))
-            .subquery()
-        )
+        count_base_query = count_base_query.where(User.id.in_(rep_subquery))
+
+    count_query = select(func.count()).select_from(count_base_query.subquery())
 
     total = await db.scalar(count_query) or 0
 
@@ -307,7 +298,9 @@ async def search_users(
     Returns a simplified list of matching users for autocomplete/quick search.
     Only searches users who have opted into search visibility.
     """
-    search_pattern = f"%{q}%"
+    # Escape SQL wildcards to prevent injection
+    q_escaped = q.replace("%", r"\%").replace("_", r"\_")
+    search_pattern = f"%{q_escaped}%"
 
     query = (
         select(User)
@@ -316,8 +309,8 @@ async def search_users(
                 User.show_in_search == True,
                 User.is_active == True,
                 or_(
-                    User.username.ilike(search_pattern),
-                    User.display_name.ilike(search_pattern),
+                    User.username.ilike(search_pattern, escape="\\"),
+                    User.display_name.ilike(search_pattern, escape="\\"),
                 ),
             )
         )
