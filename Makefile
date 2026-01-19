@@ -27,6 +27,7 @@ help:
 	@echo "Database Commands:"
 	@echo "  make migrate          - Run database migrations"
 	@echo "  make seed             - Seed the database with initial data"
+	@echo "  make seed-achievements - Seed achievement definitions"
 	@echo "  make seed-demo-prices - Generate synthetic 30-day price history"
 	@echo "  make import-scryfall  - Import Scryfall card database (~30k cards)"
 	@echo "  make import-scryfall-all - Import ALL printings (~90k cards)"
@@ -81,6 +82,10 @@ migrate-new:
 
 seed:
 	docker compose exec backend python -m app.scripts.seed_data
+
+seed-achievements:
+	@echo "Seeding achievement definitions..."
+	docker compose exec backend python -m app.scripts.seed_achievements
 
 seed-demo-prices:
 	@echo "Generating synthetic price history for demo/testing..."
