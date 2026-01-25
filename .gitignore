@@ -5,9 +5,12 @@ backend/data/scryfall_default_cards.json
 
 # Environment files (secrets)
 .env
+.env.*
 .env.local
 .env.*.local
 *.env
+*.bk
+*.backup*
 
 # Python
 __pycache__/
