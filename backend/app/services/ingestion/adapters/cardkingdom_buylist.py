@@ -194,11 +194,15 @@ class CardKingdomBuylistAdapter:
                     # Extract dollar amount
                     price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
                     if price_match:
-                        price_val = float(price_match.group(1).replace(",", ""))
-                        if "credit" in price_text.lower():
-                            credit_price = price_val
-                        else:
-                            cash_price = max(cash_price, price_val)
+                        try:
+                            price_val = float(price_match.group(1).replace(",", ""))
+                            if "credit" in price_text.lower():
+                                credit_price = price_val
+                            else:
+                                cash_price = max(cash_price, price_val)
+                        except (ValueError, TypeError):
+                            # Skip malformed price values
+                            continue
 
                 if cash_price <= 0:
                     continue
@@ -279,8 +283,12 @@ class CardKingdomBuylistAdapter:
             # Extract price
             price_match = re.search(r'\$?([\d,]+\.?\d*)', text)
             if price_match:
-                price = float(price_match.group(1).replace(",", ""))
-                conditions.append((cond, price, None))
+                try:
+                    price = float(price_match.group(1).replace(",", ""))
+                    conditions.append((cond, price, None))
+                except (ValueError, TypeError):
+                    # Skip malformed price values
+                    continue
 
         return conditions
 

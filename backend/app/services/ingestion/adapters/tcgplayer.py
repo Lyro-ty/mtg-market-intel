@@ -435,7 +435,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
                 try:
                     # TCGPlayer pricing structure
                     # Each item represents a condition/printing variant
-                    price = float(item.get("lowPrice", 0))
+                    price = float(item.get("lowPrice") or 0)
                     if price <= 0:
                         continue
                     
@@ -542,7 +542,7 @@ class TCGPlayerAdapter(MarketplaceAdapter):
             prices = []
             foil_prices = []
             for item in results:
-                price = float(item.get("lowPrice", 0))
+                price = float(item.get("lowPrice") or 0)
                 if price > 0:
                     is_foil = item.get("isFoil", False) or "foil" in item.get("subTypeName", "").lower()
                     if is_foil:

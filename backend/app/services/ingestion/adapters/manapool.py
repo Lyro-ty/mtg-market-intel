@@ -338,10 +338,10 @@ class ManapoolAdapter(MarketplaceAdapter):
         set_code = item.get("set") or item.get("set_code") or item.get("setCode") or ""
         collector_number = item.get("collector_number") or item.get("number") or ""
 
-        # Get price - try various field names
-        price = item.get("price") or item.get("unit_price") or item.get("unitPrice") or 0
+        # Get price - try various field names, handle None explicitly
+        price_raw = item.get("price") or item.get("unit_price") or item.get("unitPrice")
         try:
-            price = float(price)
+            price = float(price_raw) if price_raw is not None else 0.0
         except (ValueError, TypeError):
             price = 0.0
 
@@ -418,10 +418,10 @@ class ManapoolAdapter(MarketplaceAdapter):
                 # Take first result if no exact match
                 matching_card = cards[0]
 
-            # Extract price data
-            price = matching_card.get("price") or matching_card.get("min_price") or 0
+            # Extract price data - handle None explicitly
+            price_raw = matching_card.get("price") or matching_card.get("min_price")
             try:
-                price = float(price)
+                price = float(price_raw) if price_raw is not None else 0.0
             except (ValueError, TypeError):
                 price = 0.0
 
@@ -434,6 +434,23 @@ class ManapoolAdapter(MarketplaceAdapter):
             price_foil = matching_card.get("foil_price") or matching_card.get("price_foil")
             num_listings = matching_card.get("listings") or matching_card.get("num_listings")
 
+            # Safely convert optional price fields
+            def safe_float(val: Any) -> float | None:
+                if val is None:
+                    return None
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return None
+
+            def safe_int(val: Any) -> int | None:
+                if val is None:
+                    return None
+                try:
+                    return int(val)
+                except (ValueError, TypeError):
+                    return None
+
             return CardPrice(
                 card_name=card_name,
                 set_code=set_code,
@@ -441,10 +458,10 @@ class ManapoolAdapter(MarketplaceAdapter):
                 scryfall_id=scryfall_id,
                 price=price,
                 currency="EUR",
-                price_low=float(price_low) if price_low else None,
-                price_high=float(price_high) if price_high else None,
-                price_foil=float(price_foil) if price_foil else None,
-                num_listings=int(num_listings) if num_listings else None,
+                price_low=safe_float(price_low),
+                price_high=safe_float(price_high),
+                price_foil=safe_float(price_foil),
+                num_listings=safe_int(num_listings),
                 snapshot_time=datetime.now(timezone.utc),
             )
 
